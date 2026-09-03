@@ -10,7 +10,7 @@ export const hassleFreeAcPartner: PartnerDefinition = {
   platformLabel: "Hassle Free AC",
   defaultCompanyName: "",
   defaultLegalName: "",
-  defaultIndustryId: "hvac-trades",
+  defaultIndustryId: "trades-hvac",
 };
 
 export const partners = [hassleFreeAcPartner] as const;

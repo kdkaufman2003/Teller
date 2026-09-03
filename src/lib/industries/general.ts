@@ -1,6 +1,10 @@
 import type { AccountSeed } from "@/types";
 import type { IndustryAnswers, IndustryPack } from "./types";
 import { CORE_MODULES } from "./types";
+import {
+  formatCustomerLabels,
+  GENERAL_CUSTOMER_NOUN_OPTIONS,
+} from "./customer-labels";
 
 const GENERAL_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
@@ -37,10 +41,7 @@ export const generalPack: IndustryPack = {
       prompt: "What should we call the people you bill?",
       type: "select",
       default: "customers",
-      options: [
-        { value: "customers", label: "Customers" },
-        { value: "clients", label: "Clients" },
-      ],
+      options: GENERAL_CUSTOMER_NOUN_OPTIONS,
     },
     {
       id: "basis",
@@ -88,9 +89,9 @@ export const generalPack: IndustryPack = {
     if (isOn(answers.trackJobs)) modules.push("jobs");
     if (isOn(answers.trackInventory)) modules.push("inventory");
 
-    const customerNoun = String(answers.customerNoun || "customers");
-    const customerLabel =
-      customerNoun.charAt(0).toUpperCase() + customerNoun.slice(1);
+    const { customer: customerLabel, customerSingular } = formatCustomerLabels(
+      String(answers.customerNoun || "customers"),
+    );
 
     const tagsToKeep = new Set<string>([""]);
     if (isOn(answers.trackInventory)) tagsToKeep.add("inventory");
@@ -105,7 +106,7 @@ export const generalPack: IndustryPack = {
       modules,
       labels: {
         customer: customerLabel,
-        customerSingular: customerLabel.replace(/s$/, "") || "Customer",
+        customerSingular,
         job: "Projects",
         jobSingular: "Project",
         invoice: "Invoices",

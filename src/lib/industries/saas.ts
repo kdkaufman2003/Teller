@@ -1,6 +1,10 @@
 import type { AccountSeed } from "@/types";
 import type { IndustryAnswers, IndustryPack } from "./types";
 import { CORE_MODULES } from "./types";
+import {
+  formatCustomerLabels,
+  SAAS_CUSTOMER_NOUN_OPTIONS,
+} from "./customer-labels";
 
 const SAAS_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
@@ -56,40 +60,59 @@ export const saasPack: IndustryPack = {
       prompt: "What should we call the people you bill?",
       type: "select",
       default: "customers",
-      options: [
-        { value: "customers", label: "Customers" },
-        { value: "accounts", label: "Accounts" },
-        { value: "tenants", label: "Tenants" },
-      ],
+      options: SAAS_CUSTOMER_NOUN_OPTIONS,
     },
     {
       id: "recognition",
       prompt: "When should subscription revenue hit the P&L?",
+      help: "If customers prepay for annual or quarterly plans, this controls whether revenue is spread over the subscription period or booked all at once.",
       type: "select",
       default: "deferred",
       options: [
         {
           value: "deferred",
-          label: "Over the term (deferred revenue — recommended)",
+          label: "Over the term (recommended)",
+          description:
+            "Revenue is recognized a little each month as you deliver the service. Example: a $1,200 annual payment becomes $100/month on the P&L; the rest stays in Deferred Revenue until earned. This matches how most SaaS companies report on accrual books.",
         },
-        { value: "immediate", label: "When the invoice is sent" },
+        {
+          value: "immediate",
+          label: "When the invoice is sent",
+          description:
+            "The full invoice amount hits revenue the day you bill, even if the customer prepaid for a longer term. Simpler to track, but monthly P&L can look higher than the value you've actually delivered so far.",
+        },
       ],
     },
     {
       id: "trackMrr",
       prompt: "Show MRR / ARR on the dashboard?",
+      help: "MRR (Monthly Recurring Revenue) is your subscription income normalized to a monthly figure — e.g. one customer on a $1,200/year plan counts as $100/mo. ARR is that number × 12. These metrics sit alongside your P&L so you can track recurring growth, not just cash collected or invoices sent.",
       type: "boolean",
       default: true,
     },
     {
       id: "revenueStreams",
       prompt: "Which revenue accounts do you need?",
+      help: "Teller creates a separate income account for each type you select, so subscription income stays separate from one-time work on your P&L.",
       type: "multiselect",
       default: ["subscription", "services"],
       options: [
-        { value: "subscription", label: "Subscription" },
-        { value: "usage", label: "Usage" },
-        { value: "services", label: "Implementation / services" },
+        {
+          value: "subscription",
+          label: "Subscription",
+          description: "Recurring software fees — monthly or annual plans.",
+        },
+        {
+          value: "usage",
+          label: "Usage",
+          description: "Metered or pay-as-you-go charges — API calls, seats, storage, etc.",
+        },
+        {
+          value: "services",
+          label: "Implementation / services",
+          description:
+            "One-time professional work: onboarding, setup, data migration, training, custom integrations, or project-based consulting.",
+        },
       ],
     },
     {
@@ -127,9 +150,9 @@ export const saasPack: IndustryPack = {
     if (isOn(answers.trackMrr)) modules.push("mrr");
     if (answers.recognition === "deferred") modules.push("deferred-revenue");
 
-    const customerNoun = String(answers.customerNoun || "customers");
-    const customerLabel =
-      customerNoun.charAt(0).toUpperCase() + customerNoun.slice(1);
+    const { customer: customerLabel, customerSingular } = formatCustomerLabels(
+      String(answers.customerNoun || "customers"),
+    );
 
     const tagsToKeep = new Set<string>(["", ...streams]);
     if (answers.recognition === "deferred") tagsToKeep.add("deferred");
@@ -144,7 +167,7 @@ export const saasPack: IndustryPack = {
       modules,
       labels: {
         customer: customerLabel,
-        customerSingular: customerLabel.replace(/s$/, "") || "Customer",
+        customerSingular,
         job: "Projects",
         jobSingular: "Project",
         invoice: "Invoices",

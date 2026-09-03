@@ -25,6 +25,8 @@ export type IndustryPack = {
   tagline: string;
   description: string;
   recommended?: boolean;
+  /** Grouping label for setup wizard (e.g. Trades & field service) */
+  category?: string;
   questions: IndustryQuestion[];
   resolve: (answers: IndustryAnswers) => {
     modules: string[];

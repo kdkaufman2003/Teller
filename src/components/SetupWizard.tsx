@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   defaultAnswers,
   getIndustryPack,
-  industryPacks,
+  industryPacksByCategory,
   resolveIndustry,
 } from "@/lib/industries/registry";
 import type { IndustryAnswers } from "@/lib/industries/types";
@@ -37,8 +37,8 @@ function QuestionField({
 }) {
   if (question.type === "boolean") {
     return (
-      <fieldset className="card space-y-3 p-4">
-        <legend className="text-sm font-medium text-navy">{question.prompt}</legend>
+      <div className="card space-y-3 p-4">
+        <p className="text-sm font-medium text-navy">{question.prompt}</p>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <div className="flex gap-2">
           {[
@@ -55,24 +55,35 @@ function QuestionField({
             </button>
           ))}
         </div>
-      </fieldset>
+      </div>
     );
   }
 
   if (question.type === "multiselect") {
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
-      <fieldset className="card space-y-3 p-4">
-        <legend className="text-sm font-medium text-navy">{question.prompt}</legend>
+      <div className="card space-y-3 p-4">
+        <div>
+          <p className="text-sm font-medium text-navy">{question.prompt}</p>
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brass-deep">
+            Select all that apply
+          </p>
+        </div>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-2">
           {question.options?.map((option) => {
             const on = selected.includes(option.value);
             return (
               <button
                 key={option.value}
                 type="button"
-                className={`btn justify-start text-left ${on ? "btn-primary" : "btn-secondary"}`}
+                role="checkbox"
+                aria-checked={on}
+                className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-shadow ${
+                  on
+                    ? "border-brass bg-paper ring-2 ring-brass"
+                    : "border-rule bg-paper-strong hover:bg-paper"
+                }`}
                 onClick={() =>
                   onChange(
                     on
@@ -81,16 +92,44 @@ function QuestionField({
                   )
                 }
               >
-                {option.label}
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                    on ? "border-brass bg-brass text-navy" : "border-rule bg-white"
+                  }`}
+                  aria-hidden
+                >
+                  {on ? (
+                    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                      <path
+                        d="M2.5 6l2.5 2.5 4.5-5"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-navy">{option.label}</span>
+                  {option.description ? (
+                    <span className="mt-1 block text-xs leading-snug text-muted">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             );
           })}
         </div>
-      </fieldset>
+      </div>
     );
   }
 
   if (question.type === "select") {
+    const selected = question.options?.find(
+      (option) => option.value === String(value ?? ""),
+    );
     return (
       <label className="card block space-y-2 p-4">
         <span className="text-sm font-medium text-navy">{question.prompt}</span>
@@ -105,6 +144,9 @@ function QuestionField({
             </option>
           ))}
         </select>
+        {selected?.description ? (
+          <p className="text-sm leading-relaxed text-muted">{selected.description}</p>
+        ) : null}
       </label>
     );
   }
@@ -269,19 +311,28 @@ export function SetupWizard({
         ) : null}
 
         {step === "industry" ? (
-          <div className="grid gap-3">
-            {industryPacks.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => chooseIndustry(item.id)}
-                className={`card p-4 text-left transition-shadow hover:shadow-sm ${
-                  industryId === item.id ? "ring-2 ring-brass" : ""
-                }`}
-              >
-                <h2 className="font-ledger font-semibold text-navy">{item.name}</h2>
-                <p className="mt-1 text-sm text-muted">{item.description}</p>
-              </button>
+          <div className="space-y-6">
+            {industryPacksByCategory().map((group) => (
+              <section key={group.category}>
+                <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-brass-deep">
+                  {group.category}
+                </h2>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {group.packs.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => chooseIndustry(item.id)}
+                      className={`card p-4 text-left transition-shadow hover:shadow-sm ${
+                        industryId === item.id ? "ring-2 ring-brass" : ""
+                      }`}
+                    >
+                      <h3 className="font-ledger font-semibold text-navy">{item.name}</h3>
+                      <p className="mt-1 text-sm text-muted">{item.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         ) : null}

@@ -90,21 +90,21 @@ export default async function HomePage() {
             One platform, configured during setup — not a generic template you
             have to fight with.
           </p>
-          <ul className="mt-8 grid gap-4 md:grid-cols-3">
-            {[
-              {
-                title: "HVAC & trades",
-                body: "Equipment vs labor revenue, job costing, warranty reserves, dealer books.",
-              },
-              {
-                title: "SaaS",
-                body: "Subscription revenue, deferred revenue, MRR-focused dashboard modules.",
-              },
-              {
-                title: "General business",
-                body: "A clean starting chart of accounts you can grow into any operation.",
-              },
-            ].map((item) => (
+            <ul className="mt-8 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  title: "Trades & field service",
+                  body: "HVAC, electrical, plumbing, roofing, mechanical, and GC — job costing and equipment vs labor.",
+                },
+                {
+                  title: "SaaS",
+                  body: "Subscription revenue, deferred revenue, MRR-focused dashboard modules.",
+                },
+                {
+                  title: "General business",
+                  body: "A clean starting chart of accounts you can grow into any operation.",
+                },
+              ].map((item) => (
               <li key={item.title} className="card p-5">
                 <h3 className="font-ledger text-xl text-navy">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted">{item.body}</p>
