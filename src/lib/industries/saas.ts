@@ -5,6 +5,7 @@ import {
   formatCustomerLabels,
   SAAS_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
+import { accountingBasisQuestion } from "./accounting-basis";
 
 const SAAS_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
@@ -121,16 +122,7 @@ export const saasPack: IndustryPack = {
       type: "boolean",
       default: false,
     },
-    {
-      id: "basis",
-      prompt: "Accounting basis",
-      type: "select",
-      default: "accrual",
-      options: [
-        { value: "accrual", label: "Accrual" },
-        { value: "cash", label: "Cash" },
-      ],
-    },
+    accountingBasisQuestion(),
     {
       id: "fiscalYearStart",
       prompt: "Fiscal year start",

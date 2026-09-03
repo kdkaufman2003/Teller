@@ -5,6 +5,7 @@ import {
   formatCustomerLabels,
   GENERAL_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
+import { accountingBasisQuestion } from "./accounting-basis";
 
 const GENERAL_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
@@ -43,16 +44,7 @@ export const generalPack: IndustryPack = {
       default: "customers",
       options: GENERAL_CUSTOMER_NOUN_OPTIONS,
     },
-    {
-      id: "basis",
-      prompt: "Accounting basis",
-      type: "select",
-      default: "accrual",
-      options: [
-        { value: "accrual", label: "Accrual" },
-        { value: "cash", label: "Cash" },
-      ],
-    },
+    accountingBasisQuestion(),
     {
       id: "trackJobs",
       prompt: "Track jobs or projects?",

@@ -5,6 +5,7 @@ import {
   formatCustomerLabels,
   TRADES_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
+import { accountingBasisQuestion } from "./accounting-basis";
 
 export const TRADES_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
@@ -122,17 +123,10 @@ function buildTradesQuestions(
       default: defaults.customerNoun ?? "customers",
       options: TRADES_CUSTOMER_NOUN_OPTIONS,
     },
-    {
-      id: "basis",
+    accountingBasisQuestion({
       prompt: "How do you want to recognize revenue?",
-      help: "Accrual books invoices when you send them. Cash books them when money arrives.",
-      type: "select",
       default: defaults.basis ?? "accrual",
-      options: [
-        { value: "accrual", label: "Accrual (recommended for jobs and AR)" },
-        { value: "cash", label: "Cash (simpler, when paid)" },
-      ],
-    },
+    }),
     FISCAL_YEAR_QUESTION,
     {
       id: "revenueStreams",
