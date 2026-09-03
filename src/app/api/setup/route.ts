@@ -3,7 +3,7 @@ import {
   applyPartnerSetupDefaults,
   attachPartner,
   detachPartner,
-  ensureQuoterModule,
+  ensureHfacModule,
   partnerIdFromAnswers,
 } from "@/lib/partners/attachment";
 import { resolveIndustry } from "@/lib/industries/registry";
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       : partnerIdFromAnswers(answers);
   const mergedAnswers = applyPartnerSetupDefaults(partnerId, answers);
   const resolved = resolveIndustry(industryId, mergedAnswers);
-  const modules = ensureQuoterModule(resolved.modules, partnerId);
+  const modules = ensureHfacModule(resolved.modules, partnerId);
 
   const { data, error } = await supabase.rpc("teller_complete_setup", {
     p_name: name,

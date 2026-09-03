@@ -19,6 +19,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === routes.home) return true;
   if (pathname === routes.login || pathname === routes.signup) return true;
   if (pathname === routes.callback || pathname.startsWith("/auth/")) return true;
+  if (pathname.startsWith("/api/integrations/hfac/quotes")) return true;
   if (pathname.startsWith("/api/integrations/quoter/quotes")) return true;
   return false;
 }

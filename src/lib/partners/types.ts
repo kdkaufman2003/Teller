@@ -5,8 +5,8 @@ export type PartnerDefinition = {
   name: string;
   shortName: string;
   description: string;
-  /** Product in the partner stack that Teller connects to */
-  quoterLabel: string;
+  /** Connected platform shown in Settings / sidebar */
+  platformLabel: string;
   defaultCompanyName: string;
   defaultLegalName: string;
   defaultIndustryId: string;

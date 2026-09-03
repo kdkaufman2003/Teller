@@ -59,8 +59,8 @@ export default async function InvoicesPage() {
                     <Link href={`${routes.invoices}/${row.id}`} className="font-medium">
                       {row.number}
                     </Link>
-                    {row.external_source === "quoter" ? (
-                      <span className="ml-2 text-xs text-brass-deep">Imported</span>
+                    {(row.external_source === "hfac" || row.external_source === "quoter") ? (
+                      <span className="ml-2 text-xs text-brass-deep">HFAC</span>
                     ) : null}
                   </td>
                   <td>{row.party_id ? names.get(row.party_id) : "—"}</td>

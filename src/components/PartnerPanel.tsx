@@ -2,16 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { QuoterSyncButton } from "@/components/QuoterSyncButton";
 
 type PartnerState = {
   mode: "standalone" | "attached";
   partnerId: string | null;
-  partner: { name: string; shortName: string; description: string; quoterLabel: string } | null;
-  quoterUrl: string | null;
-  sharedSupabase: boolean;
+  partner: {
+    name: string;
+    shortName: string;
+    description: string;
+    platformLabel: string;
+  } | null;
+  platformUrl: string | null;
+  webhookUrl: string | null;
   organizationId: string;
-  quoter: {
+  hfac: {
     enabled?: boolean;
     last_synced_at?: string | null;
     last_sync_summary?: unknown;
@@ -65,7 +69,7 @@ export function PartnerPanel() {
   }
 
   const attached = state.mode === "attached";
-  const integrationName = state.partner?.name ?? "Quote-to-invoice sync";
+  const integrationName = state.partner?.name ?? "Hassle Free AC";
 
   return (
     <section className="card space-y-4 p-5">
@@ -73,8 +77,8 @@ export function PartnerPanel() {
         <div>
           <h2 className="font-ledger text-2xl text-navy">Integrations</h2>
           <p className="mt-1 text-sm text-muted">
-            Teller is always your system of record. Connect a quoting platform to
-            import customers and won deals — disconnect anytime and keep your books.
+            Teller is your system of record with its own database. Hassle Free AC
+            sends won deals over a secure webhook — no shared Supabase required.
           </p>
         </div>
         <span
@@ -82,52 +86,55 @@ export function PartnerPanel() {
             attached ? "bg-brass/20 text-brass-deep" : "bg-rule/60 text-muted"
           }`}
         >
-          {attached ? `Connected · ${state.partner?.shortName ?? "Integration"}` : "Not connected"}
+          {attached ? `Connected · ${state.partner?.shortName ?? "HFAC"}` : "Not connected"}
         </span>
       </div>
 
       {attached ? (
         <div className="space-y-3 text-sm">
           <p>
-            <strong>{integrationName}</strong> is active. Imported customers and
-            draft invoices stay in Teller; you control posting and payment.
+            <strong>{integrationName}</strong> is connected. Won deals arrive as draft
+            invoices; you control posting and payment in Teller.
           </p>
-          {state.quoterUrl ? (
+          {state.platformUrl ? (
             <a
-              href={state.quoterUrl}
+              href={state.platformUrl}
               target="_blank"
               rel="noreferrer"
               className="btn btn-ghost inline-flex text-sm"
             >
-              Open {state.partner?.quoterLabel ?? "connected app"}
+              Open {state.partner?.platformLabel ?? "Hassle Free AC"}
             </a>
           ) : null}
-          {!state.sharedSupabase ? (
-            <p className="text-warn">
-              Database sync is off. Use the webhook from your quoting tool or point
-              both apps at the same database project.
-            </p>
-          ) : null}
-          {state.quoter?.last_synced_at ? (
+          {state.hfac?.last_synced_at ? (
             <p className="text-muted">
-              Last sync {new Date(state.quoter.last_synced_at).toLocaleString()}
+              Last import {new Date(state.hfac.last_synced_at).toLocaleString()}
             </p>
-          ) : null}
-          <QuoterSyncButton />
+          ) : (
+            <p className="text-muted">Waiting for the first won deal from Hassle Free AC.</p>
+          )}
+          <div className="rounded-lg border border-rule bg-paper p-3 text-xs">
+            <p className="font-medium text-navy">Webhook setup (Hassle Free AC env)</p>
+            <ul className="mt-2 space-y-1 font-tabular text-muted">
+              <li>TELLER_WEBHOOK_URL={state.webhookUrl ?? "<your-teller-url>/api/integrations/hfac/quotes"}</li>
+              <li>TELLER_WEBHOOK_SECRET=&lt;shared secret&gt;</li>
+              <li>TELLER_ORGANIZATION_ID={state.organizationId}</li>
+            </ul>
+          </div>
           <button
             type="button"
             className="btn btn-ghost text-sm"
             disabled={pending}
             onClick={() => void run("detach")}
           >
-            Disconnect integration
+            Disconnect Hassle Free AC
           </button>
         </div>
       ) : (
         <div className="space-y-3 text-sm">
           <p>
-            No integrations connected. You can use every Teller feature manually, or
-            connect a quoting platform to import customers and won quotes.
+            Connect Hassle Free AC to import won deals as draft invoices. Teller and HFAC
+            stay on separate Supabase projects — integration is HTTP only.
           </p>
           <button
             type="button"
@@ -135,7 +142,7 @@ export function PartnerPanel() {
             disabled={pending}
             onClick={() => void run("attach")}
           >
-            Connect quote-to-invoice sync
+            Connect Hassle Free AC
           </button>
         </div>
       )}

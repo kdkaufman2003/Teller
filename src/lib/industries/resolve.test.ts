@@ -3,12 +3,12 @@ import { defaultAnswers, resolveIndustry } from "./registry";
 import { hvacTradesPack } from "./hvac-trades";
 
 describe("HVAC industry pack", () => {
-  it("seeds dealer-oriented books with jobs and Quoter", () => {
+  it("seeds dealer-oriented books with jobs and HFAC integration", () => {
     const answers = defaultAnswers(hvacTradesPack);
     const resolved = resolveIndustry("hvac-trades", answers);
 
     expect(resolved.modules).toContain("jobs");
-    expect(resolved.modules).toContain("quoter");
+    expect(resolved.modules).toContain("hfac");
     expect(resolved.labels.customer).toBe("Dealers");
     expect(resolved.accounts.some((account) => account.code === "4000")).toBe(true);
     expect(resolved.accounts.some((account) => account.code === "1200")).toBe(false);

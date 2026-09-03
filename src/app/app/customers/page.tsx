@@ -46,7 +46,9 @@ export default async function CustomersPage() {
                   <td className="font-medium">{row.name}</td>
                   <td>{row.email || "—"}</td>
                   <td className="text-muted">
-                    {row.external_source === "quoter" ? "Integration" : "Manual"}
+                    {row.external_source === "hfac" || row.external_source === "quoter"
+                      ? "HFAC"
+                      : "Manual"}
                   </td>
                 </tr>
               ))

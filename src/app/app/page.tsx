@@ -4,7 +4,7 @@ import { money } from "@/lib/format";
 import { label } from "@/lib/session";
 import { routes } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
-import { getSessionContext, hasModule } from "@/lib/session";
+import { getSessionContext, hasHfacIntegration, hasModule } from "@/lib/session";
 import { asNumber } from "@/lib/format";
 import { redirect } from "next/navigation";
 
@@ -41,7 +41,7 @@ export default async function DashboardPage() {
       .from("teller_integrations")
       .select("enabled, last_synced_at, last_sync_summary")
       .eq("organization_id", organizationId)
-      .eq("provider", "quoter")
+      .eq("provider", "hfac")
       .maybeSingle(),
   ]);
 
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
 
   const customerLabel = label(session.settings, "customer", "Customers");
   const showJobs = hasModule(session.settings, "jobs");
-  const showIntegrations = hasModule(session.settings, "quoter");
+  const showIntegrations = hasHfacIntegration(session.settings);
 
   return (
     <div className="space-y-8">
@@ -146,10 +146,10 @@ export default async function DashboardPage() {
 
           {showIntegrations ? (
             <article className="card p-5">
-              <h2 className="font-ledger text-xl text-navy">Integrations</h2>
+              <h2 className="font-ledger text-xl text-navy">Hassle Free AC</h2>
               <p className="mt-2 text-sm text-muted">
-                Quote-to-invoice sync imports {customerLabel.toLowerCase()} and won
-                deals as draft invoices.
+                Won deals from Hassle Free AC import as draft invoices for{" "}
+                {customerLabel.toLowerCase()}.
               </p>
               <p className="mt-3 text-xs text-muted">
                 {integration.data?.last_synced_at

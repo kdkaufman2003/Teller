@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { routes } from "@/lib/routes";
-import { getQuoterUrl } from "@/lib/partners/registry";
+import { getHfacPlatformUrl } from "@/lib/partners/registry";
 import { createClient } from "@/lib/supabase/client";
 
 type NavItem = { href: string; label: string; module?: string };
@@ -38,7 +38,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const partnerAppUrl = getQuoterUrl();
+  const partnerAppUrl = getHfacPlatformUrl();
 
   async function signOut() {
     const supabase = createClient();
@@ -78,14 +78,14 @@ export function AppShell({
         <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">
           {industryName}
         </p>
-        {attached && partnerAppUrl && modules.includes("quoter") ? (
+        {attached && partnerAppUrl && (modules.includes("hfac") || modules.includes("quoter")) ? (
           <a
             href={partnerAppUrl}
             target="_blank"
             rel="noreferrer"
             className="mt-3 text-xs text-sky-200 underline-offset-2 hover:underline"
           >
-            Open connected app ↗
+            Open Hassle Free AC ↗
           </a>
         ) : null}
         <nav className="mt-8 flex flex-1 flex-col gap-1 text-sm">

@@ -11,10 +11,10 @@ import {
 import type { IndustryAnswers } from "@/lib/industries/types";
 import {
   applyPartnerSetupDefaults,
-  ensureQuoterModule,
+  ensureHfacModule,
   partnerIdFromAnswers,
 } from "@/lib/partners/attachment";
-import { tradeQuoterPartner } from "@/lib/partners/registry";
+import { hassleFreeAcPartner } from "@/lib/partners/registry";
 import type { PartnerId } from "@/lib/partners/types";
 import { routes } from "@/lib/routes";
 
@@ -137,19 +137,19 @@ export function SetupWizard({
 
   const [step, setStep] = useState<Step>("company");
   const [name, setName] = useState(
-    enableIntegrations ? tradeQuoterPartner.defaultCompanyName : "",
+    enableIntegrations ? hassleFreeAcPartner.defaultCompanyName : "",
   );
   const [legalName, setLegalName] = useState(
-    enableIntegrations ? tradeQuoterPartner.defaultLegalName : "",
+    enableIntegrations ? hassleFreeAcPartner.defaultLegalName : "",
   );
   const [industryId, setIndustryId] = useState(
-    enableIntegrations ? tradeQuoterPartner.defaultIndustryId : "general",
+    enableIntegrations ? hassleFreeAcPartner.defaultIndustryId : "general",
   );
   const [answers, setAnswers] = useState<IndustryAnswers>(() =>
     applyPartnerSetupDefaults(partnerId, {
       ...defaultAnswers(
         getIndustryPack(
-          enableIntegrations ? tradeQuoterPartner.defaultIndustryId : "general",
+          enableIntegrations ? hassleFreeAcPartner.defaultIndustryId : "general",
         ),
       ),
       deploymentMode,
@@ -166,7 +166,7 @@ export function SetupWizard({
   const resolved = useMemo(
     () => ({
       ...resolveIndustry(industryId, mergedAnswers),
-      modules: ensureQuoterModule(
+      modules: ensureHfacModule(
         resolveIndustry(industryId, mergedAnswers).modules,
         partnerId,
       ),
@@ -175,7 +175,9 @@ export function SetupWizard({
   );
 
   const visibleQuestions = pack.questions.filter((question) => {
-    if (question.id === "connectQuoter") return enableIntegrations;
+    if (question.id === "connectQuoter" || question.id === "connectHfac") {
+      return enableIntegrations;
+    }
     return true;
   });
 

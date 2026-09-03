@@ -172,9 +172,9 @@ export const hvacTradesPack: IndustryPack = {
       default: false,
     },
     {
-      id: "connectQuoter",
-      prompt: "Connect quote-to-invoice sync?",
-      help: "Import customers and won quotes as draft invoices and jobs.",
+      id: "connectHfac",
+      prompt: "Connect Hassle Free AC?",
+      help: "Won deals in Hassle Free AC import as draft invoices via webhook.",
       type: "boolean",
       default: true,
     },
@@ -184,7 +184,7 @@ export const hvacTradesPack: IndustryPack = {
     const modules: string[] = [...CORE_MODULES];
     if (isOn(answers.trackJobs)) modules.push("jobs");
     if (isOn(answers.trackInventory)) modules.push("inventory");
-    if (isOn(answers.connectQuoter)) modules.push("quoter");
+    if (isOn(answers.connectHfac) || isOn(answers.connectQuoter)) modules.push("hfac");
 
     const customerNoun = String(answers.customerNoun || "dealers");
     const customerLabel =

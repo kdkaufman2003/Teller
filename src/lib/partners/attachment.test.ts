@@ -1,32 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPartnerSetupDefaults,
-  ensureQuoterModule,
+  ensureHfacModule,
   partnerIdFromAnswers,
 } from "./attachment";
 
 describe("partner attachment", () => {
   it("standalone mode does not attach a partner", () => {
     expect(partnerIdFromAnswers({ deploymentMode: "standalone" })).toBeNull();
-    expect(applyPartnerSetupDefaults(null, { connectQuoter: true }).connectQuoter).toBe(
+    expect(applyPartnerSetupDefaults(null, { connectHfac: true }).connectHfac).toBe(
       false,
     );
   });
 
-  it("attached mode enables quoter defaults", () => {
+  it("attached mode enables HFAC defaults", () => {
     expect(partnerIdFromAnswers({ deploymentMode: "attached" })).toBe("hasslefreeac");
     const answers = applyPartnerSetupDefaults("hasslefreeac", {});
-    expect(answers.connectQuoter).toBe(true);
+    expect(answers.connectHfac).toBe(true);
     expect(answers.customerNoun).toBe("dealers");
   });
 
-  it("adds quoter module when attached", () => {
-    const modules = ensureQuoterModule(["dashboard", "invoices"], "hasslefreeac");
-    expect(modules).toContain("quoter");
+  it("adds hfac module when attached", () => {
+    const modules = ensureHfacModule(["dashboard", "invoices"], "hasslefreeac");
+    expect(modules).toContain("hfac");
   });
 
-  it("does not add quoter module when standalone", () => {
-    const modules = ensureQuoterModule(["dashboard", "invoices"], null);
-    expect(modules).not.toContain("quoter");
+  it("does not add hfac module when standalone", () => {
+    const modules = ensureHfacModule(["dashboard", "invoices"], null);
+    expect(modules).not.toContain("hfac");
   });
 });

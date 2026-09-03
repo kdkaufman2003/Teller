@@ -34,7 +34,7 @@ export async function GET() {
       .from("teller_integrations")
       .select("enabled, last_synced_at, last_sync_summary")
       .eq("organization_id", organizationId)
-      .eq("provider", "quoter")
+      .eq("provider", "hfac")
       .maybeSingle(),
   ]);
 
@@ -72,6 +72,6 @@ export async function GET() {
       party_name: row.party_id ? partyNames.get(row.party_id) || "" : "",
     })),
     jobs: jobs.data ?? [],
-    quoter: integration.data ?? null,
+    hfac: integration.data ?? null,
   });
 }

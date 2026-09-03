@@ -1,22 +1,19 @@
 import type { PartnerDefinition } from "./types";
 
-/** First-party integration partner (internal id: hasslefreeac). */
-export const tradeQuoterPartner: PartnerDefinition = {
+/** Hassle Free AC — first integration partner (internal id: hasslefreeac). */
+export const hassleFreeAcPartner: PartnerDefinition = {
   id: "hasslefreeac",
-  name: "Quote-to-invoice sync",
-  shortName: "Quotes",
+  name: "Hassle Free AC",
+  shortName: "HFAC",
   description:
-    "Import customers and won quotes from your quoting platform as draft invoices and jobs.",
-  quoterLabel: "Quoting platform",
+    "Import customers and won deals from Hassle Free AC as draft invoices and jobs.",
+  platformLabel: "Hassle Free AC",
   defaultCompanyName: "",
   defaultLegalName: "",
   defaultIndustryId: "hvac-trades",
 };
 
-/** @deprecated alias for internal code */
-export const hassleFreeAcPartner = tradeQuoterPartner;
-
-export const partners = [tradeQuoterPartner] as const;
+export const partners = [hassleFreeAcPartner] as const;
 
 export function getPartner(id: string | null | undefined) {
   if (!id) return null;
@@ -27,18 +24,16 @@ export function isAttachedToPartner(partnerId: string | null | undefined): boole
   return Boolean(partnerId);
 }
 
-/** @deprecated */
-export function isAttachedToHfac(partnerId: string | null | undefined): boolean {
-  return partnerId === "hasslefreeac";
-}
-
-export function getQuoterUrl(): string | null {
+export function getHfacPlatformUrl(): string | null {
   const url =
-    process.env.NEXT_PUBLIC_PARTNER_QUOTER_URL?.trim() ||
+    process.env.NEXT_PUBLIC_HFAC_URL?.trim() ||
     process.env.NEXT_PUBLIC_HFAC_QUOTER_URL?.trim();
   if (!url || /your-.*\.vercel\.app/i.test(url)) return null;
   return url.replace(/\/$/, "");
 }
+
+/** @deprecated use getHfacPlatformUrl */
+export const getQuoterUrl = getHfacPlatformUrl;
 
 export function getTellerPublicUrl(): string | null {
   const url =
@@ -46,4 +41,10 @@ export function getTellerPublicUrl(): string | null {
     process.env.NEXT_PUBLIC_TELLER_URL?.trim();
   if (!url || url.includes("localhost")) return null;
   return url.replace(/\/$/, "");
+}
+
+export function getHfacWebhookUrl(): string | null {
+  const base = getTellerPublicUrl();
+  if (!base) return null;
+  return `${base}/api/integrations/hfac/quotes`;
 }

@@ -57,6 +57,13 @@ export function hasModule(
   return Boolean(settings?.modules?.includes(moduleId));
 }
 
+/** Hassle Free AC integration module (accepts legacy "quoter" module id). */
+export function hasHfacIntegration(
+  settings: TellerSettings | null | undefined,
+): boolean {
+  return hasModule(settings, "hfac") || hasModule(settings, "quoter");
+}
+
 export function label(
   settings: TellerSettings | null | undefined,
   key: string,

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks } from "@/lib/api";
 import { attachPartner, detachPartner } from "@/lib/partners/attachment";
-import { getPartner, getQuoterUrl } from "@/lib/partners/registry";
-import { isQuoterSharedSupabase } from "@/lib/supabase/env";
+import { getHfacPlatformUrl, getHfacWebhookUrl, getPartner } from "@/lib/partners/registry";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -17,18 +16,18 @@ export async function GET() {
     .select("provider, enabled, last_synced_at, last_sync_summary, config")
     .eq("organization_id", organizationId);
 
-  const quoterIntegration = (integrations ?? []).find(
-    (row) => row.provider === "quoter",
+  const hfacIntegration = (integrations ?? []).find(
+    (row) => row.provider === "hfac" || row.provider === "quoter",
   );
 
   return NextResponse.json({
     mode: partnerId ? "attached" : "standalone",
     partnerId,
     partner,
-    quoterUrl: getQuoterUrl(),
-    sharedSupabase: isQuoterSharedSupabase(),
+    platformUrl: getHfacPlatformUrl(),
+    webhookUrl: getHfacWebhookUrl(),
     organizationId,
-    quoter: quoterIntegration ?? null,
+    hfac: hfacIntegration ?? null,
   });
 }
 

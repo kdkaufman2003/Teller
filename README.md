@@ -2,26 +2,14 @@
 
 Industry-tailored accounting software. A short setup interview builds the chart of accounts, labels, and modules for HVAC/trades, SaaS, or a general business.
 
-Teller is a standalone product — integrations with quoting and operational tools are optional and configured in **Settings → Integrations**.
+Teller is a **standalone product** with its own Supabase project. **Hassle Free AC** is an optional integration — not a dependency.
 
 ## Stack
 
 - **GitHub** — source and Vercel deploys
-- **Supabase** — Auth, Postgres ledger, Row Level Security
+- **Supabase** — Teller's own Auth + Postgres ledger
 - **Vercel** — Next.js hosting
 - **Next.js 16** App Router + Tailwind 4
-
-Teller tables are prefixed `teller_`, so they can share a Supabase project with other apps (e.g. a quoting platform) without table collisions.
-
-## What setup asks
-
-Setup adapts to the industry pack you choose:
-
-- **HVAC & trades** — dealer vs contractor vs service, customer labels, revenue streams (equipment, labor, service…), job costing, tax, warranty reserve
-- **SaaS** — subscription revenue, deferred revenue, MRR-oriented modules
-- **General business** — a clean starting chart of accounts
-
-Integrations are not required during setup. Connect quote-to-invoice sync later in Settings if needed.
 
 ## Local development
 
@@ -34,76 +22,65 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Supabase
+## Supabase (Teller project)
 
-1. Create a project at [supabase.com](https://supabase.com), or use an existing shared project.
-2. SQL Editor → run `supabase/migrations/001_teller_core.sql`.
+1. Create a **new** Supabase project for Teller at [supabase.com](https://supabase.com).
+2. SQL Editor → run `supabase/migrations/001_teller_core.sql` then `002_partner_attachment.sql`.
 3. Authentication → URL Configuration:
-   - Site URL: `http://localhost:3000` (add the Vercel URL later)
+   - Site URL: `http://localhost:3000` (add Vercel URL after deploy)
    - Redirect URL: `http://localhost:3000/auth/callback`
-4. Copy **Project URL**, **anon/publishable key**, and **service_role** into `.env.local`.
+4. Copy Project URL, anon key, and service_role into `.env.local`.
 
-Email signup works with the default Supabase Auth settings.
+## Deploy (Vercel)
 
-## GitHub + Vercel
+1. Import the GitHub repo.
+2. Set env vars from `.env.example`.
+3. Add production URL to Supabase Auth redirects: `https://<teller>.vercel.app/auth/callback`
 
-1. Push this folder to GitHub.
-2. [Import the repo in Vercel](https://vercel.com/new). Next.js is auto-detected.
-3. Add the same env vars as `.env.example`.
-4. After the first deploy, add the production URL to Supabase Auth redirect allowlist:
-   - `https://<your-teller>.vercel.app/auth/callback`
+## Hassle Free AC integration
 
-## Integrations (optional)
+Teller and Hassle Free AC each have **their own repo, Vercel URL, and Supabase**. They talk over HTTP only.
 
-Teller is **its own system of record**. Connect a quoting platform under **Settings → Integrations** to import customers and won quotes as draft invoices — disconnect anytime and keep your books.
+### Teller setup
 
-### Standalone (default)
+1. Deploy Teller with its own Supabase.
+2. **Settings → Integrations → Connect Hassle Free AC**
+3. Copy **Webhook organization id** from Settings.
+4. Set `TELLER_HFAC_WEBHOOK_SECRET` in Teller env.
 
-Complete setup normally. No integration sync; full books for any industry.
+### Hassle Free AC setup
 
-### Quote-to-invoice sync
-
-1. Settings → **Connect quote-to-invoice sync**
-2. Run migration `002_partner_attachment.sql` if you already ran `001`.
-3. Point both apps at the same Supabase project (recommended) or use the webhook below.
-
-Two sync paths when connected:
-
-1. **Shared Supabase** — Settings → **Sync customers & won quotes** reads quote tables in the same project.
-2. **Live webhook** — in the quoting app when a quote is marked won:
+In the **Hassle Free AC** project env:
 
 ```
-TELLER_WEBHOOK_URL=https://<your-teller>.vercel.app/api/integrations/quoter/quotes
-TELLER_WEBHOOK_SECRET=<same as Teller>
-TELLER_ORGANIZATION_ID=<Settings → webhook organization id>
+NEXT_PUBLIC_TELLER_INTEGRATION=1
+NEXT_PUBLIC_TELLER_URL=https://<your-teller>.vercel.app
+TELLER_WEBHOOK_URL=https://<your-teller>.vercel.app/api/integrations/hfac/quotes
+TELLER_WEBHOOK_SECRET=<same as Teller TELLER_HFAC_WEBHOOK_SECRET>
+TELLER_ORGANIZATION_ID=<uuid from Teller Settings>
 ```
 
-In **Teller** env for inbound webhooks:
+When a deal is marked won in Hassle Free AC, Teller receives a draft invoice (and job if job costing is on).
 
-```
-TELLER_QUOTER_WEBHOOK_SECRET=<same secret>
-SUPABASE_SERVICE_ROLE_KEY=<required for inbound quotes>
-```
+**Disconnect** anytime in Teller Settings — books stay in Teller.
 
-**Disconnect** anytime in Settings — sync turns off; invoices and ledger data stay in Teller.
+### Standalone (no HFAC)
 
-### Developer note: first integration partner
-
-The first supported integration uses internal partner id `hasslefreeac` (Quoter). Enable it via Settings, or during setup with `?integrations=1` or `?attach=hasslefreeac`. This is not shown in the public UI.
+Complete setup normally. No env vars on HFAC, no connection in Teller Settings. Full books for any industry.
 
 ## App map
 
 | Route | Purpose |
 |-------|---------|
 | `/setup` | Industry interview |
-| `/app` | Receivables, collected, jobs, integration status |
-| `/app/invoices` | Draft → post (AR + revenue) → paid (cash) |
+| `/app` | Dashboard, receivables, HFAC status |
+| `/app/invoices` | Draft → post → paid |
 | `/app/customers` | Customers / dealers |
-| `/app/jobs` | Install / service job costing |
-| `/app/expenses` | Vendor spend posted to the ledger |
-| `/app/accounts` | Industry chart of accounts |
-| `/app/ledger` | Double-entry journal |
-| `/app/settings` | Company info and integrations |
+| `/app/jobs` | Job costing |
+| `/app/expenses` | Vendor spend |
+| `/app/accounts` | Chart of accounts |
+| `/app/ledger` | General ledger |
+| `/app/settings` | Company + Hassle Free AC integration |
 
 ## Tests
 
