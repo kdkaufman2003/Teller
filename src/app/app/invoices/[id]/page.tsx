@@ -50,7 +50,7 @@ export default async function InvoiceDetailPage({
           <Link href={routes.invoices} className="text-sm text-muted">
             ← Invoices
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">{invoice.number}</h1>
+          <h1 className="font-ledger mt-2 text-4xl text-navy">{invoice.number}</h1>
           <p className="mt-1 text-muted">{party?.name || "No customer"}</p>
         </div>
         <StatusBadge status={invoice.status} />
@@ -92,7 +92,7 @@ export default async function InvoiceDetailPage({
             ))}
           </tbody>
         </table>
-        <div className="space-y-1 border-t border-border px-4 py-4 text-right font-tabular">
+        <div className="space-y-1 border-t border-rule px-4 py-4 text-right font-tabular">
           <p>Subtotal {money(invoice.subtotal)}</p>
           <p>Tax {money(invoice.tax)}</p>
           <p className="text-lg font-semibold">Total {money(invoice.total)}</p>

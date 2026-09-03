@@ -41,7 +41,7 @@ export function InvoiceActions({
         </button>
       ) : null}
       {status === "draft" || status === "open" ? (
-        <button className="btn btn-secondary" disabled={pending} onClick={() => void run("paid")}>
+        <button className="btn btn-brass" disabled={pending} onClick={() => void run("paid")}>
           Mark paid
         </button>
       ) : null}

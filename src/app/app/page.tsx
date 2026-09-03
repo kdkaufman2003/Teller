@@ -63,9 +63,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <header className="page-header">
+      <header>
         <p className="text-sm text-muted">Books for</p>
-        <h1 className="text-2xl font-semibold tracking-tight">{session.organization.name}</h1>
+        <h1 className="font-ledger text-4xl text-navy">{session.organization.name}</h1>
       </header>
 
       <section className="grid gap-3 md:grid-cols-3">
@@ -74,9 +74,9 @@ export default async function DashboardPage() {
           { label: "Collected", value: money(collected) },
           { label: "Open payables", value: money(openAP) },
         ].map((metric) => (
-          <article key={metric.label} className="card metric-card">
-            <p className="label">{metric.label}</p>
-            <p className="value font-tabular">{metric.value}</p>
+          <article key={metric.label} className="card p-5">
+            <p className="text-xs uppercase tracking-[0.14em] text-muted">{metric.label}</p>
+            <p className="font-ledger mt-2 text-3xl font-tabular text-navy">{metric.value}</p>
           </article>
         ))}
       </section>
@@ -84,12 +84,12 @@ export default async function DashboardPage() {
       <section className="grid gap-4 lg:grid-cols-3">
         <article className="card p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-ink">Recent invoices</h2>
+            <h2 className="font-ledger text-2xl text-navy">Recent invoices</h2>
             <Link href={routes.invoiceNew} className="btn btn-primary text-sm">
               New invoice
             </Link>
           </div>
-          <ul className="mt-4 divide-y divide-border">
+          <ul className="mt-4 divide-y divide-rule">
             {invoiceRows.length === 0 ? (
               <li className="py-6 text-sm text-muted">
                 No invoices yet. Create one manually or import won quotes from
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
               invoiceRows.map((row) => (
                 <li key={row.id} className="flex items-center justify-between py-3">
                   <div>
-                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium text-ink">
+                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium">
                       {row.number}
                     </Link>
                     <p className="text-sm text-muted">
@@ -120,10 +120,10 @@ export default async function DashboardPage() {
           {showJobs ? (
             <article className="card p-5">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-ink">
+                <h2 className="font-ledger text-xl text-navy">
                   {label(session.settings, "job", "Jobs")}
                 </h2>
-                <Link href={routes.jobs} className="text-sm text-accent">
+                <Link href={routes.jobs} className="text-sm text-sky">
                   View
                 </Link>
               </div>
@@ -146,7 +146,7 @@ export default async function DashboardPage() {
 
           {showIntegrations ? (
             <article className="card p-5">
-              <h2 className="text-lg font-semibold text-ink">Integrations</h2>
+              <h2 className="font-ledger text-xl text-navy">Integrations</h2>
               <p className="mt-2 text-sm text-muted">
                 Quote-to-invoice sync imports {customerLabel.toLowerCase()} and won
                 deals as draft invoices.

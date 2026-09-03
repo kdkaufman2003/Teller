@@ -50,13 +50,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   return (
     <div className="mx-auto w-full max-w-md">
-      <Link href={routes.home} className="flex items-center gap-2 text-lg font-semibold text-ink">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-sm font-bold text-white">
-          T
-        </div>
+      <Link href={routes.home} className="font-ledger text-2xl text-navy">
         Teller
       </Link>
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight text-ink">
+      <h1 className="font-ledger mt-6 text-3xl text-navy">
         {mode === "signup" ? "Create your account" : "Sign in"}
       </h1>
       <p className="mt-2 text-sm text-muted">
@@ -103,11 +100,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       <p className="mt-4 text-sm text-muted">
         {mode === "signup" ? (
           <>
-            Already have an account? <Link href={routes.login} className="text-accent">Sign in</Link>
+            Already have an account? <Link href={routes.login} className="text-sky">Sign in</Link>
           </>
         ) : (
           <>
-            New to Teller? <Link href={routes.signup} className="text-accent">Create an account</Link>
+            New to Teller? <Link href={routes.signup} className="text-sky">Create an account</Link>
           </>
         )}
       </p>

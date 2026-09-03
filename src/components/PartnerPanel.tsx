@@ -71,7 +71,7 @@ export function PartnerPanel() {
     <section className="card space-y-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-ink">Integrations</h2>
+          <h2 className="font-ledger text-2xl text-navy">Integrations</h2>
           <p className="mt-1 text-sm text-muted">
             Teller is always your system of record. Connect a quoting platform to
             import customers and won deals — disconnect anytime and keep your books.
@@ -79,7 +79,7 @@ export function PartnerPanel() {
         </div>
         <span
           className={`rounded-full px-3 py-1 text-xs font-medium ${
-            attached ? "bg-accent-soft text-accent" : "bg-surface text-muted ring-1 ring-border"
+            attached ? "bg-brass/20 text-brass-deep" : "bg-rule/60 text-muted"
           }`}
         >
           {attached ? `Connected · ${state.partner?.shortName ?? "Integration"}` : "Not connected"}
@@ -103,7 +103,7 @@ export function PartnerPanel() {
             </a>
           ) : null}
           {!state.sharedSupabase ? (
-            <p className="text-warning">
+            <p className="text-warn">
               Database sync is off. Use the webhook from your quoting tool or point
               both apps at the same database project.
             </p>
@@ -131,7 +131,7 @@ export function PartnerPanel() {
           </p>
           <button
             type="button"
-            className="btn btn-primary text-sm"
+            className="btn btn-brass text-sm"
             disabled={pending}
             onClick={() => void run("attach")}
           >

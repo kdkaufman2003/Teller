@@ -56,11 +56,11 @@ export default async function InvoicesPage() {
               (data ?? []).map((row) => (
                 <tr key={row.id}>
                   <td>
-                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium text-ink">
+                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium">
                       {row.number}
                     </Link>
                     {row.external_source === "quoter" ? (
-                      <span className="ml-2 text-xs text-accent">Imported</span>
+                      <span className="ml-2 text-xs text-brass-deep">Imported</span>
                     ) : null}
                   </td>
                   <td>{row.party_id ? names.get(row.party_id) : "—"}</td>

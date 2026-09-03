@@ -38,7 +38,7 @@ function QuestionField({
   if (question.type === "boolean") {
     return (
       <fieldset className="card space-y-3 p-4">
-        <legend className="text-sm font-medium text-ink">{question.prompt}</legend>
+        <legend className="text-sm font-medium text-navy">{question.prompt}</legend>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <div className="flex gap-2">
           {[
@@ -63,7 +63,7 @@ function QuestionField({
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
       <fieldset className="card space-y-3 p-4">
-        <legend className="text-sm font-medium text-ink">{question.prompt}</legend>
+        <legend className="text-sm font-medium text-navy">{question.prompt}</legend>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <div className="grid gap-2 sm:grid-cols-2">
           {question.options?.map((option) => {
@@ -93,7 +93,7 @@ function QuestionField({
   if (question.type === "select") {
     return (
       <label className="card block space-y-2 p-4">
-        <span className="text-sm font-medium text-ink">{question.prompt}</span>
+        <span className="text-sm font-medium text-navy">{question.prompt}</span>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <select
           value={String(value ?? "")}
@@ -111,7 +111,7 @@ function QuestionField({
 
   return (
     <label className="card block space-y-2 p-4">
-      <span className="text-sm font-medium text-ink">{question.prompt}</span>
+      <span className="text-sm font-medium text-navy">{question.prompt}</span>
       {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
       <input
         type={question.type === "number" ? "number" : "text"}
@@ -221,10 +221,8 @@ export function SetupWizard({
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <div className="page-header">
-        <p className="text-sm font-medium text-accent">Company setup</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Configure your books
-        </h1>
+        <p className="text-sm font-medium uppercase tracking-[0.2em] text-brass-deep">Company setup</p>
+        <h1 className="font-ledger mt-1 text-3xl text-navy">Configure your books</h1>
         <p className="mt-2 text-sm text-muted">
           Tell us about your business and industry. Teller will build your chart
           of accounts, labels, and modules automatically.
@@ -237,8 +235,8 @@ export function SetupWizard({
             key={item}
             className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
               step === item
-                ? "bg-accent text-white"
-                : "bg-surface-raised text-muted ring-1 ring-border"
+                ? "bg-navy text-white"
+                : "bg-paper-strong text-muted ring-1 ring-rule"
             }`}
           >
             {index + 1}. {item}
@@ -276,10 +274,10 @@ export function SetupWizard({
                 type="button"
                 onClick={() => chooseIndustry(item.id)}
                 className={`card p-4 text-left transition-shadow hover:shadow-sm ${
-                  industryId === item.id ? "ring-2 ring-accent" : ""
+                  industryId === item.id ? "ring-2 ring-brass" : ""
                 }`}
               >
-                <h2 className="font-semibold text-ink">{item.name}</h2>
+                <h2 className="font-ledger font-semibold text-navy">{item.name}</h2>
                 <p className="mt-1 text-sm text-muted">{item.description}</p>
               </button>
             ))}
@@ -304,7 +302,7 @@ export function SetupWizard({
         {step === "review" ? (
           <div className="card space-y-4 p-5">
             <div>
-              <h2 className="text-lg font-semibold">
+              <h2 className="font-ledger text-lg text-navy">
                 {name} · {pack.name}
               </h2>
               <p className="mt-1 text-sm text-muted">
