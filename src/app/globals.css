@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #0b1f33;
+  --navy-mid: #16324d;
+  --ink: #1c2430;
+  --muted: #5c6b7a;
+  --paper: #f6f1e8;
+  --paper-strong: #fffdf8;
+  --rule: #d9cfc0;
+  --brass: #b8873d;
+  --brass-deep: #8d6428;
+  --sky: #2b6cb0;
+  --ok: #2f6f4e;
+  --warn: #9a5b14;
+  --danger: #9b2c2c;
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-navy-mid: var(--navy-mid);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-paper: var(--paper);
+  --color-paper-strong: var(--paper-strong);
+  --color-rule: var(--rule);
+  --color-brass: var(--brass);
+  --color-brass-deep: var(--brass-deep);
+  --color-sky: var(--sky);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+    Georgia, serif;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.font-ledger {
+  font-family: var(--font-sans);
+}
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  background: var(--paper-strong);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: var(--ink);
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid rgba(184, 135, 61, 0.35);
+  border-color: var(--brass);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 8px;
+  padding: 0.55rem 0.95rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--navy);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--navy-mid);
+}
+
+.btn-brass {
+  background: var(--brass);
+  color: #1c160c;
+}
+
+.btn-brass:hover:not(:disabled) {
+  background: var(--brass-deep);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--ink);
+}
+
+.card {
+  background: var(--paper-strong);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+}
+
+.ledger-rule {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 27px,
+    rgba(217, 207, 192, 0.55) 28px
+  );
+}
