@@ -1,30 +1,41 @@
 import type { PartnerDefinition } from "./types";
 
-export const hassleFreeAcPartner: PartnerDefinition = {
+/** First-party integration partner (internal id: hasslefreeac). */
+export const tradeQuoterPartner: PartnerDefinition = {
   id: "hasslefreeac",
-  name: "Hassle Free AC",
-  shortName: "HFAC",
+  name: "Quote-to-invoice sync",
+  shortName: "Quotes",
   description:
-    "Attach to the Hassle Free Technology Group stack — Quoter for quotes, Teller for books.",
-  quoterLabel: "Quoter",
-  defaultCompanyName: "Hassle Free AC Dealers",
-  defaultLegalName: "Hassle-Free Technology Group LLC",
+    "Import customers and won quotes from your quoting platform as draft invoices and jobs.",
+  quoterLabel: "Quoting platform",
+  defaultCompanyName: "",
+  defaultLegalName: "",
   defaultIndustryId: "hvac-trades",
 };
 
-export const partners = [hassleFreeAcPartner] as const;
+/** @deprecated alias for internal code */
+export const hassleFreeAcPartner = tradeQuoterPartner;
+
+export const partners = [tradeQuoterPartner] as const;
 
 export function getPartner(id: string | null | undefined) {
   if (!id) return null;
   return partners.find((partner) => partner.id === id) ?? null;
 }
 
+export function isAttachedToPartner(partnerId: string | null | undefined): boolean {
+  return Boolean(partnerId);
+}
+
+/** @deprecated */
 export function isAttachedToHfac(partnerId: string | null | undefined): boolean {
   return partnerId === "hasslefreeac";
 }
 
 export function getQuoterUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_HFAC_QUOTER_URL?.trim();
+  const url =
+    process.env.NEXT_PUBLIC_PARTNER_QUOTER_URL?.trim() ||
+    process.env.NEXT_PUBLIC_HFAC_QUOTER_URL?.trim();
   if (!url || /your-.*\.vercel\.app/i.test(url)) return null;
   return url.replace(/\/$/, "");
 }

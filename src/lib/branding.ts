@@ -1,4 +1,4 @@
-import { getPartner, isAttachedToHfac } from "@/lib/partners/registry";
+import { getPartner } from "@/lib/partners/registry";
 
 export function tellerBranding(partnerId: string | null | undefined) {
   const partner = getPartner(partnerId);
@@ -6,13 +6,12 @@ export function tellerBranding(partnerId: string | null | undefined) {
 
   return {
     appName: "Teller",
-    pageTitle: attached ? `Teller · ${partner!.name}` : "Teller · Industry books",
+    pageTitle: attached ? "Teller · Connected" : "Teller · Accounting",
     tagline: attached
-      ? `Books for ${partner!.name} — connected to Quoter, still their own ledger.`
-      : "Industry books that stand on their own.",
+      ? "Industry accounting with active integrations."
+      : "Industry accounting software for trades, SaaS, and growing businesses.",
     partnerName: partner?.name ?? null,
     partnerShortName: partner?.shortName ?? null,
     attached,
-    isHfac: isAttachedToHfac(partnerId),
   };
 }

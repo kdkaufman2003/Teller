@@ -3,11 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Teller · Industry books",
+    default: "Teller · Industry accounting",
     template: "%s · Teller",
   },
   description:
-    "Accounting that asks how you work, then builds the books around it. First pack: HVAC & trades for Hassle Free AC dealers.",
+    "Professional accounting software that adapts to your industry — invoicing, expenses, job costing, and a tailored chart of accounts.",
   icons: {
     icon: "/favicon.svg",
   },

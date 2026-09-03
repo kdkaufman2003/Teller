@@ -26,38 +26,34 @@ export default async function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-ledger text-4xl text-navy">
-        {label(session.settings, "job", "Jobs")}
-      </h1>
+      <header className="page-header">
+        <h1>{label(session.settings, "job", "Jobs")}</h1>
+      </header>
       <JobForm customers={parties ?? []} />
       <div className="card overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-medium">Job</th>
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Quoted</th>
+              <th>Job</th>
+              <th>Customer</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th className="text-right">Quoted</th>
             </tr>
           </thead>
           <tbody>
             {(data ?? []).map((job) => (
-              <tr key={job.id} className="border-t border-rule">
-                <td className="px-4 py-3">
+              <tr key={job.id}>
+                <td>
                   <span className="font-medium">{job.job_number}</span>
                   <span className="text-muted"> · {job.name}</span>
                 </td>
-                <td className="px-4 py-3">
-                  {job.party_id ? names.get(job.party_id) : "—"}
-                </td>
-                <td className="px-4 py-3">{job.job_type}</td>
-                <td className="px-4 py-3">
+                <td>{job.party_id ? names.get(job.party_id) : "—"}</td>
+                <td>{job.job_type}</td>
+                <td>
                   <StatusBadge status={job.status} />
                 </td>
-                <td className="px-4 py-3 text-right font-tabular">
-                  {money(job.quoted_amount)}
-                </td>
+                <td className="text-right font-tabular">{money(job.quoted_amount)}</td>
               </tr>
             ))}
           </tbody>

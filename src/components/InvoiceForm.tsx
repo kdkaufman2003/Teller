@@ -152,18 +152,18 @@ export function InvoiceForm() {
       </div>
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-3 py-2 text-left">Description</th>
-              <th className="px-3 py-2 text-left">Type</th>
-              <th className="px-3 py-2 text-right">Qty</th>
-              <th className="px-3 py-2 text-right">Price</th>
+              <th>Description</th>
+              <th>Type</th>
+              <th className="text-right">Qty</th>
+              <th className="text-right">Price</th>
             </tr>
           </thead>
           <tbody>
             {lines.map((line, index) => (
-              <tr key={index} className="border-t border-rule">
+              <tr key={index}>
                 <td className="px-3 py-2">
                   <input
                     value={line.description}

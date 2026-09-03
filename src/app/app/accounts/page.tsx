@@ -16,26 +16,28 @@ export default async function AccountsPage() {
 
   return (
     <div>
-      <h1 className="font-ledger text-4xl text-navy">Chart of accounts</h1>
-      <p className="mt-2 text-sm text-muted">
-        Seeded from the {session.organization.industry_id} industry pack and your
-        setup answers.
-      </p>
+      <header className="page-header">
+        <h1>Chart of accounts</h1>
+        <p>
+          Seeded from the {session.organization.industry_id} industry pack and your
+          setup answers.
+        </p>
+      </header>
       <div className="card mt-6 overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-medium">Code</th>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Type</th>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Type</th>
             </tr>
           </thead>
           <tbody>
             {(data ?? []).map((account) => (
-              <tr key={account.id} className="border-t border-rule">
-                <td className="px-4 py-3 font-tabular">{account.code}</td>
-                <td className="px-4 py-3">{account.name}</td>
-                <td className="px-4 py-3 text-muted">{titleCase(account.type)}</td>
+              <tr key={account.id}>
+                <td className="font-tabular">{account.code}</td>
+                <td>{account.name}</td>
+                <td className="text-muted">{titleCase(account.type)}</td>
               </tr>
             ))}
           </tbody>

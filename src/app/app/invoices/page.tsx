@@ -27,48 +27,48 @@ export default async function InvoicesPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="font-ledger text-4xl text-navy">Invoices</h1>
+        <header className="page-header mb-0">
+          <h1>Invoices</h1>
+        </header>
         <Link href={routes.invoiceNew} className="btn btn-primary">
           New invoice
         </Link>
       </div>
       <div className="card mt-6 overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-medium">Number</th>
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Total</th>
+              <th>Number</th>
+              <th>Customer</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th className="text-right">Total</th>
             </tr>
           </thead>
           <tbody>
             {(data ?? []).length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-muted">
+                <td colSpan={5} className="text-muted">
                   No invoices yet.
                 </td>
               </tr>
             ) : (
               (data ?? []).map((row) => (
-                <tr key={row.id} className="border-t border-rule">
-                  <td className="px-4 py-3">
-                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium">
+                <tr key={row.id}>
+                  <td>
+                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium text-ink">
                       {row.number}
                     </Link>
                     {row.external_source === "quoter" ? (
-                      <span className="ml-2 text-xs text-brass-deep">Quoter</span>
+                      <span className="ml-2 text-xs text-accent">Imported</span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3">
-                    {row.party_id ? names.get(row.party_id) : "—"}
-                  </td>
-                  <td className="px-4 py-3">{formatDate(row.issue_date)}</td>
-                  <td className="px-4 py-3">
+                  <td>{row.party_id ? names.get(row.party_id) : "—"}</td>
+                  <td>{formatDate(row.issue_date)}</td>
+                  <td>
                     <StatusBadge status={row.status} />
                   </td>
-                  <td className="px-4 py-3 text-right font-tabular">{money(row.total)}</td>
+                  <td className="text-right font-tabular">{money(row.total)}</td>
                 </tr>
               ))
             )}

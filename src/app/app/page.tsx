@@ -59,13 +59,13 @@ export default async function DashboardPage() {
 
   const customerLabel = label(session.settings, "customer", "Customers");
   const showJobs = hasModule(session.settings, "jobs");
-  const showQuoter = hasModule(session.settings, "quoter");
+  const showIntegrations = hasModule(session.settings, "quoter");
 
   return (
     <div className="space-y-8">
-      <header>
+      <header className="page-header">
         <p className="text-sm text-muted">Books for</p>
-        <h1 className="font-ledger text-4xl text-navy">{session.organization.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{session.organization.name}</h1>
       </header>
 
       <section className="grid gap-3 md:grid-cols-3">
@@ -74,13 +74,9 @@ export default async function DashboardPage() {
           { label: "Collected", value: money(collected) },
           { label: "Open payables", value: money(openAP) },
         ].map((metric) => (
-          <article key={metric.label} className="card p-5">
-            <p className="text-xs uppercase tracking-[0.14em] text-muted">
-              {metric.label}
-            </p>
-            <p className="font-ledger mt-2 text-3xl font-tabular text-navy">
-              {metric.value}
-            </p>
+          <article key={metric.label} className="card metric-card">
+            <p className="label">{metric.label}</p>
+            <p className="value font-tabular">{metric.value}</p>
           </article>
         ))}
       </section>
@@ -88,21 +84,22 @@ export default async function DashboardPage() {
       <section className="grid gap-4 lg:grid-cols-3">
         <article className="card p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="font-ledger text-2xl text-navy">Recent invoices</h2>
+            <h2 className="text-lg font-semibold text-ink">Recent invoices</h2>
             <Link href={routes.invoiceNew} className="btn btn-primary text-sm">
               New invoice
             </Link>
           </div>
-          <ul className="mt-4 divide-y divide-rule">
+          <ul className="mt-4 divide-y divide-border">
             {invoiceRows.length === 0 ? (
               <li className="py-6 text-sm text-muted">
-                No invoices yet. Create one, or sync won quotes from Quoter.
+                No invoices yet. Create one manually or import won quotes from
+                Settings → Integrations.
               </li>
             ) : (
               invoiceRows.map((row) => (
                 <li key={row.id} className="flex items-center justify-between py-3">
                   <div>
-                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium">
+                    <Link href={`${routes.invoices}/${row.id}`} className="font-medium text-ink">
                       {row.number}
                     </Link>
                     <p className="text-sm text-muted">
@@ -123,10 +120,10 @@ export default async function DashboardPage() {
           {showJobs ? (
             <article className="card p-5">
               <div className="flex items-center justify-between">
-                <h2 className="font-ledger text-xl text-navy">
+                <h2 className="text-lg font-semibold text-ink">
                   {label(session.settings, "job", "Jobs")}
                 </h2>
-                <Link href={routes.jobs} className="text-sm text-sky">
+                <Link href={routes.jobs} className="text-sm text-accent">
                   View
                 </Link>
               </div>
@@ -147,12 +144,12 @@ export default async function DashboardPage() {
             </article>
           ) : null}
 
-          {showQuoter ? (
+          {showIntegrations ? (
             <article className="card p-5">
-              <h2 className="font-ledger text-xl text-navy">Quoter</h2>
+              <h2 className="text-lg font-semibold text-ink">Integrations</h2>
               <p className="mt-2 text-sm text-muted">
-                Dealers from Hassle Free AC Quoter become {customerLabel.toLowerCase()}.
-                Won quotes land as draft invoices.
+                Quote-to-invoice sync imports {customerLabel.toLowerCase()} and won
+                deals as draft invoices.
               </p>
               <p className="mt-3 text-xs text-muted">
                 {integration.data?.last_synced_at
@@ -160,7 +157,7 @@ export default async function DashboardPage() {
                   : "Not synced yet"}
               </p>
               <Link href={routes.settings} className="btn btn-ghost mt-3 text-sm">
-                Open integrations
+                Manage integrations
               </Link>
             </article>
           ) : null}

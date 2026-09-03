@@ -49,7 +49,7 @@ export const hvacTradesPack: IndustryPack = {
   shortName: "HVAC",
   tagline: "Jobs, equipment vs labor, and dealer books",
   description:
-    "For installing contractors, service shops, and dealer networks like Hassle Free AC. Tracks jobs, splits equipment and labor, and connects to Quoter.",
+    "For installing contractors, service shops, and dealer networks. Tracks jobs, splits equipment and labor, and supports quote-to-invoice integrations.",
   recommended: true,
   questions: [
     {
@@ -63,7 +63,7 @@ export const hvacTradesPack: IndustryPack = {
         {
           value: "dealer",
           label: "Dealer / distributor",
-          description: "Sell equipment to contractors (Hassle Free AC dealer books)",
+          description: "Sell equipment to contractors and track dealer accounts",
         },
         {
           value: "contractor",
@@ -143,7 +143,7 @@ export const hvacTradesPack: IndustryPack = {
     {
       id: "trackJobs",
       prompt: "Track jobs / installs with job costing?",
-      help: "Each Quoter win can become a job, then an invoice.",
+      help: "Each won quote can become a job, then an invoice.",
       type: "boolean",
       default: true,
     },
@@ -173,8 +173,8 @@ export const hvacTradesPack: IndustryPack = {
     },
     {
       id: "connectQuoter",
-      prompt: "Connect Hassle Free AC Quoter?",
-      help: "Pull dealers as customers and won quotes as draft invoices.",
+      prompt: "Connect quote-to-invoice sync?",
+      help: "Import customers and won quotes as draft invoices and jobs.",
       type: "boolean",
       default: true,
     },

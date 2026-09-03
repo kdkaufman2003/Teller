@@ -20,31 +20,33 @@ export default async function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-ledger text-4xl text-navy">{heading}</h1>
+      <header className="page-header">
+        <h1>{heading}</h1>
+      </header>
       <CustomerForm singular={label(session.settings, "customerSingular", "Customer")} />
       <div className="card overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Email</th>
-              <th className="px-4 py-3 font-medium">Source</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Source</th>
             </tr>
           </thead>
           <tbody>
             {(data ?? []).length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-muted">
-                  None yet. Add one or sync Quoter dealers.
+                <td colSpan={3} className="text-muted">
+                  None yet. Add one manually or import from Settings → Integrations.
                 </td>
               </tr>
             ) : (
               (data ?? []).map((row) => (
-                <tr key={row.id} className="border-t border-rule">
-                  <td className="px-4 py-3 font-medium">{row.name}</td>
-                  <td className="px-4 py-3">{row.email || "—"}</td>
-                  <td className="px-4 py-3 text-muted">
-                    {row.external_source === "quoter" ? "Quoter dealer" : "Manual"}
+                <tr key={row.id}>
+                  <td className="font-medium">{row.name}</td>
+                  <td>{row.email || "—"}</td>
+                  <td className="text-muted">
+                    {row.external_source === "quoter" ? "Integration" : "Manual"}
                   </td>
                 </tr>
               ))

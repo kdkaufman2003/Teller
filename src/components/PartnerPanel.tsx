@@ -27,13 +27,13 @@ export function PartnerPanel() {
   async function load() {
     const response = await fetch("/api/integrations/partner");
     const payload = (await response.json()) as PartnerState & { error?: string };
-    if (!response.ok) throw new Error(payload.error || "Could not load partner settings");
+    if (!response.ok) throw new Error(payload.error || "Could not load integration settings");
     setState(payload);
   }
 
   useEffect(() => {
     load().catch((err) =>
-      setError(err instanceof Error ? err.message : "Could not load partner settings"),
+      setError(err instanceof Error ? err.message : "Could not load integration settings"),
     );
   }, []);
 
@@ -61,35 +61,36 @@ export function PartnerPanel() {
   }
 
   if (!state) {
-    return <p className="text-sm text-muted">Loading partner settings…</p>;
+    return <p className="text-sm text-muted">Loading integrations…</p>;
   }
 
   const attached = state.mode === "attached";
+  const integrationName = state.partner?.name ?? "Quote-to-invoice sync";
 
   return (
     <section className="card space-y-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-ledger text-2xl text-navy">Program mode</h2>
+          <h2 className="text-lg font-semibold text-ink">Integrations</h2>
           <p className="mt-1 text-sm text-muted">
-            Teller is always its own app and ledger. Attach when you want Quoter
-            dealers and won quotes to flow in — detach anytime and keep your books.
+            Teller is always your system of record. Connect a quoting platform to
+            import customers and won deals — disconnect anytime and keep your books.
           </p>
         </div>
         <span
           className={`rounded-full px-3 py-1 text-xs font-medium ${
-            attached ? "bg-brass/20 text-brass-deep" : "bg-rule/60 text-muted"
+            attached ? "bg-accent-soft text-accent" : "bg-surface text-muted ring-1 ring-border"
           }`}
         >
-          {attached ? `Attached · ${state.partner?.shortName ?? "Partner"}` : "Standalone"}
+          {attached ? `Connected · ${state.partner?.shortName ?? "Integration"}` : "Not connected"}
         </span>
       </div>
 
       {attached ? (
         <div className="space-y-3 text-sm">
           <p>
-            Linked to <strong>{state.partner?.name}</strong>. Quoter sync and dealer
-            imports are enabled; your chart of accounts and invoices stay in Teller.
+            <strong>{integrationName}</strong> is active. Imported customers and
+            draft invoices stay in Teller; you control posting and payment.
           </p>
           {state.quoterUrl ? (
             <a
@@ -98,18 +99,18 @@ export function PartnerPanel() {
               rel="noreferrer"
               className="btn btn-ghost inline-flex text-sm"
             >
-              Open {state.partner?.quoterLabel ?? "Quoter"}
+              Open {state.partner?.quoterLabel ?? "connected app"}
             </a>
           ) : null}
           {!state.sharedSupabase ? (
-            <p className="text-warn">
-              Shared Supabase sync is off. Use the webhook on Quoter or point both apps
-              at the same Supabase project.
+            <p className="text-warning">
+              Database sync is off. Use the webhook from your quoting tool or point
+              both apps at the same database project.
             </p>
           ) : null}
           {state.quoter?.last_synced_at ? (
             <p className="text-muted">
-              Last Quoter sync {new Date(state.quoter.last_synced_at).toLocaleString()}
+              Last sync {new Date(state.quoter.last_synced_at).toLocaleString()}
             </p>
           ) : null}
           <QuoterSyncButton />
@@ -119,22 +120,22 @@ export function PartnerPanel() {
             disabled={pending}
             onClick={() => void run("detach")}
           >
-            Detach from Hassle Free AC
+            Disconnect integration
           </button>
         </div>
       ) : (
         <div className="space-y-3 text-sm">
           <p>
-            Running standalone — no Quoter imports. You can still use every Teller
-            feature manually.
+            No integrations connected. You can use every Teller feature manually, or
+            connect a quoting platform to import customers and won quotes.
           </p>
           <button
             type="button"
-            className="btn btn-brass text-sm"
+            className="btn btn-primary text-sm"
             disabled={pending}
             onClick={() => void run("attach")}
           >
-            Attach to Hassle Free AC
+            Connect quote-to-invoice sync
           </button>
         </div>
       )}
@@ -142,7 +143,7 @@ export function PartnerPanel() {
       {error ? <p className="text-sm text-danger">{error}</p> : null}
 
       <details className="text-xs text-muted">
-        <summary className="cursor-pointer">Webhook id for Quoter</summary>
+        <summary className="cursor-pointer">Webhook organization id</summary>
         <p className="mt-2 font-tabular">{state.organizationId}</p>
       </details>
     </section>

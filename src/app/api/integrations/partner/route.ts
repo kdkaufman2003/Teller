@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   try {
     if (body.action === "attach") {
       if (body.partnerId !== "hasslefreeac") {
-        return jsonError("Only Hassle Free AC attachment is supported today.");
+        return jsonError("This integration is not available yet.");
       }
       await attachPartner(supabase, organizationId, "hasslefreeac");
       return NextResponse.json({ ok: true, mode: "attached", partnerId: "hasslefreeac" });

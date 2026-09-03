@@ -12,12 +12,14 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-ledger text-4xl text-navy">Settings</h1>
+      <header className="page-header">
+        <h1>Settings</h1>
+      </header>
 
       <PartnerPanel />
 
       <section className="card p-5">
-        <h2 className="font-ledger text-2xl text-navy">Company</h2>
+        <h2 className="text-lg font-semibold text-ink">Company</h2>
         <dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
           <div>
             <dt className="text-muted">Name</dt>
@@ -39,7 +41,7 @@ export default async function SettingsPage() {
       </section>
 
       <section className="card p-5">
-        <h2 className="font-ledger text-2xl text-navy">Setup answers</h2>
+        <h2 className="text-lg font-semibold text-ink">Setup answers</h2>
         <ul className="mt-3 space-y-1 text-sm">
           {Object.entries(answers).map(([key, value]) => (
             <li key={key}>

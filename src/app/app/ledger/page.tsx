@@ -38,7 +38,9 @@ export default async function LedgerPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-ledger text-4xl text-navy">Ledger</h1>
+      <header className="page-header">
+        <h1>Ledger</h1>
+      </header>
       {(entries ?? []).length === 0 ? (
         <p className="text-muted">No journal entries yet. Post an invoice or expense.</p>
       ) : (

@@ -50,7 +50,7 @@ export default async function InvoiceDetailPage({
           <Link href={routes.invoices} className="text-sm text-muted">
             ← Invoices
           </Link>
-          <h1 className="font-ledger mt-2 text-4xl text-navy">{invoice.number}</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">{invoice.number}</h1>
           <p className="mt-1 text-muted">{party?.name || "No customer"}</p>
         </div>
         <StatusBadge status={invoice.status} />
@@ -72,27 +72,27 @@ export default async function InvoiceDetailPage({
       </div>
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-paper text-muted">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-2 text-left">Description</th>
-              <th className="px-4 py-2 text-left">Type</th>
-              <th className="px-4 py-2 text-right">Qty</th>
-              <th className="px-4 py-2 text-right">Amount</th>
+              <th>Description</th>
+              <th>Type</th>
+              <th className="text-right">Qty</th>
+              <th className="text-right">Amount</th>
             </tr>
           </thead>
           <tbody>
             {(lines ?? []).map((line) => (
-              <tr key={line.id} className="border-t border-rule">
-                <td className="px-4 py-2">{line.description}</td>
-                <td className="px-4 py-2">{line.item_type}</td>
-                <td className="px-4 py-2 text-right font-tabular">{line.quantity}</td>
-                <td className="px-4 py-2 text-right font-tabular">{money(line.amount)}</td>
+              <tr key={line.id}>
+                <td>{line.description}</td>
+                <td>{line.item_type}</td>
+                <td className="text-right font-tabular">{line.quantity}</td>
+                <td className="text-right font-tabular">{money(line.amount)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="space-y-1 border-t border-rule px-4 py-4 text-right font-tabular">
+        <div className="space-y-1 border-t border-border px-4 py-4 text-right font-tabular">
           <p>Subtotal {money(invoice.subtotal)}</p>
           <p>Tax {money(invoice.tax)}</p>
           <p className="text-lg font-semibold">Total {money(invoice.total)}</p>

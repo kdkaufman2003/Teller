@@ -33,12 +33,12 @@ export function QuoterSyncButton() {
 
   return (
     <div>
-      <button type="button" className="btn btn-brass" disabled={pending} onClick={() => void sync()}>
-        {pending ? "Syncing…" : "Sync dealers & won quotes"}
+      <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => void sync()}>
+        {pending ? "Syncing…" : "Sync customers & won quotes"}
       </button>
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       {summary ? (
-        <pre className="mt-3 overflow-auto rounded-lg bg-paper p-3 text-xs">{summary}</pre>
+        <pre className="mt-3 overflow-auto rounded-lg bg-surface p-3 text-xs">{summary}</pre>
       ) : null}
     </div>
   );

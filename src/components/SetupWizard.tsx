@@ -9,13 +9,16 @@ import {
   resolveIndustry,
 } from "@/lib/industries/registry";
 import type { IndustryAnswers } from "@/lib/industries/types";
-import { applyPartnerSetupDefaults, ensureQuoterModule } from "@/lib/partners/attachment";
-import { hassleFreeAcPartner } from "@/lib/partners/registry";
+import {
+  applyPartnerSetupDefaults,
+  ensureQuoterModule,
+  partnerIdFromAnswers,
+} from "@/lib/partners/attachment";
+import { tradeQuoterPartner } from "@/lib/partners/registry";
 import type { PartnerId } from "@/lib/partners/types";
 import { routes } from "@/lib/routes";
 
-type Step = "mode" | "company" | "industry" | "questions" | "review";
-type DeploymentMode = "standalone" | "attached";
+type Step = "company" | "industry" | "questions" | "review";
 
 function QuestionField({
   question,
@@ -34,8 +37,8 @@ function QuestionField({
 }) {
   if (question.type === "boolean") {
     return (
-      <fieldset className="card space-y-2 p-4">
-        <legend className="font-medium text-navy">{question.prompt}</legend>
+      <fieldset className="card space-y-3 p-4">
+        <legend className="text-sm font-medium text-ink">{question.prompt}</legend>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <div className="flex gap-2">
           {[
@@ -45,7 +48,7 @@ function QuestionField({
             <button
               key={option.label}
               type="button"
-              className={`btn ${value === option.val ? "btn-primary" : "btn-ghost"}`}
+              className={`btn ${value === option.val ? "btn-primary" : "btn-secondary"}`}
               onClick={() => onChange(option.val)}
             >
               {option.label}
@@ -59,17 +62,17 @@ function QuestionField({
   if (question.type === "multiselect") {
     const selected = Array.isArray(value) ? value.map(String) : [];
     return (
-      <fieldset className="card space-y-2 p-4">
-        <legend className="font-medium text-navy">{question.prompt}</legend>
+      <fieldset className="card space-y-3 p-4">
+        <legend className="text-sm font-medium text-ink">{question.prompt}</legend>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
-        <div className="grid gap-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           {question.options?.map((option) => {
             const on = selected.includes(option.value);
             return (
               <button
                 key={option.value}
                 type="button"
-                className={`btn justify-start text-left ${on ? "btn-primary" : "btn-ghost"}`}
+                className={`btn justify-start text-left ${on ? "btn-primary" : "btn-secondary"}`}
                 onClick={() =>
                   onChange(
                     on
@@ -90,7 +93,7 @@ function QuestionField({
   if (question.type === "select") {
     return (
       <label className="card block space-y-2 p-4">
-        <span className="font-medium text-navy">{question.prompt}</span>
+        <span className="text-sm font-medium text-ink">{question.prompt}</span>
         {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
         <select
           value={String(value ?? "")}
@@ -108,7 +111,7 @@ function QuestionField({
 
   return (
     <label className="card block space-y-2 p-4">
-      <span className="font-medium text-navy">{question.prompt}</span>
+      <span className="text-sm font-medium text-ink">{question.prompt}</span>
       {question.help ? <p className="text-sm text-muted">{question.help}</p> : null}
       <input
         type={question.type === "number" ? "number" : "text"}
@@ -124,38 +127,37 @@ function QuestionField({
 }
 
 export function SetupWizard({
-  defaultMode = "standalone",
+  enableIntegrations = false,
 }: {
-  defaultMode?: DeploymentMode;
+  enableIntegrations?: boolean;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("mode");
-  const [deploymentMode, setDeploymentMode] = useState<DeploymentMode>(defaultMode);
+  const deploymentMode = enableIntegrations ? "attached" : "standalone";
+  const partnerId: PartnerId | null = enableIntegrations ? "hasslefreeac" : null;
+
+  const [step, setStep] = useState<Step>("company");
   const [name, setName] = useState(
-    defaultMode === "attached" ? hassleFreeAcPartner.defaultCompanyName : "",
+    enableIntegrations ? tradeQuoterPartner.defaultCompanyName : "",
   );
   const [legalName, setLegalName] = useState(
-    defaultMode === "attached" ? hassleFreeAcPartner.defaultLegalName : "",
+    enableIntegrations ? tradeQuoterPartner.defaultLegalName : "",
   );
   const [industryId, setIndustryId] = useState(
-    defaultMode === "attached" ? hassleFreeAcPartner.defaultIndustryId : "general",
+    enableIntegrations ? tradeQuoterPartner.defaultIndustryId : "general",
   );
-  const [answers, setAnswers] = useState<IndustryAnswers>(() => {
-    const base = defaultAnswers(
-      getIndustryPack(
-        defaultMode === "attached" ? hassleFreeAcPartner.defaultIndustryId : "general",
+  const [answers, setAnswers] = useState<IndustryAnswers>(() =>
+    applyPartnerSetupDefaults(partnerId, {
+      ...defaultAnswers(
+        getIndustryPack(
+          enableIntegrations ? tradeQuoterPartner.defaultIndustryId : "general",
+        ),
       ),
-    );
-    return applyPartnerSetupDefaults(
-      defaultMode === "attached" ? "hasslefreeac" : null,
-      { ...base, deploymentMode: defaultMode },
-    );
-  });
+      deploymentMode,
+    }),
+  );
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
-  const partnerId: PartnerId | null =
-    deploymentMode === "attached" ? "hasslefreeac" : null;
   const pack = getIndustryPack(industryId);
   const mergedAnswers = useMemo(
     () => applyPartnerSetupDefaults(partnerId, { ...answers, deploymentMode }),
@@ -173,34 +175,9 @@ export function SetupWizard({
   );
 
   const visibleQuestions = pack.questions.filter((question) => {
-    if (question.id === "connectQuoter") return deploymentMode === "attached";
+    if (question.id === "connectQuoter") return enableIntegrations;
     return true;
   });
-
-  function chooseMode(mode: DeploymentMode) {
-    setDeploymentMode(mode);
-    if (mode === "attached") {
-      setName(hassleFreeAcPartner.defaultCompanyName);
-      setLegalName(hassleFreeAcPartner.defaultLegalName);
-      setIndustryId(hassleFreeAcPartner.defaultIndustryId);
-      setAnswers(
-        applyPartnerSetupDefaults("hasslefreeac", {
-          ...defaultAnswers(getIndustryPack(hassleFreeAcPartner.defaultIndustryId)),
-          deploymentMode: "attached",
-        }),
-      );
-      return;
-    }
-    setName("");
-    setLegalName("");
-    setIndustryId("general");
-    setAnswers(
-      applyPartnerSetupDefaults(null, {
-        ...defaultAnswers(getIndustryPack("general")),
-        deploymentMode: "standalone",
-      }),
-    );
-  }
 
   function chooseIndustry(id: string) {
     setIndustryId(id);
@@ -224,7 +201,7 @@ export function SetupWizard({
           legalName,
           industryId,
           deploymentMode,
-          partnerId,
+          partnerId: partnerIdFromAnswers({ deploymentMode }),
           answers: mergedAnswers,
         }),
       });
@@ -239,87 +216,53 @@ export function SetupWizard({
     }
   }
 
-  const steps: Step[] = ["mode", "company", "industry", "questions", "review"];
-
-  function goBack() {
-    const index = steps.indexOf(step);
-    if (index > 0) setStep(steps[index - 1]);
-  }
-
-  function goNext() {
-    const index = steps.indexOf(step);
-    if (index < steps.length - 1) setStep(steps[index + 1]);
-  }
+  const steps: Step[] = ["company", "industry", "questions", "review"];
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
-      <p className="text-sm uppercase tracking-[0.18em] text-brass-deep">
-        Open the books
-      </p>
-      <h1 className="font-ledger mt-2 text-4xl text-navy">Industry setup</h1>
-      <p className="mt-2 text-muted">
-        Teller is its own program. Choose standalone books, or attach to Hassle Free
-        AC so Quoter can feed dealers and won quotes.
-      </p>
+    <div className="mx-auto max-w-2xl px-6 py-10">
+      <div className="page-header">
+        <p className="text-sm font-medium text-accent">Company setup</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          Configure your books
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Tell us about your business and industry. Teller will build your chart
+          of accounts, labels, and modules automatically.
+        </p>
+      </div>
 
-      <ol className="mt-6 flex flex-wrap gap-2 text-sm">
-        {steps.map((item) => (
+      <ol className="mb-8 flex flex-wrap gap-2">
+        {steps.map((item, index) => (
           <li
             key={item}
-            className={`rounded-full px-3 py-1 ${
-              step === item ? "bg-navy text-white" : "bg-white text-muted"
+            className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
+              step === item
+                ? "bg-accent text-white"
+                : "bg-surface-raised text-muted ring-1 ring-border"
             }`}
           >
-            {item}
+            {index + 1}. {item}
           </li>
         ))}
       </ol>
 
-      <div className="mt-8 space-y-4">
-        {step === "mode" ? (
-          <div className="grid gap-3">
-            <button
-              type="button"
-              onClick={() => chooseMode("standalone")}
-              className={`card p-5 text-left ${
-                deploymentMode === "standalone" ? "ring-2 ring-brass" : ""
-              }`}
-            >
-              <h2 className="font-ledger text-2xl text-navy">Standalone Teller</h2>
-              <p className="mt-1 text-sm text-muted">
-                Your own company and industry — HVAC, SaaS, or general. No Quoter
-                required.
-              </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => chooseMode("attached")}
-              className={`card p-5 text-left ${
-                deploymentMode === "attached" ? "ring-2 ring-brass" : ""
-              }`}
-            >
-              <h2 className="font-ledger text-2xl text-navy">
-                Attach to Hassle Free AC
-              </h2>
-              <p className="mt-1 text-sm text-muted">
-                Same books app, linked to the HFAC Quoter project. Dealers and won
-                quotes sync in; you can detach later.
-              </p>
-            </button>
-          </div>
-        ) : null}
-
+      <div className="space-y-4">
         {step === "company" ? (
           <>
             <label className="card block space-y-2 p-4">
-              <span className="font-medium text-navy">Company name</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} />
+              <span className="text-sm font-medium">Company name</span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Acme Mechanical LLC"
+              />
             </label>
             <label className="card block space-y-2 p-4">
-              <span className="font-medium text-navy">Legal name</span>
+              <span className="text-sm font-medium">Legal name</span>
               <input
                 value={legalName}
                 onChange={(event) => setLegalName(event.target.value)}
+                placeholder="Optional — defaults to company name"
               />
             </label>
           </>
@@ -332,18 +275,11 @@ export function SetupWizard({
                 key={item.id}
                 type="button"
                 onClick={() => chooseIndustry(item.id)}
-                className={`card p-5 text-left ${
-                  industryId === item.id ? "ring-2 ring-brass" : ""
+                className={`card p-4 text-left transition-shadow hover:shadow-sm ${
+                  industryId === item.id ? "ring-2 ring-accent" : ""
                 }`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="font-ledger text-2xl text-navy">{item.name}</h2>
-                  {deploymentMode === "attached" && item.id === "hvac-trades" ? (
-                    <span className="text-xs uppercase tracking-wide text-brass-deep">
-                      HFAC default
-                    </span>
-                  ) : null}
-                </div>
+                <h2 className="font-semibold text-ink">{item.name}</h2>
                 <p className="mt-1 text-sm text-muted">{item.description}</p>
               </button>
             ))}
@@ -367,25 +303,26 @@ export function SetupWizard({
 
         {step === "review" ? (
           <div className="card space-y-4 p-5">
-            <h2 className="font-ledger text-2xl text-navy">
-              {name} · {pack.name}
-            </h2>
-            <p className="text-sm text-muted">
-              Mode:{" "}
-              <strong>
-                {deploymentMode === "attached"
-                  ? "Attached to Hassle Free AC"
-                  : "Standalone Teller"}
-              </strong>
-              . Customers: <strong>{resolved.labels.customer}</strong>. Modules:{" "}
-              {resolved.modules.join(", ")}.
-            </p>
             <div>
-              <h3 className="text-sm font-medium text-muted">Chart of accounts</h3>
-              <ul className="mt-2 grid gap-1 font-tabular text-sm">
+              <h2 className="text-lg font-semibold">
+                {name} · {pack.name}
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                Customers labeled as <strong>{resolved.labels.customer}</strong>.
+                {enableIntegrations
+                  ? " Integrations will be enabled after setup."
+                  : " You can connect integrations later in Settings."}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+                Chart of accounts ({resolved.accounts.length} accounts)
+              </h3>
+              <ul className="mt-2 max-h-48 overflow-y-auto font-tabular text-sm">
                 {resolved.accounts.map((account) => (
-                  <li key={account.code}>
-                    <span className="text-muted">{account.code}</span> {account.name}
+                  <li key={account.code} className="flex gap-3 py-0.5">
+                    <span className="w-12 text-muted">{account.code}</span>
+                    <span>{account.name}</span>
                   </li>
                 ))}
               </ul>
@@ -399,18 +336,28 @@ export function SetupWizard({
       <div className="mt-6 flex justify-between">
         <button
           type="button"
-          className="btn btn-ghost"
-          disabled={step === "mode" || pending}
-          onClick={goBack}
+          className="btn btn-secondary"
+          disabled={step === "company" || pending}
+          onClick={() => {
+            const index = steps.indexOf(step);
+            if (index > 0) setStep(steps[index - 1]);
+          }}
         >
           Back
         </button>
         {step === "review" ? (
-          <button type="button" className="btn btn-brass" disabled={pending} onClick={finish}>
-            {pending ? "Opening books…" : "Open the books"}
+          <button type="button" className="btn btn-primary" disabled={pending} onClick={finish}>
+            {pending ? "Creating books…" : "Complete setup"}
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={goNext}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              const index = steps.indexOf(step);
+              if (index < steps.length - 1) setStep(steps[index + 1]);
+            }}
+          >
             Continue
           </button>
         )}
