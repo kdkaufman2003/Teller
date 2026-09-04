@@ -48,3 +48,23 @@ export function getHfacWebhookUrl(): string | null {
   if (!base) return null;
   return `${base}/api/integrations/hfac/quotes`;
 }
+
+export function getHfacSubscribersWebhookUrl(): string | null {
+  const base = getTellerPublicUrl();
+  if (!base) return null;
+  return `${base}/api/integrations/hfac/subscribers`;
+}
+
+export function getHfacPaymentsWebhookUrl(): string | null {
+  const base = getTellerPublicUrl();
+  if (!base) return null;
+  return `${base}/api/integrations/hfac/payments`;
+}
+
+export function getHfacWebhookUrls() {
+  return {
+    quotes: getHfacWebhookUrl(),
+    subscribers: getHfacSubscribersWebhookUrl(),
+    payments: getHfacPaymentsWebhookUrl(),
+  };
+}

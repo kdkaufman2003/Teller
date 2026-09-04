@@ -37,30 +37,79 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Set env vars from `.env.example`.
 3. Add production URL to Supabase Auth redirects: `https://<teller>.vercel.app/auth/callback`
 
-## Hassle Free AC integration
+## Hassle Free AC integration (optional)
+
+Teller is **fully standalone**. Integrations are shortcuts for Hassle Free AC — not required for any customer.
 
 Teller and Hassle Free AC each have **their own repo, Vercel URL, and Supabase**. They talk over HTTP only.
 
 ### Teller setup
 
 1. Deploy Teller with its own Supabase.
-2. **Settings → Integrations → Connect Hassle Free AC**
-3. Copy **Webhook organization id** from Settings.
-4. Set `TELLER_HFAC_WEBHOOK_SECRET` in Teller env.
+2. Use Teller normally (manual customers, invoices, expenses) — no integration needed.
+3. **Optional:** Settings → Integrations → Connect Hassle Free AC
+4. Copy **Webhook organization id** from Settings.
+5. Set `TELLER_HFAC_WEBHOOK_SECRET` in Teller env.
 
-### Hassle Free AC setup
+### Hassle Free AC setup (optional)
 
 In the **Hassle Free AC** project env:
 
 ```
 NEXT_PUBLIC_TELLER_INTEGRATION=1
 NEXT_PUBLIC_TELLER_URL=https://<your-teller>.vercel.app
-TELLER_WEBHOOK_URL=https://<your-teller>.vercel.app/api/integrations/hfac/quotes
 TELLER_WEBHOOK_SECRET=<same as Teller TELLER_HFAC_WEBHOOK_SECRET>
 TELLER_ORGANIZATION_ID=<uuid from Teller Settings>
+TELLER_SUBSCRIBERS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/subscribers
+TELLER_QUOTES_URL=https://<your-teller>.vercel.app/api/integrations/hfac/quotes
+TELLER_PAYMENTS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/payments
 ```
 
-When a deal is marked won in Hassle Free AC, Teller receives a draft invoice (and job if job costing is on).
+All requests use `Authorization: Bearer <TELLER_WEBHOOK_SECRET>`.
+
+#### Subscribers (backfill + ongoing sync)
+
+```json
+POST /api/integrations/hfac/subscribers
+{
+  "organizationId": "<uuid>",
+  "subscribers": [
+    {
+      "id": "hfac-account-123",
+      "name": "ABC Mechanical",
+      "email": "billing@abc.com",
+      "phone": "555-0100",
+      "status": "active"
+    }
+  ]
+}
+```
+
+Creates or updates customers in Teller (`external_source: hfac`). Send on connect for backfill, then on create/update.
+
+#### Won deals
+
+When a deal is marked won in Hassle Free AC, POST to `/api/integrations/hfac/quotes` — Teller creates a draft invoice (and job if job costing is on).
+
+#### Stripe payments (via HFAC)
+
+HFAC keeps Stripe; Teller stays the ledger. When Stripe confirms payment, HFAC forwards:
+
+```json
+POST /api/integrations/hfac/payments
+{
+  "organizationId": "<uuid>",
+  "payment": {
+    "amount": 1200.00,
+    "paidAt": "2026-03-03T18:00:00Z",
+    "hfacSubscriberId": "hfac-account-123",
+    "hfacDealId": "deal-456",
+    "stripePaymentIntentId": "pi_..."
+  }
+}
+```
+
+Teller finds the matching invoice, posts it if needed, marks it paid, and records Cash / AR.
 
 **Disconnect** anytime in Teller Settings — books stay in Teller.
 

@@ -178,6 +178,7 @@ export async function postInvoicePaid(
     issueDate: string;
     number: string;
     total: number;
+    paymentMemo?: string;
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -185,10 +186,14 @@ export async function postInvoicePaid(
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
   if (!cash || !ar) throw new Error("Cash or AR account is missing");
 
+  const memo = input.paymentMemo
+    ? `Payment ${input.number} · ${input.paymentMemo}`
+    : `Payment ${input.number}`;
+
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
     entryDate: input.issueDate,
-    memo: `Payment ${input.number}`,
+    memo,
     sourceKind: "invoice-payment",
     sourceId: input.documentId,
     lines: [

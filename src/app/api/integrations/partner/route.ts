@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks } from "@/lib/api";
 import { attachPartner, detachPartner } from "@/lib/partners/attachment";
-import { getHfacPlatformUrl, getHfacWebhookUrl, getPartner } from "@/lib/partners/registry";
+import { getHfacPlatformUrl, getHfacWebhookUrl, getHfacWebhookUrls, getPartner } from "@/lib/partners/registry";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -26,6 +26,7 @@ export async function GET() {
     partner,
     platformUrl: getHfacPlatformUrl(),
     webhookUrl: getHfacWebhookUrl(),
+    webhookUrls: getHfacWebhookUrls(),
     organizationId,
     hfac: hfacIntegration ?? null,
   });

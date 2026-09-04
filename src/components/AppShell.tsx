@@ -107,7 +107,11 @@ export function AppShell({
             );
           })}
         </nav>
-        <button type="button" onClick={signOut} className="btn btn-ghost mt-4 text-white">
+        <button
+          type="button"
+          onClick={signOut}
+          className="mt-4 rounded-lg border border-white/25 px-3 py-2 text-sm text-white hover:bg-white/8"
+        >
           Sign out
         </button>
       </aside>

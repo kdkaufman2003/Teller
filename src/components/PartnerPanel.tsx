@@ -14,6 +14,11 @@ type PartnerState = {
   } | null;
   platformUrl: string | null;
   webhookUrl: string | null;
+  webhookUrls: {
+    quotes: string | null;
+    subscribers: string | null;
+    payments: string | null;
+  };
   organizationId: string;
   hfac: {
     enabled?: boolean;
@@ -77,8 +82,9 @@ export function PartnerPanel() {
         <div>
           <h2 className="font-ledger text-2xl text-navy">Integrations</h2>
           <p className="mt-1 text-sm text-muted">
-            Teller is your system of record with its own database. Hassle Free AC
-            sends won deals over a secure webhook — no shared Supabase required.
+            Teller works fully on its own — customers, invoices, and ledger without
+            any integration. Optional: connect Hassle Free AC to import subscribers,
+            won deals, and Stripe payments over secure webhooks.
           </p>
         </div>
         <span
@@ -93,8 +99,8 @@ export function PartnerPanel() {
       {attached ? (
         <div className="space-y-3 text-sm">
           <p>
-            <strong>{integrationName}</strong> is connected. Won deals arrive as draft
-            invoices; you control posting and payment in Teller.
+            <strong>{integrationName}</strong> is connected. Imports are optional
+            shortcuts — you can still enter everything manually in Teller.
           </p>
           {state.platformUrl ? (
             <a
@@ -108,17 +114,19 @@ export function PartnerPanel() {
           ) : null}
           {state.hfac?.last_synced_at ? (
             <p className="text-muted">
-              Last import {new Date(state.hfac.last_synced_at).toLocaleString()}
+              Last webhook {new Date(state.hfac.last_synced_at).toLocaleString()}
             </p>
           ) : (
-            <p className="text-muted">Waiting for the first won deal from Hassle Free AC.</p>
+            <p className="text-muted">No imports yet — manual entry works anytime.</p>
           )}
           <div className="rounded-lg border border-rule bg-paper p-3 text-xs">
-            <p className="font-medium text-navy">Webhook setup (Hassle Free AC env)</p>
+            <p className="font-medium text-navy">Hassle Free AC env (optional)</p>
             <ul className="mt-2 space-y-1 font-tabular text-muted">
-              <li>TELLER_WEBHOOK_URL={state.webhookUrl ?? "<your-teller-url>/api/integrations/hfac/quotes"}</li>
               <li>TELLER_WEBHOOK_SECRET=&lt;shared secret&gt;</li>
               <li>TELLER_ORGANIZATION_ID={state.organizationId}</li>
+              <li>TELLER_SUBSCRIBERS_URL={state.webhookUrls?.subscribers ?? "<teller-url>/api/integrations/hfac/subscribers"}</li>
+              <li>TELLER_QUOTES_URL={state.webhookUrls?.quotes ?? state.webhookUrl ?? "<teller-url>/api/integrations/hfac/quotes"}</li>
+              <li>TELLER_PAYMENTS_URL={state.webhookUrls?.payments ?? "<teller-url>/api/integrations/hfac/payments"}</li>
             </ul>
           </div>
           <button
@@ -133,8 +141,8 @@ export function PartnerPanel() {
       ) : (
         <div className="space-y-3 text-sm">
           <p>
-            Connect Hassle Free AC to import won deals as draft invoices. Teller and HFAC
-            stay on separate Supabase projects — integration is HTTP only.
+            Optional: connect Hassle Free AC to import subscribers, won deals, and
+            Stripe payment confirmations. Teller remains fully usable without this.
           </p>
           <button
             type="button"
