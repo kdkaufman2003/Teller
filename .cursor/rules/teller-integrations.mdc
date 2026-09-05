@@ -1,0 +1,35 @@
+---
+description: Third-party integration patterns for Teller
+globs: src/lib/integrations/**,src/app/api/integrations/**
+alwaysApply: false
+---
+
+# Teller integration rules
+
+## Adapter pattern
+
+- `src/lib/accounting/` = core (provider-agnostic).
+- `src/lib/integrations/<provider>.ts` = maps external payloads → core posting/import functions.
+- Do not embed Stripe/HFAC/Plaid logic inside invoice or expense routes.
+
+## HFAC webhooks
+
+Routes under `src/app/api/integrations/hfac/`:
+
+- Auth: `Authorization: Bearer TELLER_HFAC_WEBHOOK_SECRET`
+- Use `createServiceClient()` + explicit `organizationId` in body
+- Idempotent imports (check `external_id`, payment intent dedupe)
+- Record delivery via `recordHfacWebhookDelivery()`
+
+## External identifiers
+
+- `external_source`: use `HFAC_EXTERNAL_SOURCE` from `constants.ts`
+- `external_id`: stable provider key for upsert/dedupe
+
+## Payment data
+
+Store amounts, dates, Stripe/HFAC reference IDs — never PAN, CVV, or bank login credentials.
+
+## New providers
+
+Add adapter module + webhook route + env docs in README — do not couple to HFAC code paths.

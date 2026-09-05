@@ -4,6 +4,8 @@ Industry-tailored accounting software. A short setup interview builds the chart 
 
 Teller is a **standalone product** with its own Supabase project. **Hassle Free AC** is an optional integration — not a dependency.
 
+**Product spec & architecture:** [docs/SPEC.md](docs/SPEC.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [Implementation status](docs/IMPLEMENTATION-STATUS.md)
+
 ## Stack
 
 - **GitHub** — source and Vercel deploys
@@ -63,11 +65,17 @@ TELLER_ORGANIZATION_ID=<uuid from Teller Settings>
 TELLER_SUBSCRIBERS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/subscribers
 TELLER_QUOTES_URL=https://<your-teller>.vercel.app/api/integrations/hfac/quotes
 TELLER_PAYMENTS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/payments
+TELLER_BILLING_URL=https://<your-teller>.vercel.app/api/integrations/hfac/billing
 ```
 
 All requests use `Authorization: Bearer <TELLER_WEBHOOK_SECRET>`.
 
-#### Subscribers (backfill + ongoing sync)
+#### Subscribers + billing (Platform billing sync)
+
+Push contractors and billing ledger entries from HFAC **Platform billing → Sync contractors & billing to Teller**.
+
+- `POST /api/integrations/hfac/subscribers` — customers
+- `POST /api/integrations/hfac/billing` — invoiced/paid ledger rows
 
 ```json
 POST /api/integrations/hfac/subscribers

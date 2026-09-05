@@ -1,0 +1,31 @@
+---
+description: Double-entry accounting conventions for Teller
+globs: src/lib/accounting/**,src/app/api/invoices/**,src/app/api/expenses/**,src/app/app/ledger/**
+alwaysApply: false
+---
+
+# Teller accounting rules
+
+## Double-entry only
+
+- Every posted entry: **total debits = total credits** (`assertBalanced()` in `post.ts`).
+- No flat "transactions" table replacing journal entries.
+
+## Posting path
+
+- Route domain actions through `src/lib/accounting/post.ts` (`postInvoiceOpen`, `postInvoicePaid`, `postJournal`, etc.).
+- Integrations import via adapters (`hfac.ts`) then call the same posting functions — do not duplicate journal logic.
+
+## Documents vs ledger
+
+- `teller_documents` = commercial records (invoices, expenses).
+- `teller_journal_entries` + lines = GL — source of truth for financial statements.
+- Link via `source_kind` / `source_id` / `posted_entry_id` where applicable.
+
+## Revenue accounts
+
+Use `revenueCodeForItemType()` with industry COA — do not hard-code account IDs.
+
+## UI simplicity ≠ ledger simplicity
+
+The ledger page can look simple; posting code must remain auditable and balanced.

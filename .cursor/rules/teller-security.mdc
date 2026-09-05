@@ -1,0 +1,33 @@
+---
+description: Teller security and tenant isolation requirements
+alwaysApply: true
+---
+
+# Teller security rules
+
+## Tenant isolation (critical)
+
+- Every tenant row has `organization_id`.
+- User APIs derive org from session (`requireBooks()`) — **never trust client-supplied org IDs** except verified inbound webhooks.
+- RLS must stay enabled on all `teller_*` tables. Do not disable to "fix" a query.
+
+## Secrets
+
+- `SUPABASE_SERVICE_ROLE_KEY`, `TELLER_HFAC_WEBHOOK_SECRET` — server env only.
+- Never commit secrets. Never expose in client components or `.env.example` real values.
+- Never log tokens, passwords, or full payment credentials.
+
+## API routes
+
+Verify: authentication → org membership → resource ownership → input validation.
+
+Webhooks: use `hfacWebhookAuthorized()`; reject unsigned payloads.
+
+## Accounting integrity
+
+- Do not overwrite posted journal history — use reversals/voids (when implemented).
+- Multi-step financial writes should be atomic (DB transaction target).
+
+## Stop and flag conflicts
+
+If a requested shortcut weakens auth, tenant isolation, double-entry, or webhook verification — refuse and explain per `docs/SPEC.md` §29.

@@ -1,0 +1,32 @@
+---
+description: Teller product boundaries and north star
+alwaysApply: true
+---
+
+# Teller product rules
+
+Teller is **standalone multi-tenant bookkeeping SaaS**. Hassle Free AC is an **optional** integration — never a dependency.
+
+## Philosophy
+
+- Simple UI, rigorous double-entry ledger underneath.
+- Not a bank: no customer funds, no bank passwords, no ACH/wire origination in V1.
+- Industry packs configure terminology and COA — one accounting engine for all verticals.
+
+## V1 scope
+
+**In scope:** COA, GL, invoices, expenses, parties, jobs (module), HFAC webhooks, industry setup.
+
+**Out of scope unless explicitly requested:** payment processing, payroll, money movement, shared DB with HFAC.
+
+## HFAC integration
+
+- HTTP webhooks only; bearer secret auth.
+- HFAC failure must not break Teller; Teller failure must not break HFAC.
+- Store accounting facts + external IDs — not HFAC database rows or card data.
+
+## When building features
+
+Ask: Does this work for a customer with **no** HFAC connection? If not, redesign.
+
+Full spec: `docs/SPEC.md` · Gap tracker: `docs/IMPLEMENTATION-STATUS.md`
