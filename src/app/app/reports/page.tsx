@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import { ReportsView } from "@/components/ReportsView";
 import {
-  buildProfitAndLoss,
+  buildProfitAndLossForBasis,
   buildSalesSummary,
+  parseAccountingBasis,
   parseReportPeriod,
   reportPeriodRange,
 } from "@/lib/accounting/reports";
@@ -57,20 +58,31 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         .in("entry_id", entryIds)
     : { data: [] };
 
+  const basis = parseAccountingBasis(session.settings?.answers?.basis);
   const partyNames = new Map((parties ?? []).map((row) => [row.id, row.name]));
-  const profitAndLoss = buildProfitAndLoss(journalLines ?? [], accounts ?? []);
-  const sales = buildSalesSummary(invoices ?? [], partyNames, range);
+  const profitAndLoss = buildProfitAndLossForBasis(
+    basis,
+    invoices ?? [],
+    journalLines ?? [],
+    accounts ?? [],
+    range,
+  );
+  const sales = buildSalesSummary(invoices ?? [], partyNames, range, basis);
 
   return (
     <div className="space-y-6">
       <header className="page-header">
         <h1>Reports</h1>
-        <p>Sales analysis and profit &amp; loss from your posted books.</p>
+        <p>
+          Sales analysis and profit &amp; loss ·{" "}
+          {basis === "cash" ? "Cash basis" : "Accrual basis"}
+        </p>
       </header>
       <Suspense fallback={<p className="text-sm text-muted">Loading reports…</p>}>
         <ReportsView
           period={period}
           periodLabel={range.label}
+          basis={basis}
           sales={sales}
           profitAndLoss={profitAndLoss}
         />

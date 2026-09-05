@@ -51,10 +51,19 @@ export type SalesCustomerRow = {
   invoiceCount: number;
 };
 
+export type AccountingBasis = "cash" | "accrual";
+
 export type SalesSummary = {
-  invoiced: number;
+  /** Paid invoices — money received. */
   collected: number;
+  /** Open posted invoices not yet paid. */
+  awaitingPayment: number;
+  /** Collected + awaiting (all posted invoice amounts). */
+  postedTotal: number;
+  /** @deprecated use awaitingPayment */
   open: number;
+  /** @deprecated use postedTotal */
+  invoiced: number;
   draft: number;
   paidCount: number;
   openCount: number;
@@ -171,6 +180,59 @@ function toPLLine(row: { code: string; name: string; amount: number }): PLAccoun
   };
 }
 
+/** Cash basis: revenue when paid; expenses/COGS still from posted journal lines. */
+export function buildCashBasisProfitAndLoss(
+  invoices: InvoiceRow[],
+  lines: JournalLineRow[],
+  accounts: AccountRow[],
+  range: DateRange,
+): ProfitAndLoss {
+  const collectedRevenue = invoices
+    .filter(
+      (row) =>
+        row.status === "paid" &&
+        isBilledInvoice(row) &&
+        inRange(row.issue_date, range),
+    )
+    .reduce((sum, row) => sum + asNumber(row.total), 0);
+
+  const accrual = buildProfitAndLoss(lines, accounts);
+  const totalRevenue = roundMoney(collectedRevenue);
+  const grossProfit = roundMoney(totalRevenue - accrual.totalCogs);
+  const netIncome = roundMoney(grossProfit - accrual.totalExpenses);
+
+  return {
+    revenue:
+      totalRevenue > 0
+        ? [{ code: "4000", name: "Cash collected (sales)", amount: totalRevenue }]
+        : [],
+    cogs: accrual.cogs,
+    expenses: accrual.expenses,
+    totalRevenue,
+    totalCogs: accrual.totalCogs,
+    grossProfit,
+    totalExpenses: accrual.totalExpenses,
+    netIncome,
+  };
+}
+
+export function buildProfitAndLossForBasis(
+  basis: AccountingBasis,
+  invoices: InvoiceRow[],
+  lines: JournalLineRow[],
+  accounts: AccountRow[],
+  range: DateRange,
+): ProfitAndLoss {
+  if (basis === "cash") {
+    return buildCashBasisProfitAndLoss(invoices, lines, accounts, range);
+  }
+  return buildProfitAndLoss(lines, accounts);
+}
+
+export function parseAccountingBasis(value: unknown): AccountingBasis {
+  return value === "cash" ? "cash" : "accrual";
+}
+
 type InvoiceRow = {
   status: string;
   total: number | string;
@@ -191,10 +253,10 @@ export function buildSalesSummary(
   invoices: InvoiceRow[],
   partyNames: Map<string, string>,
   range: DateRange,
+  basis: AccountingBasis = "accrual",
 ): SalesSummary {
   const filtered = invoices.filter((row) => inRange(row.issue_date, range));
 
-  let invoiced = 0;
   let collected = 0;
   let open = 0;
   let draft = 0;
@@ -215,7 +277,6 @@ export function buildSalesSummary(
 
     if (!isBilledInvoice(row)) continue;
 
-    invoiced += total;
     if (row.status === "paid") {
       collected += total;
       paidCount += 1;
@@ -225,6 +286,13 @@ export function buildSalesSummary(
       openCount += 1;
     }
 
+    const salesAmount =
+      basis === "cash"
+        ? row.status === "paid"
+          ? total
+          : 0
+        : total;
+
     const monthKey = row.issue_date.slice(0, 7);
     const monthRow = monthMap.get(monthKey) ?? {
       month: monthKey,
@@ -232,17 +300,23 @@ export function buildSalesSummary(
       invoiced: 0,
       collected: 0,
     };
-    monthRow.invoiced += total;
+    if (basis === "accrual") {
+      monthRow.invoiced += total;
+    } else {
+      monthRow.invoiced += salesAmount;
+    }
     if (row.status === "paid") monthRow.collected += total;
     monthMap.set(monthKey, monthRow);
 
-    if (row.party_id) {
+    if (row.party_id && salesAmount > 0) {
       const current = customerMap.get(row.party_id) ?? { total: 0, count: 0 };
-      current.total += total;
+      current.total += salesAmount;
       current.count += 1;
       customerMap.set(row.party_id, current);
     }
   }
+
+  const postedTotal = roundMoney(collected + open);
 
   const byMonth = [...monthMap.values()].sort((a, b) => a.month.localeCompare(b.month));
   const topCustomers = [...customerMap.entries()]
@@ -255,9 +329,11 @@ export function buildSalesSummary(
     .slice(0, 5);
 
   return {
-    invoiced: roundMoney(invoiced),
     collected: roundMoney(collected),
+    awaitingPayment: roundMoney(open),
+    postedTotal,
     open: roundMoney(open),
+    invoiced: postedTotal,
     draft: roundMoney(draft),
     paidCount,
     openCount,

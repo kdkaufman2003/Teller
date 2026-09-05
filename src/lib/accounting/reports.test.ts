@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCashBasisProfitAndLoss,
   buildProfitAndLoss,
   buildSalesSummary,
   isBilledInvoice,
@@ -81,8 +82,10 @@ describe("buildSalesSummary", () => {
       range,
     );
 
+    expect(summary.postedTotal).toBe(1500);
     expect(summary.invoiced).toBe(1500);
     expect(summary.collected).toBe(1000);
+    expect(summary.awaitingPayment).toBe(500);
     expect(summary.open).toBe(500);
     expect(summary.draft).toBe(200);
     expect(summary.topCustomers[0]?.name).toBe("ABC Mechanical");
@@ -106,5 +109,33 @@ describe("reportPeriodRange", () => {
     const range = reportPeriodRange("ytd", new Date("2026-09-04"));
     expect(range.start).toBe("2026-01-01");
     expect(range.end).toBe("2026-09-04");
+  });
+});
+
+describe("buildCashBasisProfitAndLoss", () => {
+  it("uses only paid invoices for revenue", () => {
+    const range = reportPeriodRange("ytd", new Date("2026-09-04"));
+    const report = buildCashBasisProfitAndLoss(
+      [
+        {
+          status: "paid",
+          total: 1000,
+          issue_date: "2026-03-01",
+          party_id: "p1",
+          posted_entry_id: "je-1",
+        },
+        {
+          status: "open",
+          total: 1500,
+          issue_date: "2026-04-01",
+          party_id: "p2",
+          posted_entry_id: "je-2",
+        },
+      ],
+      [],
+      ACCOUNTS,
+      range,
+    );
+    expect(report.totalRevenue).toBe(1000);
   });
 });

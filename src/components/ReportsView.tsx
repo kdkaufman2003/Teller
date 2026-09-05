@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { money } from "@/lib/format";
 import type {
+  AccountingBasis,
   ProfitAndLoss,
   ReportPeriod,
   SalesSummary,
@@ -19,11 +20,13 @@ const PERIODS: { id: ReportPeriod; label: string }[] = [
 export function ReportsView({
   period,
   periodLabel,
+  basis,
   sales,
   profitAndLoss,
 }: {
   period: ReportPeriod;
   periodLabel: string;
+  basis: AccountingBasis;
   sales: SalesSummary;
   profitAndLoss: ProfitAndLoss;
 }) {
@@ -64,12 +67,45 @@ export function ReportsView({
         </div>
       </div>
 
+      {sales.awaitingPayment > 0 && basis === "accrual" ? (
+        <p className="rounded-lg border border-rule bg-paper-strong px-4 py-3 text-sm text-muted">
+          <strong className="text-ink">Collected {money(sales.collected)}</strong> is money
+          you&apos;ve received.{" "}
+          <strong className="text-ink">{money(sales.awaitingPayment)} awaiting payment</strong>{" "}
+          is an open invoice not paid yet. Total posted invoices (
+          {money(sales.postedTotal)}) = collected + awaiting — not double your sales.
+        </p>
+      ) : null}
+
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Billed sales", value: money(sales.invoiced), hint: "Posted invoices only · excludes drafts" },
-          { label: "Collected", value: money(sales.collected), hint: `${sales.paidCount} paid` },
-          { label: "Open receivables", value: money(sales.open), hint: `${sales.openCount} open` },
-          { label: "Net income", value: money(profitAndLoss.netIncome), hint: "From general ledger" },
+          {
+            label: "Collected",
+            value: money(sales.collected),
+            hint: `${sales.paidCount} paid · money received`,
+          },
+          {
+            label: "Awaiting payment",
+            value: money(sales.awaitingPayment),
+            hint: `${sales.openCount} open invoice${sales.openCount === 1 ? "" : "s"}`,
+          },
+          ...(basis === "accrual"
+            ? [
+                {
+                  label: "Total posted",
+                  value: money(sales.postedTotal),
+                  hint: "Collected + awaiting",
+                },
+              ]
+            : []),
+          {
+            label: basis === "cash" ? "Net income (cash)" : "Net income",
+            value: money(profitAndLoss.netIncome),
+            hint:
+              basis === "cash"
+                ? "Revenue when paid · from ledger"
+                : "Revenue when invoiced · from ledger",
+          },
         ].map((metric) => (
           <article key={metric.label} className="card p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-muted">{metric.label}</p>
@@ -82,7 +118,11 @@ export function ReportsView({
       <section className="grid gap-4 xl:grid-cols-2">
         <article className="report-sheet card p-5">
           <h2 className="font-ledger text-2xl text-navy">Sales trend</h2>
-          <p className="mt-1 text-sm text-muted">Posted invoices only · excludes drafts</p>
+          <p className="mt-1 text-sm text-muted">
+            {basis === "cash"
+              ? "Collected by month (cash basis)"
+              : "Posted vs collected by month (accrual)"}
+          </p>
           {sales.byMonth.length === 0 ? (
             <p className="mt-6 text-sm text-muted">No invoice activity in this period.</p>
           ) : (
@@ -92,7 +132,9 @@ export function ReportsView({
                   <div className="mb-1 flex justify-between text-sm">
                     <span>{row.label}</span>
                     <span className="font-tabular text-muted">
-                      {money(row.invoiced)} / {money(row.collected)}
+                      {basis === "cash"
+                        ? money(row.collected)
+                        : `${money(row.invoiced)} / ${money(row.collected)}`}
                     </span>
                   </div>
                   <div className="space-y-1">
@@ -104,9 +146,11 @@ export function ReportsView({
             </ul>
           )}
           <div className="mt-4 flex gap-4 text-xs text-muted">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-4 rounded bg-navy" /> Invoiced
-            </span>
+            {basis === "accrual" ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-4 rounded bg-navy" /> Posted
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1">
               <span className="h-2 w-4 rounded bg-brass" /> Collected
             </span>
@@ -115,7 +159,10 @@ export function ReportsView({
 
         <article className="report-sheet card p-5">
           <h2 className="font-ledger text-2xl text-navy">Top customers</h2>
-          <p className="mt-1 text-sm text-muted">Posted billed amount in this period</p>
+          <p className="mt-1 text-sm text-muted">
+            {basis === "cash" ? "By collected amount" : "By posted billed amount"} in this
+            period
+          </p>
           {sales.topCustomers.length === 0 ? (
             <p className="mt-6 text-sm text-muted">No customer sales yet.</p>
           ) : (
@@ -146,7 +193,8 @@ export function ReportsView({
           <div>
             <h2 className="font-ledger text-2xl text-navy">Profit &amp; Loss</h2>
             <p className="mt-1 text-sm text-muted">
-              Posted activity from the general ledger · {periodLabel}
+              Posted activity from the general ledger · {periodLabel} ·{" "}
+              {basis === "cash" ? "cash basis" : "accrual basis"}
             </p>
           </div>
           <Link href="/app/ledger" className="text-sm text-sky">
