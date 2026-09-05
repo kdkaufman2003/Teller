@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { billingExternalId, importSubscribersFromHfac } from "./hfac";
+import { billingExternalId, importSubscribersFromHfac, normalizeBillingEntry } from "./hfac";
 
 function mockSupabase(responses: {
   existing?: { id: string } | null;
@@ -51,6 +51,45 @@ describe("billingExternalId", () => {
         companyId: "co-1",
       }),
     ).toBe("billing:co-1:entry-1");
+  });
+});
+
+describe("normalizeBillingEntry", () => {
+  it("maps HFAC stripe fee field names", () => {
+    expect(
+      normalizeBillingEntry({
+        id: "entry-1",
+        companyId: "co-1",
+        date: "2026-03-01",
+        description: "Platform fee",
+        amountCents: 150000,
+        status: "paid",
+        stripeInvoiceId: "in_abc",
+        stripeFeeCents: 4350,
+        netReceivedCents: 145650,
+      }),
+    ).toMatchObject({
+      feeAmountCents: 4350,
+      netAmountCents: 145650,
+      processor: "stripe",
+    });
+  });
+
+  it("prefers explicit fee field names when both are sent", () => {
+    expect(
+      normalizeBillingEntry({
+        id: "entry-1",
+        companyId: "co-1",
+        date: "2026-03-01",
+        description: "Platform fee",
+        amountCents: 10000,
+        status: "paid",
+        feeAmountCents: 300,
+        stripeFeeCents: 999,
+        netAmountCents: 9700,
+        netReceivedCents: 8888,
+      }).feeAmountCents,
+    ).toBe(300);
   });
 });
 

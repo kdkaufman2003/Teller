@@ -564,12 +564,23 @@ export type HfacBillingEntry = {
   status: "invoiced" | "paid" | "pending" | "credit";
   reference?: string;
   stripeInvoiceId?: string;
-  /** Processor fee in cents, if known. */
+  /** Processor fee in cents. HFAC may send `stripeFeeCents` instead. */
   feeAmountCents?: number;
-  /** Net deposit in cents, if known. */
+  stripeFeeCents?: number;
+  /** Net deposit in cents. HFAC may send `netReceivedCents` instead. */
   netAmountCents?: number;
+  netReceivedCents?: number;
   processor?: string;
 };
+
+export function normalizeBillingEntry(entry: HfacBillingEntry): HfacBillingEntry {
+  return {
+    ...entry,
+    feeAmountCents: entry.feeAmountCents ?? entry.stripeFeeCents,
+    netAmountCents: entry.netAmountCents ?? entry.netReceivedCents,
+    processor: entry.processor ?? (entry.stripeInvoiceId ? "stripe" : undefined),
+  };
+}
 
 export function billingExternalId(entry: Pick<HfacBillingEntry, "id" | "companyId" | "stripeInvoiceId">): string {
   if (entry.stripeInvoiceId?.trim()) {
@@ -667,7 +678,8 @@ export async function importBillingEntriesFromHfac(
   const revenueAccountId =
     accountByCode.get(revenueCodeForItemType("subscription", accounts ?? [])) ?? null;
 
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    const entry = normalizeBillingEntry(rawEntry);
     if (!entry.id?.trim() || !entry.companyId?.trim()) {
       skipped += 1;
       continue;

@@ -77,6 +77,27 @@ Push contractors and billing ledger entries from HFAC **Platform billing → Syn
 - `POST /api/integrations/hfac/subscribers` — customers
 - `POST /api/integrations/hfac/billing` — invoiced/paid ledger rows
 
+Billing entries may include Stripe settlement fields (cents):
+
+```json
+{
+  "organizationId": "<uuid>",
+  "entries": [{
+    "id": "ledger-row-1",
+    "companyId": "hfac-account-123",
+    "date": "2026-03-01",
+    "description": "March platform fee",
+    "amountCents": 150000,
+    "status": "paid",
+    "stripeInvoiceId": "in_...",
+    "stripeFeeCents": 4350,
+    "netReceivedCents": 145650
+  }]
+}
+```
+
+Teller also accepts `feeAmountCents` / `netAmountCents` if you prefer generic processor names.
+
 ```json
 POST /api/integrations/hfac/subscribers
 {
