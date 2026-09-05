@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { HealthPanel } from "@/components/HealthPanel";
+import { computeHealthReport } from "@/lib/health/engine";
+import { gatherHealthSignals } from "@/lib/health/signals";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { isBilledInvoice } from "@/lib/accounting/reports";
@@ -74,6 +77,11 @@ export default async function DashboardPage() {
   const showJobs = hasModule(session.settings, "jobs");
   const showIntegrations = hasHfacIntegration(session.settings);
 
+  const healthSignals = await gatherHealthSignals(supabase, organizationId, {
+    hfacEnabled: showIntegrations,
+  });
+  const healthReport = computeHealthReport(healthSignals);
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -85,6 +93,8 @@ export default async function DashboardPage() {
           View reports
         </Link>
       </header>
+
+      <HealthPanel report={healthReport} />
 
       <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {metricDefs.map((metric) => (
