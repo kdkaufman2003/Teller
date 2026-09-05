@@ -34,6 +34,7 @@ export const TRADES_ACCOUNTS: AccountSeed[] = [
   { code: "6400", name: "Insurance", type: "expense" },
   { code: "6500", name: "Marketing", type: "expense" },
   { code: "6600", name: "Office", type: "expense" },
+  { code: "6150", name: "Payment Processing Fees", type: "expense", subtype: "payment_fee" },
   { code: "6700", name: "Warranty Expense", type: "expense", industry_tag: "warranty" },
   { code: "6900", name: "Other Expense", type: "expense" },
 ];

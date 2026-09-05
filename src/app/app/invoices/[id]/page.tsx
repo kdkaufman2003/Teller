@@ -43,6 +43,13 @@ export default async function InvoiceDetailPage({
       : Promise.resolve({ data: null }),
   ]);
 
+  const paymentMeta = (invoice.metadata as { payment?: {
+    gross?: number;
+    net?: number;
+    fee?: number;
+    processor?: string | null;
+  } } | null)?.payment;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -98,6 +105,19 @@ export default async function InvoiceDetailPage({
           <p className="text-lg font-semibold">Total {money(invoice.total)}</p>
         </div>
       </div>
+
+      {paymentMeta?.fee != null && paymentMeta.fee > 0 ? (
+        <div className="card p-4 text-sm space-y-1">
+          <p className="font-medium text-ink">Payment settlement</p>
+          <p>
+            Collected {money(paymentMeta.gross ?? invoice.total)}
+            {paymentMeta.processor ? ` via ${paymentMeta.processor}` : ""}
+          </p>
+          <p className="text-muted">
+            Processing fee {money(paymentMeta.fee)} · Deposited {money(paymentMeta.net ?? 0)}
+          </p>
+        </div>
+      ) : null}
 
       {invoice.memo ? <p className="text-sm text-muted">{invoice.memo}</p> : null}
       <InvoiceActions id={invoice.id} status={invoice.status} />

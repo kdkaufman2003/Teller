@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
+import { resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
 import {
   HFAC_EXTERNAL_SOURCE,
@@ -342,10 +343,17 @@ export async function importSubscribersFromHfac(
   return { created, updated, skipped };
 }
 
-/** Stripe payment notification forwarded from Hassle Free AC. Amounts in dollars. */
+/** Stripe or other processor payment forwarded from Hassle Free AC. Amounts in dollars. */
 export type HfacPayment = {
+  /** Gross invoice amount collected from the customer. */
   amount: number;
   paidAt: string;
+  /** Processor fee withheld (e.g. Stripe fee). Optional if netAmount is sent. */
+  feeAmount?: number;
+  /** Cash deposited after fees. Optional if feeAmount is sent. */
+  netAmount?: number;
+  /** Processor name, e.g. stripe, square, paypal. */
+  processor?: string;
   hfacSubscriberId?: string;
   hfacInvoiceId?: string;
   hfacDealId?: string;
@@ -512,6 +520,10 @@ export async function importPaymentFromHfac(
   }
 
   const total = asNumber(payment.amount) || asNumber(invoice.total);
+  const processorName =
+    payment.processor?.trim() ||
+    (payment.stripePaymentIntentId || payment.stripeInvoiceId ? "Stripe" : undefined);
+
   await postInvoicePaid(supabase, {
     organizationId,
     documentId: invoice.id,
@@ -520,7 +532,16 @@ export async function importPaymentFromHfac(
     issueDate: paidDate,
     number: invoice.number,
     total,
+    feeAmount: payment.feeAmount,
+    netAmount: payment.netAmount,
+    processorName,
     paymentMemo: payment.memo ? `${paymentMemo} · ${payment.memo}` : paymentMemo,
+  });
+
+  const { feeAmount, netAmount } = resolvePaymentAmounts({
+    grossAmount: total,
+    feeAmount: payment.feeAmount,
+    netAmount: payment.netAmount,
   });
 
   return {
@@ -528,6 +549,8 @@ export async function importPaymentFromHfac(
     invoiceId: invoice.id,
     invoiceNumber: invoice.number,
     amount: total,
+    feeAmount,
+    netAmount,
   };
 }
 
@@ -541,6 +564,11 @@ export type HfacBillingEntry = {
   status: "invoiced" | "paid" | "pending" | "credit";
   reference?: string;
   stripeInvoiceId?: string;
+  /** Processor fee in cents, if known. */
+  feeAmountCents?: number;
+  /** Net deposit in cents, if known. */
+  netAmountCents?: number;
+  processor?: string;
 };
 
 export function billingExternalId(entry: Pick<HfacBillingEntry, "id" | "companyId" | "stripeInvoiceId">): string {
@@ -565,6 +593,11 @@ async function postBillingInvoicePaid(
   invoice: BillingInvoiceRow,
   paidDate: string,
   paymentMemo: string,
+  fee?: {
+    feeAmount?: number;
+    netAmount?: number;
+    processorName?: string;
+  },
 ) {
   if (invoice.status === "draft") {
     const [{ data: lines }, { data: doc }] = await Promise.all([
@@ -599,6 +632,9 @@ async function postBillingInvoicePaid(
     issueDate: paidDate,
     number: invoice.number,
     total: asNumber(invoice.total),
+    feeAmount: fee?.feeAmount,
+    netAmount: fee?.netAmount,
+    processorName: fee?.processorName,
     paymentMemo,
   });
 }
@@ -671,6 +707,19 @@ export async function importBillingEntriesFromHfac(
         ? `HFAC ${entry.reference.trim()}`
         : "Hassle Free AC billing";
 
+    const billingFee =
+      entry.feeAmountCents != null || entry.netAmountCents != null
+        ? {
+            feeAmount:
+              entry.feeAmountCents != null ? entry.feeAmountCents / 100 : undefined,
+            netAmount:
+              entry.netAmountCents != null ? entry.netAmountCents / 100 : undefined,
+            processorName:
+              entry.processor?.trim() ||
+              (entry.stripeInvoiceId ? "Stripe" : undefined),
+          }
+        : undefined;
+
     const { data: existing } = await supabase
       .from("teller_documents")
       .select("id, number, status, party_id, job_id, total")
@@ -683,7 +732,14 @@ export async function importBillingEntriesFromHfac(
     if (existing) {
       const row = existing as BillingInvoiceRow;
       if (entry.status === "paid" && row.status !== "paid") {
-        await postBillingInvoicePaid(supabase, organizationId, row, issueDate, paymentMemo);
+        await postBillingInvoicePaid(
+          supabase,
+          organizationId,
+          row,
+          issueDate,
+          paymentMemo,
+          billingFee,
+        );
         paid += 1;
         updated += 1;
       } else if (entry.status === "invoiced" && row.status === "draft") {
@@ -752,7 +808,14 @@ export async function importBillingEntriesFromHfac(
 
     const row = doc as BillingInvoiceRow;
     if (entry.status === "paid") {
-      await postBillingInvoicePaid(supabase, organizationId, row, issueDate, paymentMemo);
+      await postBillingInvoicePaid(
+        supabase,
+        organizationId,
+        row,
+        issueDate,
+        paymentMemo,
+        billingFee,
+      );
       paid += 1;
     } else if (shouldOpen) {
       await postInvoiceOpen(supabase, {

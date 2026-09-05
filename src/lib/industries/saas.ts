@@ -19,7 +19,7 @@ const SAAS_ACCOUNTS: AccountSeed[] = [
   { code: "4100", name: "Usage Revenue", type: "revenue", industry_tag: "usage" },
   { code: "4200", name: "Services Revenue", type: "revenue", industry_tag: "services" },
   { code: "5000", name: "Hosting & Infrastructure", type: "cogs" },
-  { code: "5100", name: "Payment Processing", type: "cogs" },
+  { code: "5100", name: "Payment Processing", type: "cogs", subtype: "payment_fee" },
   { code: "6000", name: "Payroll", type: "expense" },
   { code: "6100", name: "Software & Tools", type: "expense" },
   { code: "6200", name: "Marketing", type: "expense" },

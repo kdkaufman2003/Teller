@@ -109,6 +109,9 @@ POST /api/integrations/hfac/payments
   "organizationId": "<uuid>",
   "payment": {
     "amount": 1200.00,
+    "feeAmount": 35.40,
+    "netAmount": 1164.60,
+    "processor": "stripe",
     "paidAt": "2026-03-03T18:00:00Z",
     "hfacSubscriberId": "hfac-account-123",
     "hfacDealId": "deal-456",
@@ -117,7 +120,13 @@ POST /api/integrations/hfac/payments
 }
 ```
 
-Teller finds the matching invoice, posts it if needed, marks it paid, and records Cash / AR.
+Teller finds the matching invoice, posts it if needed, marks it paid, and records:
+
+- **Dr Cash** — net deposit after fees
+- **Dr Payment Processing Fees** — processor fee (Stripe, Square, etc.)
+- **Cr Accounts Receivable** — full invoice amount
+
+Send either `feeAmount` or `netAmount` (or both). Other processors work the same way via `processor`.
 
 **Disconnect** anytime in Teller Settings — books stay in Teller.
 

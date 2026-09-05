@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountByCode, accountBySubtype } from "./accounts";
+import {
+  buildInvoicePaymentLines,
+  paymentProcessingFeeAccount,
+  resolvePaymentAmounts,
+} from "./payment-fees";
 
 type JournalLineInput = {
   account_id: string;
@@ -74,6 +79,7 @@ type AccountRow = {
   code: string;
   type: string;
   subtype: string;
+  name: string;
 };
 
 export async function loadOrgAccounts(
@@ -82,7 +88,7 @@ export async function loadOrgAccounts(
 ): Promise<AccountRow[]> {
   const { data, error } = await supabase
     .from("teller_accounts")
-    .select("id, code, type, subtype")
+    .select("id, code, type, subtype, name")
     .eq("organization_id", organizationId)
     .eq("archived", false);
   if (error) throw new Error(error.message);
@@ -179,12 +185,23 @@ export async function postInvoicePaid(
     number: string;
     total: number;
     paymentMemo?: string;
+    feeAmount?: number | null;
+    netAmount?: number | null;
+    processorName?: string;
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
   if (!cash || !ar) throw new Error("Cash or AR account is missing");
+
+  const { grossAmount, feeAmount, netAmount } = resolvePaymentAmounts({
+    grossAmount: input.total,
+    feeAmount: input.feeAmount,
+    netAmount: input.netAmount,
+  });
+  const feeAccount =
+    feeAmount > 0.009 ? paymentProcessingFeeAccount(accounts) : null;
 
   const memo = input.paymentMemo
     ? `Payment ${input.number} · ${input.paymentMemo}`
@@ -196,27 +213,48 @@ export async function postInvoicePaid(
     memo,
     sourceKind: "invoice-payment",
     sourceId: input.documentId,
-    lines: [
-      {
-        account_id: cash.id,
-        debit: asNumber(input.total),
-        party_id: input.partyId,
-        job_id: input.jobId,
-      },
-      {
-        account_id: ar.id,
-        credit: asNumber(input.total),
-        party_id: input.partyId,
-        job_id: input.jobId,
-      },
-    ],
+    lines: buildInvoicePaymentLines({
+      cashAccountId: cash.id,
+      arAccountId: ar.id,
+      feeAccountId: feeAccount?.id,
+      grossAmount,
+      feeAmount,
+      netAmount,
+      partyId: input.partyId,
+      jobId: input.jobId,
+      processorName: input.processorName,
+    }),
   });
+
+  const { data: existingDoc } = await supabase
+    .from("teller_documents")
+    .select("metadata")
+    .eq("id", input.documentId)
+    .maybeSingle();
+
+  const existingMetadata =
+    existingDoc?.metadata && typeof existingDoc.metadata === "object"
+      ? (existingDoc.metadata as Record<string, unknown>)
+      : {};
+
+  const paymentMetadata =
+    feeAmount > 0.009
+      ? {
+          gross: grossAmount,
+          net: netAmount,
+          fee: feeAmount,
+          processor: input.processorName ?? null,
+        }
+      : null;
 
   const { error } = await supabase
     .from("teller_documents")
     .update({
       status: "paid",
-      amount_paid: asNumber(input.total),
+      amount_paid: grossAmount,
+      metadata: paymentMetadata
+        ? { ...existingMetadata, payment: paymentMetadata }
+        : existingMetadata,
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.documentId);

@@ -22,6 +22,7 @@ const GENERAL_ACCOUNTS: AccountSeed[] = [
   { code: "6100", name: "Rent", type: "expense" },
   { code: "6200", name: "Marketing", type: "expense" },
   { code: "6300", name: "Office", type: "expense" },
+  { code: "6150", name: "Payment Processing Fees", type: "expense", subtype: "payment_fee" },
   { code: "6900", name: "Other Expense", type: "expense" },
 ];
 
