@@ -211,6 +211,191 @@ textarea:focus {
   );
 }
 
+.ledger-book {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: 4px 14px 14px 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(139, 100, 50, 0.08) 0,
+    rgba(139, 100, 50, 0.08) 12px,
+    var(--paper-strong) 12px,
+    var(--paper-strong) 100%
+  );
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 12px 28px rgba(11, 31, 51, 0.08),
+    0 2px 6px rgba(11, 31, 51, 0.04);
+}
+
+.ledger-book-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(11, 31, 51, 0.18),
+    rgba(184, 135, 61, 0.22) 40%,
+    rgba(11, 31, 51, 0.12)
+  );
+  pointer-events: none;
+}
+
+.ledger-book-inner {
+  margin-left: 12px;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.ledger-book-empty {
+  padding: 2.5rem 1.5rem;
+  margin-left: 0;
+  background: var(--paper-strong);
+  font-family: var(--font-sans);
+  color: var(--muted);
+  text-align: center;
+}
+
+.ledger-book-titlebar {
+  padding-bottom: 0.85rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 3px double var(--rule);
+}
+
+.ledger-book-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass-deep);
+}
+
+.ledger-book-subtitle {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.ledger-book-scroll {
+  overflow-x: auto;
+}
+
+.ledger-book-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.ledger-book-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--paper-strong);
+}
+
+.ledger-book-table th {
+  padding: 0.55rem 0.65rem;
+  border-bottom: 2px solid var(--navy);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--navy);
+  font-family: var(--font-ui);
+}
+
+.ledger-book-table td {
+  padding: 0.45rem 0.65rem;
+  vertical-align: top;
+  line-height: 1.55;
+  font-family: var(--font-sans);
+}
+
+.ledger-book-table tbody tr {
+  background: transparent;
+}
+
+.ledger-row-entry-start td {
+  padding-top: 0.85rem;
+}
+
+.ledger-row-entry-end td {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(11, 31, 51, 0.14);
+}
+
+.ledger-row-entry-end + .ledger-row-entry-start td {
+  padding-top: 1rem;
+}
+
+.ledger-col-date {
+  width: 7.5rem;
+  white-space: nowrap;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-col-folio {
+  width: 3.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ledger-col-acct {
+  width: 3.5rem;
+  color: var(--navy);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.ledger-col-particulars {
+  min-width: 12rem;
+  color: var(--ink);
+}
+
+.ledger-col-amount {
+  width: 6.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.ledger-debit {
+  color: var(--ink);
+}
+
+.ledger-credit {
+  color: var(--brass-deep);
+}
+
+.ledger-source-tag {
+  display: inline-block;
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  vertical-align: 0.05em;
+}
+
+.ledger-row-unbalanced td {
+  background: rgba(155, 44, 44, 0.06);
+  color: var(--danger);
+  font-size: 0.8rem;
+  border-bottom: 1px solid rgba(155, 44, 44, 0.2);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

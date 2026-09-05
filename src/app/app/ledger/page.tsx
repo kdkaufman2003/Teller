@@ -1,9 +1,8 @@
-import { formatDate, money } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
-import { asNumber } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { redirect } from "next/navigation";
+import { LedgerBook, type LedgerEntryRow } from "@/components/LedgerBook";
 
 export default async function LedgerPage() {
   const session = await getSessionContext();
@@ -33,48 +32,40 @@ export default async function LedgerPage() {
   ]);
 
   const accountMap = new Map(
-    (accounts ?? []).map((row) => [row.id, `${row.code} ${row.name}`]),
+    (accounts ?? []).map((row) => [row.id, { code: row.code, name: row.name }]),
   );
+
+  const totalEntries = (entries ?? []).length;
+  const ledgerEntries: LedgerEntryRow[] = (entries ?? []).map((entry, index) => {
+    const entryLines = (lines ?? []).filter((line) => line.entry_id === entry.id);
+    const folio = String(totalEntries - index).padStart(3, "0");
+
+    return {
+      id: entry.id,
+      entry_date: entry.entry_date,
+      memo: entry.memo || "Journal entry",
+      source_kind: entry.source_kind,
+      folio,
+      lines: entryLines.map((line) => {
+        const account = accountMap.get(line.account_id);
+        return {
+          accountCode: account?.code ?? "—",
+          accountName: account?.name ?? "Unknown account",
+          debit: line.debit,
+          credit: line.credit,
+          memo: line.memo || "",
+        };
+      }),
+    };
+  });
 
   return (
     <div className="space-y-6">
       <header className="page-header">
         <h1>Ledger</h1>
+        <p>The general journal — every debit has its credit, ruled and dated.</p>
       </header>
-      {(entries ?? []).length === 0 ? (
-        <p className="text-muted">No journal entries yet. Post an invoice or expense.</p>
-      ) : (
-        (entries ?? []).map((entry) => {
-          const entryLines = (lines ?? []).filter((line) => line.entry_id === entry.id);
-          const debit = entryLines.reduce((sum, line) => sum + asNumber(line.debit), 0);
-          return (
-            <article key={entry.id} className="card p-4">
-              <div className="flex justify-between gap-3 text-sm">
-                <div>
-                  <p className="font-medium">{entry.memo || "Journal entry"}</p>
-                  <p className="text-muted">
-                    {formatDate(entry.entry_date)}
-                    {entry.source_kind ? ` · ${entry.source_kind}` : ""}
-                  </p>
-                </div>
-                <p className="font-tabular">{money(debit)}</p>
-              </div>
-              <ul className="mt-3 space-y-1 font-tabular text-sm">
-                {entryLines.map((line, index) => (
-                  <li key={`${entry.id}-${index}`} className="flex justify-between gap-4">
-                    <span>{accountMap.get(line.account_id)}</span>
-                    <span className="text-muted">
-                      {asNumber(line.debit) > 0
-                        ? `Dr ${money(line.debit)}`
-                        : `Cr ${money(line.credit)}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </article>
-          );
-        })
-      )}
+      <LedgerBook entries={ledgerEntries} />
     </div>
   );
 }
