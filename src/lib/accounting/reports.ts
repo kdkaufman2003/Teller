@@ -177,7 +177,15 @@ type InvoiceRow = {
   amount_paid?: number | string;
   issue_date: string;
   party_id: string | null;
+  posted_entry_id?: string | null;
 };
+
+/** Posted to the ledger (billed) — excludes drafts and voided pipeline invoices. */
+export function isBilledInvoice(row: Pick<InvoiceRow, "status" | "posted_entry_id">): boolean {
+  if (row.status === "void" || row.status === "draft") return false;
+  if (row.status !== "open" && row.status !== "paid") return false;
+  return Boolean(row.posted_entry_id);
+}
 
 export function buildSalesSummary(
   invoices: InvoiceRow[],
@@ -198,12 +206,14 @@ export function buildSalesSummary(
 
   for (const row of filtered) {
     const total = asNumber(row.total);
-    if (row.status === "void") continue;
 
     if (row.status === "draft") {
       draft += total;
       continue;
     }
+    if (row.status === "void") continue;
+
+    if (!isBilledInvoice(row)) continue;
 
     invoiced += total;
     if (row.status === "paid") {

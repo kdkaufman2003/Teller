@@ -43,7 +43,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         .order("code"),
       supabase
         .from("teller_documents")
-        .select("status, total, amount_paid, issue_date, party_id")
+        .select("status, total, amount_paid, issue_date, party_id, posted_entry_id")
         .eq("organization_id", organizationId)
         .eq("kind", "invoice"),
       supabase.from("teller_parties").select("id, name").eq("organization_id", organizationId),

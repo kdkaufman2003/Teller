@@ -66,7 +66,7 @@ export function ReportsView({
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Invoiced sales", value: money(sales.invoiced), hint: "Open + paid invoices" },
+          { label: "Billed sales", value: money(sales.invoiced), hint: "Posted invoices only · excludes drafts" },
           { label: "Collected", value: money(sales.collected), hint: `${sales.paidCount} paid` },
           { label: "Open receivables", value: money(sales.open), hint: `${sales.openCount} open` },
           { label: "Net income", value: money(profitAndLoss.netIncome), hint: "From general ledger" },
@@ -82,7 +82,7 @@ export function ReportsView({
       <section className="grid gap-4 xl:grid-cols-2">
         <article className="report-sheet card p-5">
           <h2 className="font-ledger text-2xl text-navy">Sales trend</h2>
-          <p className="mt-1 text-sm text-muted">Invoiced vs collected by month</p>
+          <p className="mt-1 text-sm text-muted">Posted invoices only · excludes drafts</p>
           {sales.byMonth.length === 0 ? (
             <p className="mt-6 text-sm text-muted">No invoice activity in this period.</p>
           ) : (
@@ -115,7 +115,7 @@ export function ReportsView({
 
         <article className="report-sheet card p-5">
           <h2 className="font-ledger text-2xl text-navy">Top customers</h2>
-          <p className="mt-1 text-sm text-muted">By invoiced amount in this period</p>
+          <p className="mt-1 text-sm text-muted">Posted billed amount in this period</p>
           {sales.topCustomers.length === 0 ? (
             <p className="mt-6 text-sm text-muted">No customer sales yet.</p>
           ) : (

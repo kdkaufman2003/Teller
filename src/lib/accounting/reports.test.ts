@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProfitAndLoss,
   buildSalesSummary,
+  isBilledInvoice,
   reportPeriodRange,
   type AccountRow,
   type JournalLineRow,
@@ -37,10 +38,41 @@ describe("buildSalesSummary", () => {
     const range = reportPeriodRange("ytd", new Date("2026-09-04"));
     const summary = buildSalesSummary(
       [
-        { status: "paid", total: 1000, issue_date: "2026-03-01", party_id: "p1" },
-        { status: "open", total: 500, amount_paid: 0, issue_date: "2026-04-01", party_id: "p1" },
-        { status: "draft", total: 200, issue_date: "2026-05-01", party_id: null },
-        { status: "paid", total: 800, issue_date: "2025-12-01", party_id: "p2" },
+        {
+          status: "paid",
+          total: 1000,
+          issue_date: "2026-03-01",
+          party_id: "p1",
+          posted_entry_id: "je-1",
+        },
+        {
+          status: "open",
+          total: 500,
+          amount_paid: 0,
+          issue_date: "2026-04-01",
+          party_id: "p1",
+          posted_entry_id: "je-2",
+        },
+        {
+          status: "draft",
+          total: 200,
+          issue_date: "2026-05-01",
+          party_id: null,
+        },
+        {
+          status: "open",
+          total: 300,
+          issue_date: "2026-06-01",
+          party_id: "p3",
+          posted_entry_id: null,
+        },
+        {
+          status: "paid",
+          total: 800,
+          issue_date: "2025-12-01",
+          party_id: "p2",
+          posted_entry_id: "je-old",
+        },
       ],
       new Map([
         ["p1", "ABC Mechanical"],
@@ -54,6 +86,18 @@ describe("buildSalesSummary", () => {
     expect(summary.open).toBe(500);
     expect(summary.draft).toBe(200);
     expect(summary.topCustomers[0]?.name).toBe("ABC Mechanical");
+  });
+
+  it("excludes draft and unposted invoices from billed sales", () => {
+    expect(
+      isBilledInvoice({ status: "draft", posted_entry_id: null }),
+    ).toBe(false);
+    expect(
+      isBilledInvoice({ status: "open", posted_entry_id: null }),
+    ).toBe(false);
+    expect(
+      isBilledInvoice({ status: "open", posted_entry_id: "je-1" }),
+    ).toBe(true);
   });
 });
 

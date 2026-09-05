@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
+import { isBilledInvoice } from "@/lib/accounting/reports";
 import { label } from "@/lib/session";
 import { routes } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
@@ -17,7 +18,7 @@ export default async function DashboardPage() {
   const [invoices, expenses, jobs, parties, integration] = await Promise.all([
     supabase
       .from("teller_documents")
-      .select("id, number, status, total, amount_paid, issue_date, party_id")
+      .select("id, number, status, total, amount_paid, issue_date, party_id, posted_entry_id")
       .eq("organization_id", organizationId)
       .eq("kind", "invoice")
       .order("created_at", { ascending: false })
@@ -48,10 +49,10 @@ export default async function DashboardPage() {
   const invoiceRows = invoices.data ?? [];
   const partyNames = new Map((parties.data ?? []).map((row) => [row.id, row.name]));
   const openAR = invoiceRows
-    .filter((row) => row.status === "open")
+    .filter((row) => row.status === "open" && isBilledInvoice(row))
     .reduce((sum, row) => sum + asNumber(row.total) - asNumber(row.amount_paid), 0);
   const collected = invoiceRows
-    .filter((row) => row.status === "paid")
+    .filter((row) => row.status === "paid" && isBilledInvoice(row))
     .reduce((sum, row) => sum + asNumber(row.total), 0);
   const openAP = (expenses.data ?? [])
     .filter((row) => row.status === "open")
