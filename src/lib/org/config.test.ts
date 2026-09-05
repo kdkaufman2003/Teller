@@ -6,6 +6,8 @@ import {
   organizationSourceFromPartner,
   parseFiscalYearStart,
   resolveOrgTaxRate,
+  resolveOrgTaxMode,
+  readOrgAccountingConfig,
 } from "./config";
 
 describe("parseFiscalYearStart", () => {
@@ -31,6 +33,17 @@ describe("resolveOrgTaxRate", () => {
   it("infers collection from positive rate when collectTax unset", () => {
     expect(collectTaxEnabled({ taxRate: 7 })).toBe(true);
     expect(resolveOrgTaxRate({ taxRate: 7 })).toBe(7);
+  });
+});
+
+describe("resolveOrgTaxMode", () => {
+  it("defaults to flat rate mode", () => {
+    expect(resolveOrgTaxMode({})).toBe("flat");
+    expect(readOrgAccountingConfig({}).taxMode).toBe("flat");
+  });
+
+  it("supports jurisdiction mode when configured", () => {
+    expect(resolveOrgTaxMode({ taxMode: "jurisdiction" })).toBe("jurisdiction");
   });
 });
 

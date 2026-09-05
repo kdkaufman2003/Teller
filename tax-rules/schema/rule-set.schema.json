@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teller.app/tax/rule-set.schema.json",
+  "title": "TellerTaxRuleSet",
+  "type": "object",
+  "required": ["slug", "name", "version", "status", "effectiveFrom", "rules"],
+  "properties": {
+    "slug": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "active", "retired"]
+    },
+    "effectiveFrom": { "type": "string", "format": "date" },
+    "effectiveTo": { "type": ["string", "null"], "format": "date" },
+    "sourceDocumentation": { "type": "string" },
+    "jurisdictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["jurisdictionKey", "name"],
+        "properties": {
+          "jurisdictionKey": { "type": "string" },
+          "name": { "type": "string" },
+          "country": { "type": "string" },
+          "state": { "type": "string" },
+          "county": { "type": "string" },
+          "city": { "type": "string" }
+        }
+      }
+    },
+    "rates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["jurisdictionKey", "ratePercent", "effectiveFrom"],
+        "properties": {
+          "jurisdictionKey": { "type": "string" },
+          "ratePercent": { "type": "number" },
+          "rateType": { "type": "string" },
+          "effectiveFrom": { "type": "string", "format": "date" },
+          "effectiveTo": { "type": ["string", "null"], "format": "date" },
+          "sourceCitation": { "type": "string" }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["ruleKey", "priority", "conditions", "action"],
+        "properties": {
+          "ruleKey": { "type": "string" },
+          "priority": { "type": "integer" },
+          "conditions": {
+            "type": "object",
+            "properties": {
+              "all": { "type": "array" },
+              "any": { "type": "array" }
+            }
+          },
+          "action": {
+            "type": "object",
+            "required": ["treatment"],
+            "properties": {
+              "treatment": {
+                "type": "string",
+                "enum": ["taxable", "exempt", "non_taxable", "defer_to_manual"]
+              },
+              "jurisdictionKey": { "type": "string" },
+              "rateType": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

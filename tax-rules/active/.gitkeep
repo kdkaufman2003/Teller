@@ -1,0 +1,2 @@
+# Reviewed rule sets eligible for load.
+# Files here are still not used until status is "active" and npm run tax-rules:load is executed.

@@ -1,11 +1,15 @@
 /** Organization provisioning source — drives default modules and integrations. */
 export type OrganizationSource = "direct" | "hfac" | "partner";
 
+/** How an organization calculates sales tax on invoices. */
+export type TaxMode = "flat" | "jurisdiction";
+
 export type OrgAccountingConfig = {
   basis: "cash" | "accrual";
   fiscalYearStart: number;
   taxRate: number;
   collectTax: boolean;
+  taxMode: TaxMode;
 };
 
 const FISCAL_MONTH_LABELS = [
@@ -41,6 +45,13 @@ export function collectTaxEnabled(answers: Record<string, unknown> | null | unde
   return Number(answers.taxRate || 0) > 0;
 }
 
+export function resolveOrgTaxMode(
+  answers: Record<string, unknown> | null | undefined,
+): TaxMode {
+  const mode = answers?.taxMode;
+  return mode === "jurisdiction" ? "jurisdiction" : "flat";
+}
+
 export function resolveOrgTaxRate(answers: Record<string, unknown> | null | undefined): number {
   if (!collectTaxEnabled(answers)) return 0;
   return Math.max(0, Number(answers?.taxRate || 0));
@@ -58,6 +69,7 @@ export function readOrgAccountingConfig(
     fiscalYearStart: parseFiscalYearStart(answers?.fiscalYearStart),
     taxRate: resolveOrgTaxRate(answers),
     collectTax: collectTaxEnabled(answers),
+    taxMode: resolveOrgTaxMode(answers),
   };
 }
 

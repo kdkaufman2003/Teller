@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tax-rules:load": "node scripts/load-tax-rules.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

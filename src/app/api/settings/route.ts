@@ -7,7 +7,7 @@ import {
   resolveOrgTaxRate,
 } from "@/lib/org/config";
 
-const ACCOUNTING_ANSWER_KEYS = ["basis", "fiscalYearStart", "taxRate", "collectTax"] as const;
+const ACCOUNTING_ANSWER_KEYS = ["basis", "fiscalYearStart", "taxRate", "collectTax", "taxMode"] as const;
 
 export async function GET() {
   const ctx = await requireBooks();

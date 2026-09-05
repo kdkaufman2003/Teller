@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
-import { resolveOrgTaxRate } from "@/lib/org/config";
+import {
+  collectTaxEnabled,
+  readOrgAccountingConfig,
+  resolveOrgTaxRate,
+} from "@/lib/org/config";
 import { asNumber, addDaysISO, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
+import { buildTaxContextFromOrg } from "@/lib/tax/context";
+import { determineInvoiceTax, persistTaxDeterminations } from "@/lib/tax/determine";
+import type { TaxTransactionLine } from "@/lib/tax/types";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -91,10 +98,33 @@ export async function POST(request: Request) {
   });
 
   const subtotal = built.reduce((sum, line) => sum + line.amount, 0);
+  const accounting = readOrgAccountingConfig(session.settings?.answers);
   const orgTaxRate = resolveOrgTaxRate(session.settings?.answers);
-  const taxRate =
-    body.taxRate !== undefined ? asNumber(body.taxRate) : orgTaxRate;
-  const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+  const issueDate = body.issueDate || todayISO();
+
+  const taxLines: TaxTransactionLine[] = built.map((line, index) => ({
+    lineKey: String(index),
+    description: line.description,
+    amount: line.amount,
+    itemType: line.item_type,
+  }));
+
+  let tax = 0;
+  let taxDeterminations = null;
+
+  if (collectTaxEnabled(session.settings?.answers)) {
+    const taxResult = await determineInvoiceTax(supabase, {
+      mode: accounting.taxMode,
+      taxRatePercent:
+        body.taxRate !== undefined ? asNumber(body.taxRate) : orgTaxRate,
+      transactionDate: issueDate,
+      businessLocation: buildTaxContextFromOrg(session.organization ?? {}),
+      lines: taxLines,
+    });
+    tax = taxResult.tax;
+    taxDeterminations = taxResult.lines;
+  }
+
   const total = subtotal + tax;
 
   const { data: existing } = await supabase
@@ -107,7 +137,6 @@ export async function POST(request: Request) {
     (existing ?? []).map((row) => row.number),
   );
 
-  const issueDate = body.issueDate || todayISO();
   const { data: doc, error } = await supabase
     .from("teller_documents")
     .insert({
@@ -129,10 +158,20 @@ export async function POST(request: Request) {
 
   if (error || !doc) return jsonError(error?.message || "Could not create invoice", 500);
 
-  const { error: lineError } = await supabase.from("teller_document_lines").insert(
-    built.map((line) => ({ ...line, document_id: doc.id })),
-  );
+  const { data: insertedLines, error: lineError } = await supabase
+    .from("teller_document_lines")
+    .insert(built.map((line) => ({ ...line, document_id: doc.id })))
+    .select("id");
   if (lineError) return jsonError(lineError.message, 500);
+
+  if (taxDeterminations?.length) {
+    await persistTaxDeterminations(supabase, {
+      organizationId,
+      documentId: doc.id,
+      lineIds: (insertedLines ?? []).map((row) => row.id),
+      determinations: taxDeterminations,
+    });
+  }
 
   if (body.status === "open" || body.status === "paid") {
     await postInvoiceOpen(supabase, {
