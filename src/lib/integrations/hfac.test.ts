@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { billingExternalId, importSubscribersFromHfac, normalizeBillingEntry } from "./hfac";
+import {
+  billingExternalId,
+  billingEntryIsOpen,
+  buildBillingFeeFromEntry,
+  importSubscribersFromHfac,
+  normalizeBillingEntry,
+  paymentFeeRecorded,
+} from "./hfac";
 
 function mockSupabase(responses: {
   existing?: { id: string } | null;
@@ -90,6 +97,42 @@ describe("normalizeBillingEntry", () => {
         netReceivedCents: 8888,
       }).feeAmountCents,
     ).toBe(300);
+  });
+});
+
+describe("billing import helpers", () => {
+  it("treats pending HFAC rows as open invoices", () => {
+    expect(billingEntryIsOpen("pending")).toBe(true);
+    expect(billingEntryIsOpen("invoiced")).toBe(true);
+    expect(billingEntryIsOpen("paid")).toBe(false);
+  });
+
+  it("builds fee payload from HFAC stripe fields", () => {
+    expect(
+      buildBillingFeeFromEntry(
+        normalizeBillingEntry({
+          id: "entry-1",
+          companyId: "co-1",
+          date: "2026-03-01",
+          description: "Platform subscription",
+          amountCents: 25000,
+          status: "paid",
+          stripeInvoiceId: "in_abc",
+          stripeFeeCents: 755,
+          netReceivedCents: 24245,
+        }),
+        250,
+      ),
+    ).toEqual({
+      feeAmount: 7.55,
+      netAmount: 242.45,
+      processorName: "stripe",
+    });
+  });
+
+  it("detects when payment fees were already stored", () => {
+    expect(paymentFeeRecorded({ payment: { fee: 42.65 } })).toBe(true);
+    expect(paymentFeeRecorded({ payment: { gross: 1500 } })).toBe(false);
   });
 });
 

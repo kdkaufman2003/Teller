@@ -263,6 +263,95 @@ export async function postInvoicePaid(
   return entryId;
 }
 
+/** Backfill processor fees when a payment was previously recorded without fee split. */
+export async function reconcilePaymentProcessingFee(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    documentId: string;
+    issueDate: string;
+    number: string;
+    grossAmount: number;
+    feeAmount?: number | null;
+    netAmount?: number | null;
+    processorName?: string;
+    partyId: string | null;
+    jobId: string | null;
+  },
+) {
+  const { grossAmount, feeAmount, netAmount } = resolvePaymentAmounts({
+    grossAmount: input.grossAmount,
+    feeAmount: input.feeAmount,
+    netAmount: input.netAmount,
+  });
+  if (feeAmount <= 0.009) return null;
+
+  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
+  const feeAccount = paymentProcessingFeeAccount(accounts);
+  if (!cash || !feeAccount) {
+    throw new Error("Cash or payment processing fee account is missing");
+  }
+
+  const feeMemo = input.processorName
+    ? `${input.processorName} processing fee`
+    : "Payment processing fee";
+
+  const entryId = await postJournal(supabase, {
+    organizationId: input.organizationId,
+    entryDate: input.issueDate,
+    memo: `Adjust ${input.number} · ${feeMemo}`,
+    sourceKind: "invoice-payment-fee",
+    sourceId: input.documentId,
+    lines: [
+      {
+        account_id: feeAccount.id,
+        debit: feeAmount,
+        party_id: input.partyId,
+        job_id: input.jobId,
+        memo: feeMemo,
+      },
+      {
+        account_id: cash.id,
+        credit: feeAmount,
+        party_id: input.partyId,
+        job_id: input.jobId,
+        memo: "Fee withheld from deposit",
+      },
+    ],
+  });
+
+  const { data: existingDoc } = await supabase
+    .from("teller_documents")
+    .select("metadata")
+    .eq("id", input.documentId)
+    .maybeSingle();
+
+  const existingMetadata =
+    existingDoc?.metadata && typeof existingDoc.metadata === "object"
+      ? (existingDoc.metadata as Record<string, unknown>)
+      : {};
+
+  const { error } = await supabase
+    .from("teller_documents")
+    .update({
+      metadata: {
+        ...existingMetadata,
+        payment: {
+          gross: grossAmount,
+          net: netAmount,
+          fee: feeAmount,
+          processor: input.processorName ?? null,
+        },
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.documentId);
+
+  if (error) throw new Error(error.message);
+  return entryId;
+}
+
 export async function postExpense(
   supabase: SupabaseClient,
   input: {
