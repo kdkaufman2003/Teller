@@ -7,6 +7,7 @@ import {
   parseReportPeriod,
   reportPeriodRange,
 } from "@/lib/accounting/reports";
+import { parseFiscalYearStart } from "@/lib/org/config";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
 import { routes } from "@/lib/routes";
@@ -22,7 +23,8 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const period = parseReportPeriod(params.period);
-  const range = reportPeriodRange(period);
+  const fiscalYearStart = parseFiscalYearStart(session.settings?.answers?.fiscalYearStart);
+  const range = reportPeriodRange(period, new Date(), fiscalYearStart);
   const supabase = await createClient();
   const organizationId = session.organization.id;
 

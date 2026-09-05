@@ -1,4 +1,14 @@
 import { asNumber } from "@/lib/format";
+import {
+  fiscalQuarterIndex,
+  fiscalQuarterStartDate,
+  fiscalYearStartDate,
+  fiscalYearStartLabel,
+  parseAccountingBasis,
+  parseFiscalYearStart,
+} from "@/lib/org/config";
+
+export { parseAccountingBasis } from "@/lib/org/config";
 
 export type ReportPeriod = "month" | "quarter" | "ytd" | "all";
 
@@ -71,10 +81,15 @@ export type SalesSummary = {
   topCustomers: SalesCustomerRow[];
 };
 
-export function reportPeriodRange(period: ReportPeriod, today = new Date()): DateRange {
+export function reportPeriodRange(
+  period: ReportPeriod,
+  today = new Date(),
+  fiscalYearStartMonth = 1,
+): DateRange {
   const year = today.getFullYear();
   const month = today.getMonth();
   const end = formatISO(today);
+  const fyStart = parseFiscalYearStart(fiscalYearStartMonth);
 
   if (period === "all") {
     return { start: null, end: null, label: "All time" };
@@ -87,14 +102,33 @@ export function reportPeriodRange(period: ReportPeriod, today = new Date()): Dat
   }
 
   if (period === "quarter") {
-    const quarterStartMonth = Math.floor(month / 3) * 3;
-    const start = formatISO(new Date(year, quarterStartMonth, 1));
-    const quarter = Math.floor(month / 3) + 1;
-    return { start, end, label: `Q${quarter} ${year}` };
+    if (fyStart === 1) {
+      const quarterStartMonth = Math.floor(month / 3) * 3;
+      const start = formatISO(new Date(year, quarterStartMonth, 1));
+      const quarter = Math.floor(month / 3) + 1;
+      return { start, end, label: `Q${quarter} ${year}` };
+    }
+    const startDate = fiscalQuarterStartDate(today, fyStart);
+    const quarter = fiscalQuarterIndex(today, fyStart) + 1;
+    const fyYear = fiscalYearStartDate(today, fyStart).getFullYear();
+    return {
+      start: formatISO(startDate),
+      end,
+      label: `FQ${quarter} ${fyYear}`,
+    };
   }
 
-  const start = `${year}-01-01`;
-  return { start, end, label: `Year to date ${year}` };
+  if (fyStart === 1) {
+    const start = `${year}-01-01`;
+    return { start, end, label: `Year to date ${year}` };
+  }
+
+  const startDate = fiscalYearStartDate(today, fyStart);
+  return {
+    start: formatISO(startDate),
+    end,
+    label: `Fiscal YTD (${fiscalYearStartLabel(fyStart)} ${startDate.getFullYear()})`,
+  };
 }
 
 function formatISO(date: Date): string {
@@ -229,9 +263,6 @@ export function buildProfitAndLossForBasis(
   return buildProfitAndLoss(lines, accounts);
 }
 
-export function parseAccountingBasis(value: unknown): AccountingBasis {
-  return value === "cash" ? "cash" : "accrual";
-}
 
 type InvoiceRow = {
   status: string;

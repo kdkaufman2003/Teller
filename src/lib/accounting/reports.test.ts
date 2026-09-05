@@ -110,6 +110,13 @@ describe("reportPeriodRange", () => {
     expect(range.start).toBe("2026-01-01");
     expect(range.end).toBe("2026-09-04");
   });
+
+  it("uses fiscal year start for YTD when not January", () => {
+    const range = reportPeriodRange("ytd", new Date("2026-05-15"), 4);
+    expect(range.start).toBe("2026-04-01");
+    expect(range.end).toBe("2026-05-15");
+    expect(range.label).toMatch(/Fiscal YTD/i);
+  });
 });
 
 describe("buildCashBasisProfitAndLoss", () => {

@@ -8,7 +8,11 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 |------|--------|----------|
 | Multi-tenant org model | ✓ | `teller_organizations`, all `teller_*` tables |
 | Row Level Security | ✓ | `supabase/migrations/001_teller_core.sql` |
-| Double-entry ledger | ✓ | `teller_journal_entries`, `post.ts`, `assertBalanced()` |
+| Double-entry ledger | ✓ | `teller_journal_entries`, `post.ts`, `assertBalanced()`, `teller_post_journal` RPC |
+| Audit log | ✓ (Phase 1) | `teller_audit_events`, `audit.ts` |
+| Organization configuration | ✓ (Phase 2) | `006_org_configuration.sql`, `/api/settings`, `org/config.ts` |
+| Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
+| Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
 | Session-scoped API access | ✓ | `requireBooks()`, `getSessionContext()` |
 | HFAC optional integration | ✓ | `src/lib/integrations/hfac*.ts`, webhook routes |
@@ -21,19 +25,18 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Area | Gap | Next step |
 |------|-----|-----------|
-| Role enforcement | RLS allows all members equal write access | Add role checks in API + policies |
+| Role enforcement | ✓ (Phase 1) | `requireWriteBooks()`, RLS `teller_can_write_books()`, role trigger |
 | HFAC integration | Manual sync button + webhooks; not real-time for all events | Event-driven hooks in HFAC on Stripe sync |
-| Immutability | Posted entries editable via RLS | Period locks, restrict UPDATE on posted entries |
+| Immutability | Journal UPDATE/DELETE blocked; period close not yet | Accounting period close / lock |
+| Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |
-| Tests | HFAC import + subscriber tests | Add tenant isolation + balance tests |
+| Tests | Balance, reversal, roles, org config, HFAC import | Tenant isolation integration tests |
 
 ## Not started (spec-aligned backlog)
 
 | Priority | Item |
 |----------|------|
-| High | `teller_audit_events` append-only audit log |
 | High | Accounting period close / lock |
-| High | Reversal and void journal workflow |
 | High | Data export (GL CSV, transaction export) |
 | Medium | Granular permissions beyond four roles |
 | Medium | MFA requirement for owner/admin |

@@ -10,6 +10,7 @@ type Lookup = {
   jobs: { id: string; job_number: string; name: string }[];
   settings: { modules?: string[]; labels?: Record<string, string>; answers?: Record<string, unknown> } | null;
   taxRate: number;
+  collectTax: boolean;
 };
 
 type Line = {
@@ -39,6 +40,7 @@ export function InvoiceForm() {
   const [dueDate, setDueDate] = useState(addDaysISO(30));
   const [memo, setMemo] = useState("");
   const [taxRate, setTaxRate] = useState(0);
+  const [collectTax, setCollectTax] = useState(true);
   const [lines, setLines] = useState<Line[]>([
     { description: "", quantity: "1", unit_price: "", item_type: "equipment" },
   ]);
@@ -50,9 +52,10 @@ export function InvoiceForm() {
       .then((res) => res.json())
       .then((data: Lookup) => {
         setLookups(data);
-        setTaxRate(data.taxRate || 0);
+        setCollectTax(data.collectTax !== false);
+        setTaxRate(data.collectTax === false ? 0 : data.taxRate || 0);
       })
-      .catch(() => setLookups({ customers: [], jobs: [], settings: null, taxRate: 0 }));
+      .catch(() => setLookups({ customers: [], jobs: [], settings: null, taxRate: 0, collectTax: false }));
   }, []);
 
   const subtotal = useMemo(
@@ -63,7 +66,7 @@ export function InvoiceForm() {
       ),
     [lines],
   );
-  const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+  const tax = collectTax ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((current) =>
@@ -219,22 +222,26 @@ export function InvoiceForm() {
           <textarea value={memo} onChange={(event) => setMemo(event.target.value)} rows={3} />
         </label>
         <div className="card space-y-2 p-4 font-tabular">
-          <label className="flex items-center justify-between gap-3 text-sm">
-            <span>Tax rate %</span>
-            <input
-              className="w-24"
-              value={taxRate}
-              onChange={(event) => setTaxRate(Number(event.target.value))}
-            />
-          </label>
+          {collectTax ? (
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>Tax rate %</span>
+              <input
+                className="w-24"
+                value={taxRate}
+                onChange={(event) => setTaxRate(Number(event.target.value))}
+              />
+            </label>
+          ) : null}
           <p className="flex justify-between">
             <span>Subtotal</span>
             <span>{money(subtotal)}</span>
           </p>
-          <p className="flex justify-between">
-            <span>Tax</span>
-            <span>{money(tax)}</span>
-          </p>
+          {collectTax ? (
+            <p className="flex justify-between">
+              <span>Tax</span>
+              <span>{money(tax)}</span>
+            </p>
+          ) : null}
           <p className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span>{money(subtotal + tax)}</span>

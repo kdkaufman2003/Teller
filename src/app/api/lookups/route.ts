@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveOrgTaxRate } from "@/lib/org/config";
 import { requireBooks } from "@/lib/api";
 
 export async function GET() {
@@ -38,6 +39,7 @@ export async function GET() {
     jobs: jobs.data ?? [],
     accounts: accounts.data ?? [],
     settings: session.settings,
-    taxRate: Number(session.settings?.answers?.taxRate || 0),
+    taxRate: resolveOrgTaxRate(session.settings?.answers),
+    collectTax: Boolean(session.settings?.answers?.collectTax !== false),
   });
 }

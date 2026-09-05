@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   applyPartnerSetupDefaults,
-  attachPartner,
-  detachPartner,
   ensureHfacModule,
   partnerIdFromAnswers,
 } from "@/lib/partners/attachment";

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { IndustryAnswers } from "@/lib/industries/types";
 import { HFAC_INTEGRATION_MODULE } from "@/lib/integrations/constants";
+import { organizationSourceFromPartner } from "@/lib/org/config";
 import { getPartner } from "@/lib/partners/registry";
 import type { PartnerId } from "@/lib/partners/types";
 
@@ -56,7 +57,11 @@ export async function attachPartner(
 ) {
   const { error: orgError } = await supabase
     .from("teller_organizations")
-    .update({ partner_id: partnerId, updated_at: new Date().toISOString() })
+    .update({
+      partner_id: partnerId,
+      organization_source: organizationSourceFromPartner(partnerId),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", organizationId);
   if (orgError) throw new Error(orgError.message);
 
@@ -102,7 +107,11 @@ export async function attachPartner(
 export async function detachPartner(supabase: SupabaseClient, organizationId: string) {
   const { error: orgError } = await supabase
     .from("teller_organizations")
-    .update({ partner_id: null, updated_at: new Date().toISOString() })
+    .update({
+      partner_id: null,
+      organization_source: "direct",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", organizationId);
   if (orgError) throw new Error(orgError.message);
 

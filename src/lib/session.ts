@@ -28,7 +28,9 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     const [{ data: org }, { data: industry }] = await Promise.all([
       supabase
         .from("teller_organizations")
-        .select("id, name, legal_name, industry_id, partner_id, setup_completed_at")
+        .select(
+          "id, name, legal_name, industry_id, partner_id, organization_source, phone, timezone, currency, address_line1, address_line2, city, state, postal_code, country, setup_completed_at",
+        )
         .eq("id", profile.organization_id)
         .maybeSingle(),
       supabase

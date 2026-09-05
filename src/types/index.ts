@@ -94,13 +94,40 @@ export type TellerDocumentLine = {
   sort_order: number;
 };
 
+export type OrganizationSource = "direct" | "hfac" | "partner";
+
 export type TellerOrganization = {
   id: string;
   name: string;
   legal_name: string;
   industry_id: string;
   partner_id: string | null;
+  organization_source: OrganizationSource;
+  phone: string;
+  timezone: string;
+  currency: string;
+  address_line1: string;
+  address_line2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
   setup_completed_at: string | null;
+};
+
+export type TellerLocation = {
+  id: string;
+  organization_id: string;
+  name: string;
+  is_primary: boolean;
+  address_line1: string;
+  address_line2: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type TellerSettings = {
