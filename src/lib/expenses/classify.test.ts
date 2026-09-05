@@ -24,6 +24,14 @@ describe("classifyExpenseText", () => {
     expect(result.accountCode).toBe("6200");
   });
 
+  it("classifies Google Workspace as software", () => {
+    const result = classifyExpenseText(ACCOUNTS, {
+      vendorName: "Google",
+      description: "Google Workspace Business Standard",
+    });
+    expect(result.accountCode).toBe("6100");
+  });
+
   it("falls back to other expense", () => {
     const result = classifyExpenseText(ACCOUNTS, { vendorName: "Unknown Vendor XYZ" });
     expect(result.accountCode).toBe("6900");

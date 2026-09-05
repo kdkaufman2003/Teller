@@ -102,17 +102,34 @@ export function extractVendorFromReceiptText(text: string): string {
 
 export function extractDescriptionFromReceiptText(text: string): string {
   const vendor = extractVendorFromReceiptText(text);
-  const itemLine = text
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find(
-      (line) =>
-        line.length > 4 &&
-        line !== vendor &&
-        !/^(total|subtotal|tax|amount|balance|change|cash|visa|mastercard|amex)/i.test(line) &&
-        !/^\d{1,2}[\/-]\d{1,2}/.test(line),
-    );
+    .filter((line) => line.length > 4);
+
+  const productLine = lines.find(
+    (line) =>
+      line !== vendor &&
+      /\b(workspace|subscription|business standard|google workspace|email|license|monthly|annual plan)\b/i.test(
+        line,
+      ),
+  );
+  if (productLine) return productLine.slice(0, 120);
+
+  const itemLine = lines.find(
+    (line) =>
+      line !== vendor &&
+      !/^(total|subtotal|tax|amount|balance|change|cash|visa|mastercard|amex)/i.test(line) &&
+      !/^\d{1,2}[\/-]\d{1,2}/.test(line),
+  );
   return itemLine?.slice(0, 120) ?? "";
+}
+
+/** Avoid using opaque numeric upload filenames as vendor names. */
+export function vendorFromFileName(fileName: string): string {
+  const base = fileName.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").trim();
+  if (!base || /^\d+$/.test(base)) return "";
+  return base;
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
@@ -246,7 +263,8 @@ function classifyFromTextRules(
   text: string,
   fileName: string,
 ): ReceiptClassification {
-  const vendorName = extractVendorFromReceiptText(text) || fileName.replace(/\.[^.]+$/, "");
+  const vendorName =
+    extractVendorFromReceiptText(text) || vendorFromFileName(fileName);
   const amount = extractTotalFromReceiptText(text);
   const description = extractDescriptionFromReceiptText(text);
   const base = classifyExpenseText(accounts, {
@@ -263,6 +281,34 @@ function classifyFromTextRules(
     source: "rules",
     reason: amount != null ? "Read from receipt text" : base.reason,
     confidence: amount != null && base.confidence !== "low" ? "medium" : base.confidence,
+  };
+}
+
+function unreadableReceiptFallback(
+  accounts: ExpenseAccountOption[],
+  aiEnabled: boolean,
+  kind: "pdf" | "image" | "unsupported",
+): { classification: ReceiptClassification; notice: string } {
+  const classification = classifyExpenseText(accounts, {});
+  const notice =
+    kind === "unsupported"
+      ? "Unsupported receipt format — enter details manually."
+      : aiEnabled
+        ? `Could not read this ${kind === "pdf" ? "PDF" : "photo"} automatically — enter vendor, amount, and description manually.`
+        : "Could not read this receipt automatically. Enter vendor, amount, and description manually. Add OPENAI_API_KEY on Vercel for smarter reading.";
+
+  return {
+    classification: {
+      ...classification,
+      vendorName: "",
+      memo: "",
+      amount: null,
+      issueDate: null,
+      confidence: "low",
+      reason: "Review the category",
+      source: "rules",
+    },
+    notice,
   };
 }
 
@@ -287,7 +333,12 @@ export type ReceiptReadMethod = "vision" | "pdf-text" | "rules";
 export async function classifyReceipt(
   accounts: ExpenseAccountOption[],
   input: { buffer: Buffer; mimeType: string; fileName: string },
-): Promise<{ classification: ReceiptClassification; readMethod: ReceiptReadMethod; aiEnabled: boolean }> {
+): Promise<{
+  classification: ReceiptClassification;
+  readMethod: ReceiptReadMethod;
+  aiEnabled: boolean;
+  notice?: string;
+}> {
   const aiEnabled = Boolean(process.env.OPENAI_API_KEY?.trim());
   const fileName = input.fileName || "receipt";
 
@@ -310,15 +361,12 @@ export async function classifyReceipt(
         aiEnabled,
       };
     }
+    const fallback = unreadableReceiptFallback(accounts, aiEnabled, "pdf");
     return {
-      classification: classifyExpenseText(accounts, {
-        vendorName: fileName.replace(/\.[^.]+$/, ""),
-        memo: aiEnabled
-          ? "Could not read this PDF — enter amount and vendor manually"
-          : "Set OPENAI_API_KEY to read PDF receipts automatically",
-      }),
+      classification: fallback.classification,
       readMethod: "rules",
       aiEnabled,
+      notice: fallback.notice,
     };
   }
 
@@ -337,24 +385,20 @@ export async function classifyReceipt(
         /* fall through */
       }
     }
+    const fallback = unreadableReceiptFallback(accounts, aiEnabled, "image");
     return {
-      classification: classifyExpenseText(accounts, {
-        vendorName: fileName.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
-        memo: aiEnabled
-          ? "Could not read this image — enter details manually"
-          : "Set OPENAI_API_KEY on Vercel to read receipt photos automatically",
-      }),
+      classification: fallback.classification,
       readMethod: "rules",
       aiEnabled,
+      notice: fallback.notice,
     };
   }
 
+  const fallback = unreadableReceiptFallback(accounts, aiEnabled, "unsupported");
   return {
-    classification: classifyExpenseText(accounts, {
-      vendorName: fileName,
-      memo: "Unsupported receipt format",
-    }),
+    classification: fallback.classification,
     readMethod: "rules",
     aiEnabled,
+    notice: fallback.notice,
   };
 }

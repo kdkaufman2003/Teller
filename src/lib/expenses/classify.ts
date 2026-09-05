@@ -27,6 +27,8 @@ const KEYWORD_RULES: { pattern: RegExp; code: string; reason: string }[] = [
   { pattern: /\b(rent|lease)\b/i, code: "6300", reason: "Rent" },
   { pattern: /\b(insurance|progressive|state farm|allstate)\b/i, code: "6400", reason: "Insurance" },
   { pattern: /\b(google ads|facebook ads|marketing|advertis)\b/i, code: "6500", reason: "Marketing" },
+  { pattern: /\b(google workspace|google cloud|google llc|gmail)\b/i, code: "6100", reason: "Google software/services" },
+  { pattern: /\b(google)\b/i, code: "6100", reason: "Google services" },
   { pattern: /\b(payroll|gusto|adp|paychex)\b/i, code: "6000", reason: "Payroll" },
   { pattern: /\b(restaurant|coffee|starbucks|lunch|meal|doordash|uber eats)\b/i, code: "6600", reason: "Meals & office" },
   { pattern: /\b(software|saas|subscription|hosting|vercel|aws)\b/i, code: "6100", reason: "Software/tools" },

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { classification, readMethod, aiEnabled } = await classifyReceipt(accounts, {
+  const { classification, readMethod, aiEnabled, notice } = await classifyReceipt(accounts, {
     buffer,
     mimeType: file.type,
     fileName: file.name,
@@ -67,5 +67,6 @@ export async function POST(request: Request) {
     classification,
     readMethod,
     aiEnabled,
+    notice,
   });
 }

@@ -37,6 +37,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const [attachmentPath, setAttachmentPath] = useState<string | null>(null);
   const [classification, setClassification] = useState<Classification | null>(null);
   const [readMethod, setReadMethod] = useState<ReadMethod | null>(null);
+  const [notice, setNotice] = useState("");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
@@ -63,6 +64,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
     setError("");
     setClassification(null);
     setReadMethod(null);
+    setNotice("");
     setAttachmentPath(null);
     try {
       const form = new FormData();
@@ -77,6 +79,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
         classification?: Classification;
         readMethod?: ReadMethod;
         aiEnabled?: boolean;
+        notice?: string;
       };
       if (!response.ok) throw new Error(payload.error || "Could not analyze receipt");
 
@@ -86,9 +89,10 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       setAttachmentPath(payload.attachmentPath ?? null);
       setClassification(result);
       setReadMethod(payload.readMethod ?? null);
+      setNotice(payload.notice?.trim() || "");
       setAiEnabled(Boolean(payload.aiEnabled));
       setVendorName(result.vendorName);
-      setMemo(result.memo);
+      setMemo(result.memo || "");
       if (result.amount != null && Number.isFinite(result.amount)) {
         setAmount(String(result.amount));
       }
@@ -156,6 +160,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       setAttachmentPath(null);
       setClassification(null);
       setReadMethod(null);
+      setNotice("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");
@@ -230,9 +235,10 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
                     ? "Read from photo"
                     : readMethod === "pdf-text"
                       ? "Read from PDF"
-                      : aiEnabled
-                        ? "Could not auto-read — review fields"
-                        : "Add OPENAI_API_KEY on Vercel to auto-read receipts"}
+                      : notice ||
+                        (aiEnabled
+                          ? "Could not auto-read — review fields"
+                          : "Add OPENAI_API_KEY on Vercel to auto-read receipts")}
                 </p>
               </div>
             ) : null}
