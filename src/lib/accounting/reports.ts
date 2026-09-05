@@ -23,6 +23,7 @@ export type AccountRow = {
   code: string;
   name: string;
   type: string;
+  subtype?: string;
 };
 
 export type JournalLineRow = {

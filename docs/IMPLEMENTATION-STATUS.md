@@ -17,6 +17,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Jurisdiction tax engine | ✓ (Phase 6) | `008_tax_engine.sql`, `src/lib/tax/`, `tax-rules/` spec + loader; no MO/KS rules shipped |
 | Banking adapter (read-only) | ✓ (Phase 7) | `009_banking.sql`, `src/lib/banking/`, Plaid Link, transaction import + match suggestions |
 | Accounting health engine | ✓ (Phase 8) | `src/lib/health/`, dashboard score + needs-attention list, `/api/health` |
+| Advanced reporting | ✓ (Phase 9) | `financial-reports.ts`, balance sheet, cash flow, AR/AP aging tabs on `/app/reports` |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
@@ -47,7 +48,6 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Priority | Item |
 |----------|------|
 | High | Accounting period close / lock |
-| High | Advanced reporting (balance sheet, cash flow, AR/AP aging) |
 | Medium | Granular permissions beyond four roles |
 | Medium | MFA requirement for owner/admin |
 | Medium | Rate limiting on auth + webhooks |
