@@ -18,6 +18,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Banking adapter (read-only) | ✓ (Phase 7) | `009_banking.sql`, `src/lib/banking/`, Plaid Link, transaction import + match suggestions |
 | Accounting health engine | ✓ (Phase 8) | `src/lib/health/`, dashboard score + needs-attention list, `/api/health` |
 | Advanced reporting | ✓ (Phase 9) | `financial-reports.ts`, balance sheet, cash flow, AR/AP aging tabs on `/app/reports` |
+| Advanced accounting | ✓ (Phase 10) | `010_accounting_periods.sql`, period close, CPA mode, CSV exports, manual adjustments on `/app/accounting` |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
@@ -38,7 +39,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Jurisdiction tax rules | Engine + loader ready; `taxMode: jurisdiction` optional | Authoritative MO/KS rule specs after professional review |
 | Bank reconciliation UI | Import + match suggestions; confirm/ignore | Statement balance reconciliation, period close |
 | Health engine | Score + attention on dashboard | Anomaly detection, period-close gates |
-| Immutability | Journal UPDATE/DELETE blocked; period close not yet | Accounting period close / lock |
+| Immutability | Journal UPDATE/DELETE blocked; period close locks posting dates | Reopen workflow + adjustment audit trail |
 | Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |
 | Tests | Balance, reversal, roles, org config, HFAC import | Tenant isolation integration tests |
@@ -47,7 +48,6 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Priority | Item |
 |----------|------|
-| High | Accounting period close / lock |
 | Medium | Granular permissions beyond four roles |
 | Medium | MFA requirement for owner/admin |
 | Medium | Rate limiting on auth + webhooks |

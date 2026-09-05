@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ACCOUNTING_BASIS_OPTIONS } from "@/lib/industries/accounting-basis";
+import { parseCpaMode } from "@/lib/accounting/cpa";
 import { fiscalYearStartLabel } from "@/lib/org/config";
 import type { TellerOrganization } from "@/types";
 
@@ -54,6 +55,7 @@ export function SettingsForm({
       initialAnswers.collectTax !== "no",
   );
   const [taxRate, setTaxRate] = useState(String(initialAnswers.taxRate ?? "0"));
+  const [cpaMode, setCpaMode] = useState(parseCpaMode(initialAnswers.cpaMode));
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -79,6 +81,7 @@ export function SettingsForm({
         initialAnswers.collectTax !== "no",
     );
     setTaxRate(String(initialAnswers.taxRate ?? "0"));
+    setCpaMode(parseCpaMode(initialAnswers.cpaMode));
   }, [initialOrganization, initialAnswers]);
 
   async function save(event: React.FormEvent) {
@@ -97,6 +100,7 @@ export function SettingsForm({
             fiscalYearStart,
             collectTax,
             taxRate: collectTax ? Number(taxRate) || 0 : 0,
+            cpaMode,
           },
         }),
       });
@@ -263,6 +267,16 @@ export function SettingsForm({
               />
             </label>
           ) : null}
+          <label className="flex items-center gap-2 text-sm md:col-span-2">
+            <input
+              type="checkbox"
+              checked={cpaMode}
+              onChange={(event) => setCpaMode(event.target.checked)}
+            />
+            <span>
+              CPA mode — allow viewer accounts to export books for outside accountants
+            </span>
+          </label>
         </div>
       </section>
 

@@ -7,7 +7,14 @@ import {
   resolveOrgTaxRate,
 } from "@/lib/org/config";
 
-const ACCOUNTING_ANSWER_KEYS = ["basis", "fiscalYearStart", "taxRate", "collectTax", "taxMode"] as const;
+const ACCOUNTING_ANSWER_KEYS = [
+  "basis",
+  "fiscalYearStart",
+  "taxRate",
+  "collectTax",
+  "taxMode",
+  "cpaMode",
+] as const;
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -122,6 +129,12 @@ export async function PATCH(request: Request) {
         nextAnswers.collectTax === true ||
         nextAnswers.collectTax === "true" ||
         nextAnswers.collectTax === "yes";
+    }
+    if (nextAnswers.cpaMode !== undefined) {
+      nextAnswers.cpaMode =
+        nextAnswers.cpaMode === true ||
+        nextAnswers.cpaMode === "true" ||
+        nextAnswers.cpaMode === "yes";
     }
 
     const { error } = await supabase

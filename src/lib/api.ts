@@ -17,6 +17,17 @@ export async function requireBooks() {
   return { session, supabase, organizationId: session.organization.id };
 }
 
+/** Requires owner or admin (period close, CPA settings). */
+export async function requireAdminBooks() {
+  const ctx = await requireBooks();
+  if ("error" in ctx && ctx.error) return ctx;
+  const role = ctx.session.profile?.role;
+  if (role !== "owner" && role !== "admin") {
+    return { error: jsonError("Only owners and admins can perform this action", 403) as NextResponse };
+  }
+  return ctx;
+}
+
 /** Requires an authenticated org member who can change books (not viewer). */
 export async function requireWriteBooks() {
   const ctx = await requireBooks();

@@ -3,12 +3,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type AuditAction =
   | "journal.posted"
   | "journal.reversed"
+  | "journal.adjustment"
   | "invoice.opened"
   | "invoice.paid"
   | "invoice.partial_payment"
   | "invoice.voided"
   | "expense.posted"
-  | "settings.updated";
+  | "settings.updated"
+  | "period.closed"
+  | "period.reopened"
+  | "data.exported";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,
