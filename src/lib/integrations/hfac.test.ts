@@ -5,6 +5,7 @@ import {
   billingEntryIsVoid,
   buildBillingFeeFromEntry,
   importSubscribersFromHfac,
+  isHfacBillingExternalId,
   normalizeBillingEntry,
   paymentFeeRecorded,
 } from "./hfac";
@@ -140,6 +141,12 @@ describe("billing import helpers", () => {
   it("detects when payment fees were already stored", () => {
     expect(paymentFeeRecorded({ payment: { fee: 42.65 } })).toBe(true);
     expect(paymentFeeRecorded({ payment: { gross: 1500 } })).toBe(false);
+  });
+
+  it("identifies HFAC billing external ids", () => {
+    expect(isHfacBillingExternalId("stripe-invoice:in_abc")).toBe(true);
+    expect(isHfacBillingExternalId("billing:co-1:entry-1")).toBe(true);
+    expect(isHfacBillingExternalId("deal-123")).toBe(false);
   });
 });
 

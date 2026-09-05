@@ -642,6 +642,47 @@ export function billingExternalId(entry: Pick<HfacBillingEntry, "id" | "companyI
   return `billing:${entry.companyId}:${entry.id}`;
 }
 
+export function isHfacBillingExternalId(externalId: string | null | undefined): boolean {
+  if (!externalId) return false;
+  return externalId.startsWith("stripe-invoice:") || externalId.startsWith("billing:");
+}
+
+/** Void HFAC billing invoices that no longer exist in the HFAC ledger snapshot. */
+export async function reconcileRemovedBillingInvoices(
+  supabase: SupabaseClient,
+  organizationId: string,
+  activeExternalIds: string[],
+  voidDate = new Date().toISOString().slice(0, 10),
+) {
+  const active = new Set(activeExternalIds);
+  const { data: invoices, error } = await supabase
+    .from("teller_documents")
+    .select("id, number, status, posted_entry_id, external_id")
+    .eq("organization_id", organizationId)
+    .eq("kind", "invoice")
+    .in("external_source", [...LEGACY_HFAC_EXTERNAL_SOURCES])
+    .neq("status", "void");
+
+  if (error) throw new Error(error.message);
+
+  let voided = 0;
+  for (const invoice of invoices ?? []) {
+    const externalId = invoice.external_id as string | null;
+    if (!isHfacBillingExternalId(externalId)) continue;
+    if (active.has(externalId!)) continue;
+
+    await voidBillingInvoiceFromHfac(
+      supabase,
+      organizationId,
+      invoice as BillingInvoiceRow,
+      voidDate,
+    );
+    voided += 1;
+  }
+
+  return voided;
+}
+
 type BillingInvoiceRow = {
   id: string;
   number: string;
