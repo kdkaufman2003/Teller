@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { nextNumber } from "@/lib/accounting/accounts";
 import { asNumber } from "@/lib/format";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -31,7 +31,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId } = ctx;
   const body = (await request.json()) as {

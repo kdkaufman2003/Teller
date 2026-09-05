@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 import { attachPartner, detachPartner } from "@/lib/partners/attachment";
 import { getHfacPlatformUrl, getHfacWebhookUrl, getHfacWebhookUrls, getPartner, getTellerPublicUrl } from "@/lib/partners/registry";
 import { hasServiceRole } from "@/lib/supabase/admin";
@@ -42,7 +42,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId } = ctx;
 

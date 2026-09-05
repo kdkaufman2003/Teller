@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireWriteBooks } from "@/lib/api";
 
 /** Bulk DB sync removed — Teller and Hassle Free AC use separate Supabase projects. */
 export async function POST() {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
 
   return jsonError(

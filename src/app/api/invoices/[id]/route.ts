@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
+import { postInvoiceOpen, postInvoicePaid, voidInvoice } from "@/lib/accounting/post";
 import { asNumber } from "@/lib/format";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,9 +30,9 @@ export async function GET(_request: Request, { params }: Params) {
 }
 
 export async function POST(request: Request, { params }: Params) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as { action?: "open" | "paid" | "void" };
 
@@ -45,10 +45,29 @@ export async function POST(request: Request, { params }: Params) {
   if (error || !invoice) return jsonError("Invoice not found", 404);
 
   if (body.action === "void") {
-    await supabase
-      .from("teller_documents")
-      .update({ status: "void", updated_at: new Date().toISOString() })
-      .eq("id", id);
+    if (invoice.status === "void") {
+      return NextResponse.json({ ok: true, alreadyVoid: true });
+    }
+    if (invoice.status === "draft") {
+      await supabase
+        .from("teller_documents")
+        .update({ status: "void", updated_at: new Date().toISOString() })
+        .eq("id", id);
+      return NextResponse.json({ ok: true });
+    }
+    try {
+      await voidInvoice(supabase, {
+        organizationId,
+        documentId: id,
+        number: invoice.number,
+        voidDate: new Date().toISOString().slice(0, 10),
+        postedEntryId: invoice.posted_entry_id,
+        actorId: session.userId,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not void invoice";
+      return jsonError(message, 400);
+    }
     return NextResponse.json({ ok: true });
   }
 

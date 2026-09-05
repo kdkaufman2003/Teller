@@ -7,7 +7,7 @@ import {
   roundMoney,
 } from "@/lib/expenses/classify";
 import { asNumber, todayISO } from "@/lib/format";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 type ExpenseType = "receipt" | "mileage" | "manual";
 
@@ -40,7 +40,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId } = ctx;
   const body = (await request.json()) as {

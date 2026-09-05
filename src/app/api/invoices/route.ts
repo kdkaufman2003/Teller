@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
+import { resolveOrgTaxRate } from "@/lib/org/config";
 import { asNumber, addDaysISO, todayISO } from "@/lib/format";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -40,9 +41,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, session } = ctx;
 
   const body = (await request.json()) as {
     partyId?: string;
@@ -90,7 +91,9 @@ export async function POST(request: Request) {
   });
 
   const subtotal = built.reduce((sum, line) => sum + line.amount, 0);
-  const taxRate = asNumber(body.taxRate);
+  const orgTaxRate = resolveOrgTaxRate(session.settings?.answers);
+  const taxRate =
+    body.taxRate !== undefined ? asNumber(body.taxRate) : orgTaxRate;
   const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
   const total = subtotal + tax;
 

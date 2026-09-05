@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireBooks } from "@/lib/api";
+import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 import {
   classifyReceipt,
   isAllowedReceiptMime,
@@ -9,7 +9,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId } = ctx;
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
+import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import {
   buildInvoicePaymentLines,
@@ -26,6 +27,17 @@ export function assertBalanced(lines: JournalLineInput[]) {
   }
 }
 
+function journalLinesPayload(lines: JournalLineInput[]) {
+  return lines.map((line) => ({
+    account_id: line.account_id,
+    debit: asNumber(line.debit),
+    credit: asNumber(line.credit),
+    party_id: line.party_id ?? null,
+    job_id: line.job_id ?? null,
+    memo: line.memo ?? "",
+  }));
+}
+
 export async function postJournal(
   supabase: SupabaseClient,
   input: {
@@ -34,44 +46,166 @@ export async function postJournal(
     memo: string;
     sourceKind?: string;
     sourceId?: string;
+    reversesEntryId?: string;
     lines: JournalLineInput[];
+    actorId?: string | null;
+    auditAction?: "journal.posted" | "journal.reversed";
   },
 ) {
   assertBalanced(input.lines);
 
-  const { data: entry, error: entryError } = await supabase
-    .from("teller_journal_entries")
-    .insert({
-      organization_id: input.organizationId,
-      entry_date: input.entryDate,
+  const { data: entryId, error } = await supabase.rpc("teller_post_journal", {
+    p_organization_id: input.organizationId,
+    p_entry_date: input.entryDate,
+    p_memo: input.memo,
+    p_source_kind: input.sourceKind ?? null,
+    p_source_id: input.sourceId ?? null,
+    p_reverses_entry_id: input.reversesEntryId ?? null,
+    p_lines: journalLinesPayload(input.lines),
+  });
+
+  if (error || !entryId) {
+    throw new Error(error?.message || "Could not create journal entry");
+  }
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: input.auditAction ?? "journal.posted",
+    resourceKind: "journal_entry",
+    resourceId: entryId as string,
+    metadata: {
       memo: input.memo,
-      source_kind: input.sourceKind ?? null,
-      source_id: input.sourceId ?? null,
+      sourceKind: input.sourceKind ?? null,
+      sourceId: input.sourceId ?? null,
+      reversesEntryId: input.reversesEntryId ?? null,
+      lineCount: input.lines.length,
+    },
+  });
+
+  return entryId as string;
+}
+
+type JournalLineRow = {
+  account_id: string;
+  debit: number;
+  credit: number;
+  party_id: string | null;
+  job_id: string | null;
+  memo: string;
+};
+
+export function buildReversalLines(lines: JournalLineRow[]): JournalLineInput[] {
+  return lines.map((line) => ({
+    account_id: line.account_id,
+    debit: asNumber(line.credit),
+    credit: asNumber(line.debit),
+    party_id: line.party_id,
+    job_id: line.job_id,
+    memo: line.memo ? `Reversal: ${line.memo}` : "Reversal",
+  }));
+}
+
+export async function reverseJournalEntry(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    entryId: string;
+    entryDate: string;
+    memo: string;
+    sourceId?: string;
+    actorId?: string | null;
+  },
+) {
+  const { data: lines, error: linesError } = await supabase
+    .from("teller_journal_lines")
+    .select("account_id, debit, credit, party_id, job_id, memo")
+    .eq("entry_id", input.entryId);
+
+  if (linesError) throw new Error(linesError.message);
+  if (!lines?.length) throw new Error("Cannot reverse journal entry with no lines");
+
+  const reversedLines = buildReversalLines(lines as JournalLineRow[]);
+
+  return postJournal(supabase, {
+    organizationId: input.organizationId,
+    entryDate: input.entryDate,
+    memo: input.memo,
+    sourceKind: "reversal",
+    sourceId: input.sourceId,
+    reversesEntryId: input.entryId,
+    lines: reversedLines,
+    actorId: input.actorId,
+    auditAction: "journal.reversed",
+  });
+}
+
+/** Void an invoice by reversing all posted GL entries linked to the document. */
+export async function voidInvoice(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    documentId: string;
+    number: string;
+    voidDate: string;
+    postedEntryId?: string | null;
+    actorId?: string | null;
+  },
+) {
+  const { data: linkedEntries, error: entriesError } = await supabase
+    .from("teller_journal_entries")
+    .select("id, source_kind, created_at")
+    .eq("organization_id", input.organizationId)
+    .eq("source_id", input.documentId)
+    .is("reverses_entry_id", null)
+    .neq("source_kind", "reversal")
+    .order("created_at", { ascending: false });
+
+  if (entriesError) throw new Error(entriesError.message);
+
+  const entryIds = new Set<string>();
+  for (const entry of linkedEntries ?? []) {
+    entryIds.add(entry.id as string);
+  }
+  if (input.postedEntryId) entryIds.add(input.postedEntryId);
+
+  for (const entryId of entryIds) {
+    const { count } = await supabase
+      .from("teller_journal_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("reverses_entry_id", entryId);
+
+    if ((count ?? 0) > 0) continue;
+
+    await reverseJournalEntry(supabase, {
+      organizationId: input.organizationId,
+      entryId,
+      entryDate: input.voidDate,
+      memo: `Void invoice ${input.number}`,
+      sourceId: input.documentId,
+      actorId: input.actorId,
+    });
+  }
+
+  const { error: docError } = await supabase
+    .from("teller_documents")
+    .update({
+      status: "void",
+      amount_paid: 0,
+      updated_at: new Date().toISOString(),
     })
-    .select("id")
-    .single();
+    .eq("id", input.documentId);
 
-  if (entryError || !entry) {
-    throw new Error(entryError?.message || "Could not create journal entry");
-  }
+  if (docError) throw new Error(docError.message);
 
-  const { error: lineError } = await supabase.from("teller_journal_lines").insert(
-    input.lines.map((line) => ({
-      entry_id: entry.id,
-      account_id: line.account_id,
-      debit: asNumber(line.debit),
-      credit: asNumber(line.credit),
-      party_id: line.party_id ?? null,
-      job_id: line.job_id ?? null,
-      memo: line.memo ?? "",
-    })),
-  );
-
-  if (lineError) {
-    throw new Error(lineError.message);
-  }
-
-  return entry.id as string;
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: "invoice.voided",
+    resourceKind: "invoice",
+    resourceId: input.documentId,
+    metadata: { number: input.number, reversedEntries: entryIds.size },
+  });
 }
 
 type AccountRow = {
@@ -171,6 +305,15 @@ export async function postInvoiceOpen(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    action: "invoice.opened",
+    resourceKind: "invoice",
+    resourceId: input.documentId,
+    metadata: { number: input.number, total, entryId },
+  });
+
   return entryId;
 }
 
@@ -260,6 +403,21 @@ export async function postInvoicePaid(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    action: "invoice.paid",
+    resourceKind: "invoice",
+    resourceId: input.documentId,
+    metadata: {
+      number: input.number,
+      grossAmount,
+      feeAmount,
+      netAmount,
+      entryId,
+    },
+  });
+
   return entryId;
 }
 
@@ -405,5 +563,14 @@ export async function postExpense(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    action: "expense.posted",
+    resourceKind: "expense",
+    resourceId: input.documentId,
+    metadata: { number: input.number, amount: input.amount, paid: input.paid, entryId },
+  });
+
   return entryId;
 }
