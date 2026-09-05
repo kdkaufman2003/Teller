@@ -1,12 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee, voidInvoice } from "@/lib/accounting/post";
-import { resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
+import { invoicePaymentProgress, resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
 import {
   HFAC_EXTERNAL_SOURCE,
   LEGACY_HFAC_EXTERNAL_SOURCES,
 } from "@/lib/integrations/constants";
+import {
+  integrationEventSeen,
+  paymentIdempotencyKey,
+  recordIntegrationEvent,
+} from "@/lib/integrations/idempotency";
+import {
+  mapHfacJobType,
+  quoteJobMetadata,
+} from "@/lib/integrations/hfac-quote";
 
 export type HfacQuoteLine = {
   description?: string;
@@ -33,6 +42,19 @@ export type HfacWonQuote = {
   dealer_account_id?: string | null;
   /** HFAC deal type — free-form string; defaults to "deal". */
   source?: string;
+  job_type?: string;
+  salesperson?: string;
+  equipment_cost?: number | string;
+  labor_cost?: number | string;
+  materials_cost?: number | string;
+  equipment_cost_cents?: number;
+  labor_cost_cents?: number;
+  materials_cost_cents?: number;
+  cogs?: {
+    equipment?: number | string;
+    labor?: number | string;
+    materials?: number | string;
+  };
 };
 
 function parseLines(raw: HfacWonQuote["line_items"]): HfacQuoteLine[] {
@@ -160,10 +182,11 @@ export async function importWonQuotesFromHfac(
           name: quote.name || quote.customer_name || "HFAC job",
           party_id: partyId,
           status: "estimate",
-          job_type: "install",
+          job_type: mapHfacJobType(quote.job_type),
           quoted_amount: asNumber(quote.total_amount),
           external_source: HFAC_EXTERNAL_SOURCE,
           external_id: externalId,
+          metadata: quoteJobMetadata(quote),
         })
         .select("id")
         .single();
@@ -221,6 +244,7 @@ export async function importWonQuotesFromHfac(
         total: subtotal,
         external_source: HFAC_EXTERNAL_SOURCE,
         external_id: externalId,
+        metadata: { hfac: quoteJobMetadata(quote).hfac },
       })
       .select("id")
       .single();
@@ -382,8 +406,8 @@ async function findInvoiceForPayment(
   supabase: SupabaseClient,
   organizationId: string,
   payment: HfacPayment,
-): Promise<InvoiceRow | null> {
-  const select = "id, number, status, party_id, job_id, issue_date, total";
+): Promise<(InvoiceRow & { amount_paid?: number }) | null> {
+  const select = "id, number, status, party_id, job_id, issue_date, total, amount_paid";
 
   if (payment.hfacInvoiceId) {
     const { data } = await supabase
@@ -442,19 +466,41 @@ async function findInvoiceForPayment(
   return null;
 }
 
-async function paymentAlreadyRecorded(
+async function recordTellerPayment(
   supabase: SupabaseClient,
-  organizationId: string,
-  stripePaymentIntentId: string,
-): Promise<boolean> {
-  const { data } = await supabase
-    .from("teller_journal_entries")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .eq("source_kind", "invoice-payment")
-    .ilike("memo", `%${stripePaymentIntentId}%`)
-    .maybeSingle();
-  return Boolean(data?.id);
+  input: {
+    organizationId: string;
+    documentId: string;
+    partyId: string | null;
+    jobId: string | null;
+    amount: number;
+    feeAmount: number;
+    netAmount: number;
+    paymentDate: string;
+    processorName?: string;
+    externalId?: string | null;
+    journalEntryId: string;
+    metadata?: Record<string, unknown>;
+  },
+) {
+  const { error } = await supabase.from("teller_payments").insert({
+    organization_id: input.organizationId,
+    document_id: input.documentId,
+    party_id: input.partyId,
+    job_id: input.jobId,
+    amount: input.amount,
+    fee_amount: input.feeAmount,
+    net_amount: input.netAmount,
+    payment_date: input.paymentDate,
+    processor: input.processorName ?? null,
+    external_source: input.externalId ? HFAC_EXTERNAL_SOURCE : null,
+    external_id: input.externalId ?? null,
+    journal_entry_id: input.journalEntryId,
+    metadata: input.metadata ?? {},
+  });
+  if (error && !error.message.includes("duplicate")) {
+    throw new Error(error.message);
+  }
 }
 
 export async function importPaymentFromHfac(
@@ -466,13 +512,14 @@ export async function importPaymentFromHfac(
     throw new Error("payment.amount and payment.paidAt are required");
   }
 
-  if (payment.stripePaymentIntentId) {
-    const duplicate = await paymentAlreadyRecorded(
-      supabase,
+  const idempotencyKey = paymentIdempotencyKey(payment);
+  if (idempotencyKey) {
+    const seen = await integrationEventSeen(supabase, {
       organizationId,
-      payment.stripePaymentIntentId,
-    );
-    if (duplicate) {
+      eventKind: "payment",
+      idempotencyKey,
+    });
+    if (seen) {
       return { skipped: true, reason: "duplicate_payment" as const };
     }
   }
@@ -483,6 +530,20 @@ export async function importPaymentFromHfac(
   }
 
   if (invoice.status === "paid") {
+    return {
+      skipped: true,
+      reason: "already_paid" as const,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.number,
+    };
+  }
+
+  const invoiceTotal = asNumber(invoice.total);
+  const priorPaid = asNumber(invoice.amount_paid);
+  const paymentAmount = asNumber(payment.amount) || invoiceTotal;
+  const { fullyPaid } = invoicePaymentProgress(priorPaid, paymentAmount, invoiceTotal);
+
+  if (priorPaid >= invoiceTotal - 0.009) {
     return {
       skipped: true,
       reason: "already_paid" as const,
@@ -523,7 +584,7 @@ export async function importPaymentFromHfac(
     });
   }
 
-  const total = asNumber(payment.amount) || asNumber(invoice.total);
+  const total = paymentAmount;
   const processorName =
     payment.processor?.trim() ||
     (payment.stripePaymentIntentId || payment.stripeInvoiceId ? "Stripe" : undefined);
@@ -534,7 +595,7 @@ export async function importPaymentFromHfac(
     payment.netAmount ??
     (payment.netReceivedCents != null ? payment.netReceivedCents / 100 : undefined);
 
-  await postInvoicePaid(supabase, {
+  const { entryId, amountPaid } = await postInvoicePaid(supabase, {
     organizationId,
     documentId: invoice.id,
     partyId: invoice.party_id,
@@ -542,6 +603,8 @@ export async function importPaymentFromHfac(
     issueDate: paidDate,
     number: invoice.number,
     total,
+    invoiceTotal,
+    priorPaid,
     feeAmount,
     netAmount,
     processorName,
@@ -554,11 +617,54 @@ export async function importPaymentFromHfac(
     netAmount,
   });
 
+  const paymentExternalId =
+    payment.stripePaymentIntentId?.trim() ||
+    payment.stripeInvoiceId?.trim() ||
+    payment.hfacDealId?.trim() ||
+    idempotencyKey;
+
+  await recordTellerPayment(supabase, {
+    organizationId,
+    documentId: invoice.id,
+    partyId: invoice.party_id,
+    jobId: invoice.job_id,
+    amount: total,
+    feeAmount: resolvedFee,
+    netAmount: resolvedNet,
+    paymentDate: paidDate,
+    processorName,
+    externalId: paymentExternalId,
+    journalEntryId: entryId,
+    metadata: {
+      stripePaymentIntentId: payment.stripePaymentIntentId ?? null,
+      stripeInvoiceId: payment.stripeInvoiceId ?? null,
+      hfacDealId: payment.hfacDealId ?? null,
+    },
+  });
+
+  if (idempotencyKey) {
+    await recordIntegrationEvent(supabase, {
+      organizationId,
+      eventKind: "payment",
+      idempotencyKey,
+      result: {
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.number,
+        amount: total,
+        amountPaid,
+        fullyPaid,
+        entryId,
+      },
+    });
+  }
+
   return {
     skipped: false,
     invoiceId: invoice.id,
     invoiceNumber: invoice.number,
     amount: total,
+    amountPaid,
+    fullyPaid,
     feeAmount: resolvedFee,
     netAmount: resolvedNet,
   };

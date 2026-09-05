@@ -13,6 +13,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Organization configuration | ✓ (Phase 2) | `006_org_configuration.sql`, `/api/settings`, `org/config.ts` |
 | Intelligent onboarding | ✓ (Phase 3) | `onboarding.ts`, branching setup wizard |
 | HVAC industry profile | ✓ (Phase 4) | Residential/commercial COA, job detail P&L, dashboard labels |
+| HFAC structured integration | ✓ (Phase 5) | `007_payments_idempotency.sql`, `teller_payments`, idempotency keys, partial payments, quote COGS metadata |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
@@ -28,7 +29,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Area | Gap | Next step |
 |------|-----|-----------|
 | Role enforcement | ✓ (Phase 1) | `requireWriteBooks()`, RLS `teller_can_write_books()`, role trigger |
-| HFAC integration | Manual sync button + webhooks; not real-time for all events | Event-driven hooks in HFAC on Stripe sync |
+| HFAC integration | Manual sync button + webhooks; structured won-deal metadata | Event-driven hooks in HFAC; post estimated COGS to GL |
+| Partial payments | Cumulative `amount_paid`, open until fully paid | Payment UI, customer statements |
 | Immutability | Journal UPDATE/DELETE blocked; period close not yet | Accounting period close / lock |
 | Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |

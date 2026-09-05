@@ -5,6 +5,7 @@ export type AuditAction =
   | "journal.reversed"
   | "invoice.opened"
   | "invoice.paid"
+  | "invoice.partial_payment"
   | "invoice.voided"
   | "expense.posted"
   | "settings.updated";

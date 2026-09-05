@@ -57,6 +57,16 @@ export function resolvePaymentAmounts(input: PaymentAmountInput): {
   return { grossAmount, feeAmount, netAmount };
 }
 
+export function invoicePaymentProgress(
+  priorPaid: number,
+  paymentAmount: number,
+  invoiceTotal: number,
+) {
+  const amountPaid = roundMoney(priorPaid + paymentAmount);
+  const fullyPaid = amountPaid >= invoiceTotal - 0.009;
+  return { amountPaid, fullyPaid };
+}
+
 /** Resolve the account for Stripe/Square/other processor fees. */
 export function paymentProcessingFeeAccount(accounts: AccountLookup[]) {
   return (

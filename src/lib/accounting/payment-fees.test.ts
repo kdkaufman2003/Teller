@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildInvoicePaymentLines,
+  invoicePaymentProgress,
   paymentProcessingFeeAccount,
   resolvePaymentAmounts,
 } from "./payment-fees";
@@ -34,6 +35,19 @@ describe("resolvePaymentAmounts", () => {
       grossAmount: 500,
       feeAmount: 0,
       netAmount: 500,
+    });
+  });
+});
+
+describe("invoicePaymentProgress", () => {
+  it("tracks cumulative payments toward invoice total", () => {
+    expect(invoicePaymentProgress(250, 500, 1500)).toEqual({
+      amountPaid: 750,
+      fullyPaid: false,
+    });
+    expect(invoicePaymentProgress(750, 750, 1500)).toEqual({
+      amountPaid: 1500,
+      fullyPaid: true,
     });
   });
 });

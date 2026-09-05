@@ -4,6 +4,7 @@ import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import {
   buildInvoicePaymentLines,
+  invoicePaymentProgress,
   paymentProcessingFeeAccount,
   resolvePaymentAmounts,
 } from "./payment-fees";
@@ -326,7 +327,12 @@ export async function postInvoicePaid(
     jobId: string | null;
     issueDate: string;
     number: string;
+    /** Payment amount applied on this posting (gross). */
     total: number;
+    /** Invoice total when supporting partial payments. Defaults to payment amount. */
+    invoiceTotal?: number;
+    /** Amount already paid before this posting. */
+    priorPaid?: number;
     paymentMemo?: string;
     feeAmount?: number | null;
     netAmount?: number | null;
@@ -345,6 +351,14 @@ export async function postInvoicePaid(
   });
   const feeAccount =
     feeAmount > 0.009 ? paymentProcessingFeeAccount(accounts) : null;
+
+  const invoiceTotal = input.invoiceTotal ?? grossAmount;
+  const priorPaid = input.priorPaid ?? 0;
+  const { amountPaid, fullyPaid } = invoicePaymentProgress(
+    priorPaid,
+    grossAmount,
+    invoiceTotal,
+  );
 
   const memo = input.paymentMemo
     ? `Payment ${input.number} · ${input.paymentMemo}`
@@ -393,8 +407,8 @@ export async function postInvoicePaid(
   const { error } = await supabase
     .from("teller_documents")
     .update({
-      status: "paid",
-      amount_paid: grossAmount,
+      status: fullyPaid ? "paid" : "open",
+      amount_paid: amountPaid,
       metadata: paymentMetadata
         ? { ...existingMetadata, payment: paymentMetadata }
         : existingMetadata,
@@ -406,7 +420,7 @@ export async function postInvoicePaid(
 
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
-    action: "invoice.paid",
+    action: fullyPaid ? "invoice.paid" : "invoice.partial_payment",
     resourceKind: "invoice",
     resourceId: input.documentId,
     metadata: {
@@ -414,11 +428,13 @@ export async function postInvoicePaid(
       grossAmount,
       feeAmount,
       netAmount,
+      amountPaid,
+      invoiceTotal,
       entryId,
     },
   });
 
-  return entryId;
+  return { entryId, amountPaid, fullyPaid };
 }
 
 /** Backfill processor fees when a payment was previously recorded without fee split. */
