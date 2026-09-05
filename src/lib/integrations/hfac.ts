@@ -671,12 +671,7 @@ export async function reconcileRemovedBillingInvoices(
     if (!isHfacBillingExternalId(externalId)) continue;
     if (active.has(externalId!)) continue;
 
-    await voidBillingInvoiceFromHfac(
-      supabase,
-      organizationId,
-      invoice as BillingInvoiceRow,
-      voidDate,
-    );
+    await voidBillingInvoiceFromHfac(supabase, organizationId, invoice, voidDate);
     voided += 1;
   }
 
@@ -864,12 +859,7 @@ export async function importBillingEntriesFromHfac(
         .maybeSingle();
 
       if (existingVoid && existingVoid.status !== "void") {
-        await voidBillingInvoiceFromHfac(
-          supabase,
-          organizationId,
-          existingVoid as BillingInvoiceRow,
-          issueDate,
-        );
+        await voidBillingInvoiceFromHfac(supabase, organizationId, existingVoid, issueDate);
         voided += 1;
         updated += 1;
       } else {
