@@ -1,4 +1,4 @@
-import { ExpenseForm } from "@/components/ExpenseForm";
+import { ExpensePanel } from "@/components/ExpensePanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate, money } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
@@ -14,7 +14,7 @@ export default async function ExpensesPage() {
   const [{ data }, { data: accounts }, { data: parties }] = await Promise.all([
     supabase
       .from("teller_documents")
-      .select("id, number, status, total, issue_date, memo, party_id")
+      .select("id, number, status, total, issue_date, memo, party_id, metadata, attachment_path")
       .eq("organization_id", session.organization.id)
       .eq("kind", "expense")
       .order("issue_date", { ascending: false }),
@@ -36,12 +36,14 @@ export default async function ExpensesPage() {
     <div className="space-y-6">
       <header className="page-header">
         <h1>Expenses</h1>
+        <p>Upload receipts, log mileage, or enter expenses manually.</p>
       </header>
-      <ExpenseForm accounts={accounts ?? []} />
+      <ExpensePanel accounts={accounts ?? []} />
       <div className="card overflow-hidden">
         <table className="data-table">
           <thead>
             <tr>
+              <th>Type</th>
               <th>Number</th>
               <th>Vendor</th>
               <th>Date</th>
@@ -50,8 +52,17 @@ export default async function ExpensesPage() {
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((row) => (
+            {(data ?? []).map((row) => {
+              const meta = (row.metadata ?? {}) as { expense_type?: string };
+              const typeLabel =
+                meta.expense_type === "mileage"
+                  ? "Mileage"
+                  : meta.expense_type === "receipt"
+                    ? "Receipt"
+                    : "Manual";
+              return (
               <tr key={row.id}>
+                <td className="text-muted">{typeLabel}</td>
                 <td>{row.number}</td>
                 <td>{row.party_id ? names.get(row.party_id) : row.memo || "—"}</td>
                 <td>{formatDate(row.issue_date)}</td>
@@ -60,7 +71,8 @@ export default async function ExpensesPage() {
                 </td>
                 <td className="text-right font-tabular">{money(row.total)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

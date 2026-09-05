@@ -429,6 +429,52 @@ textarea:focus {
   font-size: 0.75rem;
 }
 
+.report-sheet {
+  background: linear-gradient(180deg, var(--paper-strong), rgba(255, 253, 248, 0.92));
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.55rem 0.35rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.report-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.report-section-row td {
+  padding-top: 1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brass-deep);
+  border-bottom: none;
+}
+
+.report-subtotal-row td {
+  font-weight: 600;
+  border-top: 1px solid var(--rule);
+}
+
+.report-total-row td {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--navy);
+  border-top: 2px solid var(--navy);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

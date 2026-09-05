@@ -63,9 +63,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <p className="text-sm text-muted">Books for</p>
-        <h1 className="font-ledger text-4xl text-navy">{session.organization.name}</h1>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted">Books for</p>
+          <h1 className="font-ledger text-4xl text-navy">{session.organization.name}</h1>
+        </div>
+        <Link href={routes.reports} className="btn btn-secondary text-sm">
+          View reports
+        </Link>
       </header>
 
       <section className="grid gap-3 md:grid-cols-3">

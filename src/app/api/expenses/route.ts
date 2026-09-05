@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { nextNumber } from "@/lib/accounting/accounts";
 import { postExpense } from "@/lib/accounting/post";
+import {
+  findMileageAccount,
+  mileageAmount,
+  roundMoney,
+} from "@/lib/expenses/classify";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks } from "@/lib/api";
+
+type ExpenseType = "receipt" | "mileage" | "manual";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -45,11 +52,53 @@ export async function POST(request: Request) {
     memo?: string;
     issueDate?: string;
     paid?: boolean;
+    expenseType?: ExpenseType;
+    attachmentPath?: string;
+    miles?: number;
+    ratePerMile?: number;
+    classification?: Record<string, unknown>;
   };
 
-  const amount = asNumber(body.amount);
+  const expenseType: ExpenseType = body.expenseType || "manual";
+  let amount = asNumber(body.amount);
+  let accountId = body.accountId || "";
+  let memo = body.memo || "";
+  const metadata: Record<string, unknown> = { expense_type: expenseType };
+
+  if (expenseType === "mileage") {
+    const miles = asNumber(body.miles);
+    const ratePerMile = asNumber(body.ratePerMile, 0.7);
+    if (miles <= 0) return jsonError("Miles must be greater than zero");
+
+    const { data: accounts } = await supabase
+      .from("teller_accounts")
+      .select("id, code, name")
+      .eq("organization_id", organizationId)
+      .in("type", ["expense", "cogs"])
+      .order("code");
+
+    const mileageAccount = findMileageAccount(accounts ?? []);
+    if (!mileageAccount) return jsonError("No mileage expense account found");
+
+    accountId = mileageAccount.id;
+    amount = mileageAmount(miles, ratePerMile);
+    metadata.miles = miles;
+    metadata.rate_per_mile = ratePerMile;
+    if (!memo) memo = `Mileage: ${miles} mi @ $${ratePerMile.toFixed(2)}/mi`;
+  }
+
+  amount = roundMoney(amount);
   if (amount <= 0) return jsonError("Amount must be greater than zero");
-  if (!body.accountId) return jsonError("Choose an expense account");
+  if (!accountId) return jsonError("Choose an expense account");
+
+  if (body.classification) {
+    metadata.classification = body.classification;
+  }
+
+  let attachmentPath = body.attachmentPath?.trim() || null;
+  if (attachmentPath && !attachmentPath.startsWith(`${organizationId}/`)) {
+    return jsonError("Invalid receipt attachment");
+  }
 
   let partyId = body.partyId || null;
   if (!partyId && body.vendorName?.trim()) {
@@ -90,7 +139,9 @@ export async function POST(request: Request) {
       subtotal: amount,
       tax: 0,
       total: amount,
-      memo: body.memo || "",
+      memo,
+      attachment_path: attachmentPath,
+      metadata,
     })
     .select("id")
     .single();
@@ -99,13 +150,27 @@ export async function POST(request: Request) {
 
   await supabase.from("teller_document_lines").insert({
     document_id: doc.id,
-    description: body.memo || "Expense",
+    description: memo || "Expense",
     quantity: 1,
     unit_price: amount,
     amount,
-    account_id: body.accountId,
-    item_type: "expense",
+    account_id: accountId,
+    item_type: expenseType === "mileage" ? "mileage" : "expense",
   });
+
+  if (attachmentPath?.includes("/pending/")) {
+    const finalizedPath = `${organizationId}/${doc.id}/${attachmentPath.split("/").pop()}`;
+    const { error: moveError } = await supabase.storage
+      .from("receipts")
+      .move(attachmentPath, finalizedPath);
+    if (!moveError) {
+      attachmentPath = finalizedPath;
+      await supabase
+        .from("teller_documents")
+        .update({ attachment_path: finalizedPath })
+        .eq("id", doc.id);
+    }
+  }
 
   await postExpense(supabase, {
     organizationId,
@@ -115,7 +180,7 @@ export async function POST(request: Request) {
     issueDate,
     number,
     amount,
-    accountId: body.accountId,
+    accountId,
     paid: body.paid !== false,
   });
 

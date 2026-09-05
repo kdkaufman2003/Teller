@@ -14,6 +14,7 @@ const NAV: NavItem[] = [
   { href: routes.customers, label: "Customers" },
   { href: routes.jobs, label: "Jobs", module: "jobs" },
   { href: routes.expenses, label: "Expenses" },
+  { href: routes.reports, label: "Reports" },
   { href: routes.accounts, label: "Accounts" },
   { href: routes.ledger, label: "Ledger" },
   { href: routes.settings, label: "Settings" },

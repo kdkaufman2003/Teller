@@ -27,7 +27,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Supabase (Teller project)
 
 1. Create a **new** Supabase project for Teller at [supabase.com](https://supabase.com).
-2. SQL Editor → run `supabase/migrations/001_teller_core.sql` then `002_partner_attachment.sql`.
+2. SQL Editor → run migrations in order: `001_teller_core.sql`, `002_partner_attachment.sql`, `003_expense_receipts.sql`.
 3. Authentication → URL Configuration:
    - Site URL: `http://localhost:3000` (add Vercel URL after deploy)
    - Redirect URL: `http://localhost:3000/auth/callback`
@@ -134,9 +134,10 @@ Complete setup normally. No env vars on HFAC, no connection in Teller Settings. 
 | `/app/invoices` | Draft → post → paid |
 | `/app/customers` | Customers / dealers |
 | `/app/jobs` | Job costing |
-| `/app/expenses` | Vendor spend |
+| `/app/expenses` | Receipt upload, mileage, vendor spend |
 | `/app/accounts` | Chart of accounts |
 | `/app/ledger` | General ledger |
+| `/app/reports` | Sales analysis & profit & loss |
 | `/app/settings` | Company + Hassle Free AC integration |
 
 ## Tests

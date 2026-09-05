@@ -12,6 +12,7 @@ export const routes = {
   jobs: "/app/jobs",
   accounts: "/app/accounts",
   ledger: "/app/ledger",
+  reports: "/app/reports",
   settings: "/app/settings",
 } as const;
 
