@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   billingExternalId,
   billingEntryIsOpen,
+  billingEntryIsVoid,
   buildBillingFeeFromEntry,
   importSubscribersFromHfac,
   normalizeBillingEntry,
@@ -105,6 +106,12 @@ describe("billing import helpers", () => {
     expect(billingEntryIsOpen("pending")).toBe(true);
     expect(billingEntryIsOpen("invoiced")).toBe(true);
     expect(billingEntryIsOpen("paid")).toBe(false);
+  });
+
+  it("treats credit HFAC rows as voided Stripe invoices", () => {
+    expect(billingEntryIsVoid("credit")).toBe(true);
+    expect(billingEntryIsVoid("paid")).toBe(false);
+    expect(billingEntryIsVoid("pending")).toBe(false);
   });
 
   it("builds fee payload from HFAC stripe fields", () => {

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
-import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee } from "@/lib/accounting/post";
+import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee, voidInvoice } from "@/lib/accounting/post";
 import { resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
 import {
@@ -596,6 +596,11 @@ export function billingEntryIsOpen(status: HfacBillingEntry["status"]): boolean 
   return status === "invoiced" || status === "pending";
 }
 
+/** Stripe void / HFAC credit rows — invoice should not remain open in Teller. */
+export function billingEntryIsVoid(status: HfacBillingEntry["status"]): boolean {
+  return status === "credit";
+}
+
 export function billingEntryShouldPostOpen(status: HfacBillingEntry["status"]): boolean {
   return status === "invoiced" || status === "pending" || status === "paid";
 }
@@ -645,7 +650,34 @@ type BillingInvoiceRow = {
   job_id: string | null;
   total: number;
   metadata?: unknown;
+  posted_entry_id?: string | null;
 };
+
+async function voidBillingInvoiceFromHfac(
+  supabase: SupabaseClient,
+  organizationId: string,
+  invoice: Pick<BillingInvoiceRow, "id" | "number" | "status" | "posted_entry_id">,
+  voidDate: string,
+) {
+  if (invoice.status === "void") return;
+
+  if (invoice.status === "draft") {
+    const { error } = await supabase
+      .from("teller_documents")
+      .update({ status: "void", amount_paid: 0, updated_at: new Date().toISOString() })
+      .eq("id", invoice.id);
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  await voidInvoice(supabase, {
+    organizationId,
+    documentId: invoice.id,
+    number: invoice.number,
+    voidDate,
+    postedEntryId: invoice.posted_entry_id,
+  });
+}
 
 async function syncBillingInvoiceDraft(
   supabase: SupabaseClient,
@@ -750,6 +782,7 @@ export async function importBillingEntriesFromHfac(
   let created = 0;
   let updated = 0;
   let paid = 0;
+  let voided = 0;
   let skipped = 0;
 
   const { data: existingDocs } = await supabase
@@ -775,8 +808,32 @@ export async function importBillingEntriesFromHfac(
       skipped += 1;
       continue;
     }
-    if (entry.status === "credit") {
-      skipped += 1;
+
+    const externalId = billingExternalId(entry);
+    const issueDate = entry.date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+
+    if (billingEntryIsVoid(entry.status)) {
+      const { data: existingVoid } = await supabase
+        .from("teller_documents")
+        .select("id, number, status, posted_entry_id")
+        .eq("organization_id", organizationId)
+        .eq("kind", "invoice")
+        .in("external_source", [...LEGACY_HFAC_EXTERNAL_SOURCES])
+        .eq("external_id", externalId)
+        .maybeSingle();
+
+      if (existingVoid && existingVoid.status !== "void") {
+        await voidBillingInvoiceFromHfac(
+          supabase,
+          organizationId,
+          existingVoid as BillingInvoiceRow,
+          issueDate,
+        );
+        voided += 1;
+        updated += 1;
+      } else {
+        skipped += 1;
+      }
       continue;
     }
 
@@ -787,9 +844,7 @@ export async function importBillingEntriesFromHfac(
     }
 
     const amount = amountCents / 100;
-    const issueDate = entry.date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     const description = entry.description?.trim() || "Platform billing";
-    const externalId = billingExternalId(entry);
 
     const { data: party } = await supabase
       .from("teller_parties")
@@ -960,7 +1015,7 @@ export async function importBillingEntriesFromHfac(
     }
   }
 
-  return { created, updated, paid, skipped };
+  return { created, updated, paid, voided, skipped };
 }
 
 /** @deprecated use HfacWonQuote */
