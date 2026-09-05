@@ -31,106 +31,30 @@ describe("secureCompare", () => {
 });
 
 describe("resolveHfacWebhookOrganization", () => {
-  it("accepts legacy organizationId when HFAC integration is active", async () => {
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "teller_integrations") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                in: vi.fn().mockResolvedValue({
-                  data: [{ provider: "hfac", enabled: true, config: {} }],
-                }),
-              }),
-            }),
-          };
-        }
-        if (table === "teller_organizations") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({ data: { id: "org-1" } }),
-              }),
-            }),
-          };
-        }
-        throw new Error(`unexpected table ${table}`);
-      }),
-    };
-
-    const result = await resolveHfacWebhookOrganization(
-      supabase as never,
-      { organizationId: "org-1" },
-    );
-    expect(result.organizationId).toBe("org-1");
-  });
-
-  it("rejects arbitrary organization without active integration", async () => {
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "teller_integrations") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                in: vi.fn().mockResolvedValue({ data: [] }),
-              }),
-            }),
-          };
-        }
-        if (table === "teller_organizations") {
-          return {
-            select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({ data: { id: "victim-org" } }),
-              }),
-            }),
-          };
-        }
-        throw new Error(`unexpected table ${table}`);
-      }),
-    };
-
+  it("rejects organizationId-only payloads", async () => {
     await expect(
-      resolveHfacWebhookOrganization(supabase as never, {
-        organizationId: "victim-org",
+      resolveHfacWebhookOrganization({ from: vi.fn() } as never, {
+        organizationId: "org-1",
       }),
-    ).rejects.toBeInstanceOf(HfacOrgRejectedError);
+    ).rejects.toMatchObject({ reason: "missing_external_id" });
   });
 
   it("maps external HFAC id to the linked organization", async () => {
     const supabase = {
-      from: vi.fn((table: string) => {
-        if (table !== "teller_integrations") {
-          throw new Error(`unexpected table ${table}`);
-        }
-        return {
-          select: vi.fn((cols: string) => {
-            if (cols.includes("organization_id")) {
-              return {
-                in: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockResolvedValue({
-                    data: [
-                      {
-                        organization_id: "org-mapped",
-                        provider: "hfac",
-                        enabled: true,
-                        config: { external_account_id: "hfac-co-99" },
-                      },
-                    ],
-                  }),
-                }),
-              };
-            }
-            return {
-              eq: vi.fn().mockReturnValue({
-                in: vi.fn().mockResolvedValue({
-                  data: [{ provider: "hfac", enabled: true, config: {} }],
-                }),
-              }),
-            };
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          in: vi.fn().mockResolvedValue({
+            data: [
+              {
+                organization_id: "org-mapped",
+                provider: "hfac",
+                enabled: true,
+                config: { external_account_id: "hfac-co-99", status: "active" },
+              },
+            ],
           }),
-        };
-      }),
+        })),
+      })),
     };
 
     const result = await resolveHfacWebhookOrganization(supabase as never, {
@@ -138,31 +62,39 @@ describe("resolveHfacWebhookOrganization", () => {
       organizationId: "org-mapped",
     });
     expect(result.organizationId).toBe("org-mapped");
+    expect(result.externalAccountId).toBe("hfac-co-99");
+  });
+
+  it("rejects unknown external organization", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          in: vi.fn().mockResolvedValue({ data: [] }),
+        })),
+      })),
+    };
+
+    await expect(
+      resolveHfacWebhookOrganization(supabase as never, { companyId: "missing-co" }),
+    ).rejects.toMatchObject({ reason: "unknown_external_organization" });
   });
 
   it("rejects mismatched organizationId and external HFAC id", async () => {
     const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "teller_integrations") {
-          return {
-            select: vi.fn().mockReturnValue({
-              in: vi.fn().mockReturnValue({
-                eq: vi.fn().mockResolvedValue({
-                  data: [
-                    {
-                      organization_id: "org-real",
-                      provider: "hfac",
-                      enabled: true,
-                      config: { external_account_id: "hfac-co-99" },
-                    },
-                  ],
-                }),
-              }),
-            }),
-          };
-        }
-        throw new Error(`unexpected table ${table}`);
-      }),
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          in: vi.fn().mockResolvedValue({
+            data: [
+              {
+                organization_id: "org-real",
+                provider: "hfac",
+                enabled: true,
+                config: { external_account_id: "hfac-co-99", status: "active" },
+              },
+            ],
+          }),
+        })),
+      })),
     };
 
     await expect(
@@ -171,5 +103,28 @@ describe("resolveHfacWebhookOrganization", () => {
         organizationId: "org-attacker",
       }),
     ).rejects.toMatchObject({ reason: "organization_mismatch" });
+  });
+
+  it("rejects inactive integration mappings", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          in: vi.fn().mockResolvedValue({
+            data: [
+              {
+                organization_id: "org-real",
+                provider: "hfac",
+                enabled: false,
+                config: { external_account_id: "hfac-co-99" },
+              },
+            ],
+          }),
+        })),
+      })),
+    };
+
+    await expect(
+      resolveHfacWebhookOrganization(supabase as never, { companyId: "hfac-co-99" }),
+    ).rejects.toMatchObject({ reason: "unknown_external_organization" });
   });
 });

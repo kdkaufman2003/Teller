@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
-import { validateDocumentPayment } from "./balances";
+import { checkDocumentBalanceConsistency, validateDocumentPayment } from "./balances";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import {
@@ -33,6 +33,30 @@ async function assertOrgPeriodOpen(
 
   if (error) throw new Error(error.message);
   assertEntryDateOpen(booksClosedThrough(closes ?? []), entryDate);
+}
+
+async function assertDocumentCacheConsistent(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    documentId: string;
+    documentTotal: number;
+    cachedAmountPaid: number;
+    kind: "invoice" | "expense";
+  },
+) {
+  const result = await checkDocumentBalanceConsistency(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    documentTotal: input.documentTotal,
+    cachedAmountPaid: input.cachedAmountPaid,
+    kind: input.kind,
+  });
+  if (!result.consistent) {
+    throw new Error(
+      `Document payment cache is inconsistent with authoritative records for ${input.documentId}`,
+    );
+  }
 }
 
 export function assertBalanced(lines: JournalLineInput[]) {
@@ -463,6 +487,14 @@ export async function postInvoicePaid(
     journalEntryId: entryId,
   });
 
+  await assertDocumentCacheConsistent(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    documentTotal: invoiceTotal,
+    cachedAmountPaid: amountPaid,
+    kind: "invoice",
+  });
+
   const auditAction = fullyPaid
     ? "invoice.payment.completed"
     : priorPaid > 0.009
@@ -807,6 +839,14 @@ export async function postExpensePaid(
     amount: paymentAmount,
     paymentDate: input.issueDate,
     journalEntryId: entryId,
+  });
+
+  await assertDocumentCacheConsistent(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    documentTotal: expenseTotal,
+    cachedAmountPaid: amountPaid,
+    kind: "expense",
   });
 
   const auditAction = fullyPaid

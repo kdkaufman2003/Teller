@@ -3,37 +3,24 @@ import {
   recordHfacWebhookDelivery,
   type HfacSubscriber,
 } from "@/lib/integrations/hfac";
-import { handleHfacWebhook } from "@/lib/integrations/hfac-webhook";
+import { handleHfacWebhookRequest } from "@/lib/integrations/hfac-webhook";
 
-function normalizeSubscribers(body: {
-  subscriber?: HfacSubscriber;
-  subscribers?: HfacSubscriber[];
-}): HfacSubscriber[] {
-  if (Array.isArray(body.subscribers) && body.subscribers.length) {
-    return body.subscribers;
+function normalizeSubscribers(body: Record<string, unknown>): HfacSubscriber[] {
+  const subscribers = body.subscribers;
+  if (Array.isArray(subscribers) && subscribers.length) {
+    return subscribers as HfacSubscriber[];
   }
-  if (body.subscriber?.id) {
-    return [body.subscriber];
-  }
+  const subscriber = body.subscriber as HfacSubscriber | undefined;
+  if (subscriber?.id) return [subscriber];
   return [];
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    organizationId?: string;
-    subscriber?: HfacSubscriber;
-    subscribers?: HfacSubscriber[];
-  };
-
-  const subscribers = normalizeSubscribers(body);
-  if (!subscribers.length) {
-    return Response.json(
-      { error: "subscriber or subscribers is required" },
-      { status: 400 },
-    );
-  }
-
-  return handleHfacWebhook(request, "subscribers", body, async (supabase, organizationId) => {
+  return handleHfacWebhookRequest(request, "subscribers", async (supabase, organizationId, body) => {
+    const subscribers = normalizeSubscribers(body);
+    if (!subscribers.length) {
+      throw new Error("subscriber or subscribers is required");
+    }
     const result = await importSubscribersFromHfac(supabase, organizationId, subscribers);
     await recordHfacWebhookDelivery(supabase, organizationId, result, "subscribers");
     return result;

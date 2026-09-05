@@ -4,38 +4,29 @@ import {
   reconcileRemovedBillingInvoices,
   type HfacBillingEntry,
 } from "@/lib/integrations/hfac";
-import { handleHfacWebhook } from "@/lib/integrations/hfac-webhook";
+import { handleHfacWebhookRequest } from "@/lib/integrations/hfac-webhook";
 
-function normalizeEntries(body: {
-  entry?: HfacBillingEntry;
-  entries?: HfacBillingEntry[];
-}): HfacBillingEntry[] {
-  if (Array.isArray(body.entries) && body.entries.length) {
-    return body.entries;
+function normalizeEntries(body: Record<string, unknown>): HfacBillingEntry[] {
+  const entries = body.entries;
+  if (Array.isArray(entries) && entries.length) {
+    return entries as HfacBillingEntry[];
   }
-  if (body.entry?.id && body.entry.companyId) {
-    return [body.entry];
-  }
+  const entry = body.entry as HfacBillingEntry | undefined;
+  if (entry?.id && entry.companyId) return [entry];
   return [];
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    organizationId?: string;
-    entry?: HfacBillingEntry;
-    entries?: HfacBillingEntry[];
-    reconcile?: { activeExternalIds?: string[] };
-  };
+  return handleHfacWebhookRequest(request, "billing", async (supabase, organizationId, body) => {
+    const entries = normalizeEntries(body);
+    const reconcile = body.reconcile as { activeExternalIds?: string[] } | undefined;
+    const activeExternalIds = reconcile?.activeExternalIds;
+    const hasReconcile = Array.isArray(activeExternalIds);
 
-  const entries = normalizeEntries(body);
-  const activeExternalIds = body.reconcile?.activeExternalIds;
-  const hasReconcile = Array.isArray(activeExternalIds);
+    if (!entries.length && !hasReconcile) {
+      throw new Error("entry, entries, or reconcile is required");
+    }
 
-  if (!entries.length && !hasReconcile) {
-    return Response.json({ error: "entry, entries, or reconcile is required" }, { status: 400 });
-  }
-
-  return handleHfacWebhook(request, "billing", body, async (supabase, organizationId) => {
     let result = { created: 0, updated: 0, paid: 0, voided: 0, skipped: 0 };
 
     if (entries.length) {
