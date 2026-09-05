@@ -19,6 +19,8 @@ export const TRADES_ACCOUNTS: AccountSeed[] = [
   { code: "3000", name: "Owner's Equity", type: "equity" },
   { code: "3100", name: "Retained Earnings", type: "equity" },
   { code: "4000", name: "Equipment Sales", type: "revenue", industry_tag: "equipment" },
+  { code: "4015", name: "Residential HVAC Revenue", type: "revenue", industry_tag: "residential" },
+  { code: "4025", name: "Commercial HVAC Revenue", type: "revenue", industry_tag: "commercial" },
   { code: "4100", name: "Installation Labor", type: "revenue", industry_tag: "labor" },
   { code: "4200", name: "Service & Repair", type: "revenue", industry_tag: "service" },
   { code: "4300", name: "Maintenance Agreements", type: "revenue", industry_tag: "maintenance" },
@@ -49,6 +51,7 @@ export type TradesPackConfig = {
   tradeLabel: string;
   recommended?: boolean;
   answerDefaults?: IndustryAnswers;
+  extraQuestions?: IndustryQuestion[];
 };
 
 function asList(value: unknown): string[] {
@@ -92,6 +95,7 @@ function buildTradesQuestions(
       prompt: `What kind of ${tradeLabel} business is this?`,
       help: "This chooses default revenue accounts and what we call your customers.",
       type: "select",
+      section: "business",
       required: true,
       default: defaults.businessModel ?? "mixed",
       options: [
@@ -121,6 +125,7 @@ function buildTradesQuestions(
       id: "customerNoun",
       prompt: "What should we call the people you bill?",
       type: "select",
+      section: "business",
       default: defaults.customerNoun ?? "customers",
       options: TRADES_CUSTOMER_NOUN_OPTIONS,
     },
@@ -128,11 +133,12 @@ function buildTradesQuestions(
       prompt: "How do you want to recognize revenue?",
       default: defaults.basis ?? "accrual",
     }),
-    FISCAL_YEAR_QUESTION,
+    { ...FISCAL_YEAR_QUESTION, section: "accounting" as const },
     {
       id: "revenueStreams",
       prompt: "Which revenue streams should appear on invoices?",
       type: "multiselect",
+      section: "business",
       default: defaults.revenueStreams ?? ["equipment", "labor", "service", "parts"],
       options: [
         { value: "equipment", label: "Equipment / materials sales" },
@@ -148,30 +154,35 @@ function buildTradesQuestions(
       prompt: "Track jobs / installs with job costing?",
       help: "Each won deal can become a job, then an invoice.",
       type: "boolean",
+      section: "operations",
       default: defaults.trackJobs ?? true,
     },
     {
       id: "trackInventory",
       prompt: "Track equipment and parts inventory?",
       type: "boolean",
+      section: "operations",
       default: defaults.trackInventory ?? false,
     },
     {
       id: "collectTax",
       prompt: "Collect sales tax?",
       type: "boolean",
+      section: "accounting",
       default: defaults.collectTax ?? true,
     },
     {
       id: "taxRate",
       prompt: "Default sales tax rate (%)",
       type: "number",
+      section: "accounting",
       default: defaults.taxRate ?? 0,
     },
     {
       id: "warrantyReserve",
       prompt: "Set aside a warranty reserve on equipment sales?",
       type: "boolean",
+      section: "accounting",
       default: defaults.warrantyReserve ?? false,
     },
     {
@@ -179,6 +190,7 @@ function buildTradesQuestions(
       prompt: "Connect Hassle Free AC?",
       help: "Won deals in Hassle Free AC import as draft invoices via webhook.",
       type: "boolean",
+      section: "integrations",
       default: defaults.connectHfac ?? false,
     },
   ];
@@ -186,6 +198,7 @@ function buildTradesQuestions(
 
 export function resolveTradesPack(answers: IndustryAnswers) {
   const streams = asList(answers.revenueStreams);
+  const segments = asList(answers.marketSegments);
   const modules: string[] = [...CORE_MODULES];
   if (isOn(answers.trackJobs)) modules.push("jobs");
   if (isOn(answers.trackInventory)) modules.push("inventory");
@@ -201,6 +214,8 @@ export function resolveTradesPack(answers: IndustryAnswers) {
   if (isOn(answers.warrantyReserve) || streams.includes("warranty")) {
     tagsToKeep.add("warranty");
   }
+  if (segments.includes("residential")) tagsToKeep.add("residential");
+  if (segments.includes("commercial")) tagsToKeep.add("commercial");
 
   const accounts = TRADES_ACCOUNTS.filter((account) => {
     const tag = account.industry_tag || "";
@@ -229,7 +244,10 @@ export function createTradesPack(config: TradesPackConfig): IndustryPack {
     description: config.description,
     category: config.category,
     recommended: config.recommended,
-    questions: buildTradesQuestions(config.tradeLabel, config.answerDefaults),
+    questions: [
+      ...buildTradesQuestions(config.tradeLabel, config.answerDefaults),
+      ...(config.extraQuestions ?? []),
+    ],
     resolve: resolveTradesPack,
   };
 }

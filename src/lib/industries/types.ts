@@ -14,6 +14,10 @@ export type IndustryQuestion = {
   options?: QuestionOption[];
   default?: unknown;
   required?: boolean;
+  /** Grouping for setup wizard sections */
+  section?: "business" | "accounting" | "operations" | "integrations";
+  /** Hide unless this returns true (in addition to built-in rules in onboarding.ts) */
+  when?: (answers: IndustryAnswers) => boolean;
 };
 
 export type IndustryAnswers = Record<string, unknown>;

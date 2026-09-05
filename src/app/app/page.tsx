@@ -2,8 +2,9 @@ import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { isBilledInvoice } from "@/lib/accounting/reports";
+import { dashboardMetricsForIndustry } from "@/lib/dashboard/metrics";
 import { label } from "@/lib/session";
-import { routes } from "@/lib/routes";
+import { routes, jobPath } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext, hasHfacIntegration, hasModule } from "@/lib/session";
 import { asNumber } from "@/lib/format";
@@ -57,6 +58,17 @@ export default async function DashboardPage() {
   const openAP = (expenses.data ?? [])
     .filter((row) => row.status === "open")
     .reduce((sum, row) => sum + asNumber(row.total), 0);
+  const activeJobs = (jobs.data ?? []).filter((job) =>
+    ["estimate", "scheduled", "in_progress"].includes(job.status),
+  ).length;
+
+  const metricDefs = dashboardMetricsForIndustry(session.organization.industry_id, session.settings);
+  const metricValues: Record<string, string> = {
+    openAR: money(openAR),
+    collected: money(collected),
+    openAP: money(openAP),
+    activeJobs: String(activeJobs),
+  };
 
   const customerLabel = label(session.settings, "customer", "Customers");
   const showJobs = hasModule(session.settings, "jobs");
@@ -74,15 +86,14 @@ export default async function DashboardPage() {
         </Link>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        {[
-          { label: "Open receivables", value: money(openAR) },
-          { label: "Collected", value: money(collected) },
-          { label: "Open payables", value: money(openAP) },
-        ].map((metric) => (
-          <article key={metric.label} className="card p-5">
+      <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        {metricDefs.map((metric) => (
+          <article key={metric.key} className="card p-5">
             <p className="text-xs uppercase tracking-[0.14em] text-muted">{metric.label}</p>
-            <p className="font-ledger mt-2 text-3xl font-tabular text-navy">{metric.value}</p>
+            <p className="font-ledger mt-2 text-3xl font-tabular text-navy">
+              {metricValues[metric.key] ?? "—"}
+            </p>
+            {metric.hint ? <p className="mt-1 text-xs text-muted">{metric.hint}</p> : null}
           </article>
         ))}
       </section>
@@ -139,9 +150,9 @@ export default async function DashboardPage() {
                 ) : (
                   (jobs.data ?? []).map((job) => (
                     <li key={job.id} className="flex justify-between gap-3">
-                      <span>
+                      <Link href={jobPath(job.id)} className="hover:text-sky">
                         {job.job_number} · {job.name}
-                      </span>
+                      </Link>
                       <StatusBadge status={job.status} />
                     </li>
                   ))

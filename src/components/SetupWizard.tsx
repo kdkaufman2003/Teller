@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  applyBusinessModelDefaults,
+  questionsBySection,
+} from "@/lib/industries/onboarding";
+import {
   defaultAnswers,
   getIndustryPack,
   industryPacksByCategory,
@@ -216,12 +220,10 @@ export function SetupWizard({
     [industryId, mergedAnswers, partnerId],
   );
 
-  const visibleQuestions = pack.questions.filter((question) => {
-    if (question.id === "connectQuoter" || question.id === "connectHfac") {
-      return enableIntegrations;
-    }
-    return true;
-  });
+  const questionGroups = useMemo(
+    () => questionsBySection(pack, mergedAnswers, { enableIntegrations }),
+    [pack, mergedAnswers, enableIntegrations],
+  );
 
   function chooseIndustry(id: string) {
     setIndustryId(id);
@@ -338,16 +340,32 @@ export function SetupWizard({
         ) : null}
 
         {step === "questions" ? (
-          <div className="space-y-3">
-            {visibleQuestions.map((question) => (
-              <QuestionField
-                key={question.id}
-                question={question}
-                value={mergedAnswers[question.id]}
-                onChange={(value) =>
-                  setAnswers((current) => ({ ...current, [question.id]: value }))
-                }
-              />
+          <div className="space-y-6">
+            {questionGroups.map((group) => (
+              <section key={group.section} className="space-y-3">
+                <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-brass-deep">
+                  {group.label}
+                </h2>
+                {group.questions.map((question) => (
+                  <QuestionField
+                    key={question.id}
+                    question={question}
+                    value={mergedAnswers[question.id]}
+                    onChange={(value) => {
+                      setAnswers((current) => {
+                        let next = { ...current, [question.id]: value };
+                        if (question.id === "businessModel") {
+                          next = applyBusinessModelDefaults(value, next);
+                        }
+                        if (question.id === "collectTax" && value === false) {
+                          next.taxRate = 0;
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </section>
             ))}
           </div>
         ) : null}
@@ -364,6 +382,12 @@ export function SetupWizard({
                   ? " Integrations will be enabled after setup."
                   : " You can connect integrations later in Settings."}
               </p>
+            </div>
+            <div>
+              <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+                Modules
+              </h3>
+              <p className="mt-1 text-sm">{resolved.modules.join(", ")}</p>
             </div>
             <div>
               <h3 className="text-xs font-medium uppercase tracking-wider text-muted">

@@ -14,7 +14,22 @@ export const tradesHvacPack = createTradesPack({
     businessModel: "mixed",
     customerNoun: "dealers",
     revenueStreams: ["equipment", "labor", "service", "parts", "maintenance"],
+    marketSegments: ["residential", "commercial"],
   },
+  extraQuestions: [
+    {
+      id: "marketSegments",
+      prompt: "Which markets do you serve?",
+      help: "Adds separate residential and commercial revenue accounts to your chart of accounts.",
+      type: "multiselect",
+      section: "business",
+      default: ["residential", "commercial"],
+      options: [
+        { value: "residential", label: "Residential" },
+        { value: "commercial", label: "Commercial" },
+      ],
+    },
+  ],
 });
 
 export const tradesElectricalPack = createTradesPack({

@@ -11,6 +11,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Double-entry ledger | ✓ | `teller_journal_entries`, `post.ts`, `assertBalanced()`, `teller_post_journal` RPC |
 | Audit log | ✓ (Phase 1) | `teller_audit_events`, `audit.ts` |
 | Organization configuration | ✓ (Phase 2) | `006_org_configuration.sql`, `/api/settings`, `org/config.ts` |
+| Intelligent onboarding | ✓ (Phase 3) | `onboarding.ts`, branching setup wizard |
+| HVAC industry profile | ✓ (Phase 4) | Residential/commercial COA, job detail P&L, dashboard labels |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |

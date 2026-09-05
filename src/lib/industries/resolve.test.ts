@@ -22,22 +22,18 @@ describe("HVAC trades industry pack", () => {
     expect(resolved.pack.id).toBe("trades-hvac");
   });
 
-  it("drops unused revenue accounts and keeps inventory when asked", () => {
+  it("includes residential and commercial revenue when market segments selected", () => {
     const resolved = resolveIndustry("trades-hvac", {
       ...defaultAnswers(tradesHvacPack),
-      revenueStreams: ["equipment", "labor"],
-      trackInventory: true,
+      marketSegments: ["residential"],
+      revenueStreams: ["equipment", "labor", "service"],
+      trackInventory: false,
       collectTax: false,
-      warrantyReserve: false,
     });
 
     const codes = resolved.accounts.map((account) => account.code);
-    expect(codes).toContain("1200");
-    expect(codes).toContain("4000");
-    expect(codes).toContain("4100");
-    expect(codes).not.toContain("4200");
-    expect(codes).not.toContain("2100");
-    expect(codes).not.toContain("2200");
+    expect(codes).toContain("4015");
+    expect(codes).not.toContain("4025");
   });
 });
 

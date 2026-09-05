@@ -23,3 +23,7 @@ export function invoicePath(id: string) {
 export function expensePath(id: string) {
   return `${routes.expenses}/${id}`;
 }
+
+export function jobPath(id: string) {
+  return `${routes.jobs}/${id}`;
+}

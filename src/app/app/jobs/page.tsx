@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { JobForm } from "@/components/JobForm";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { getSessionContext, hasModule, label } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
-import { routes } from "@/lib/routes";
+import { jobPath, routes } from "@/lib/routes";
 import { redirect } from "next/navigation";
 
 export default async function JobsPage() {
@@ -45,7 +46,9 @@ export default async function JobsPage() {
             {(data ?? []).map((job) => (
               <tr key={job.id}>
                 <td>
-                  <span className="font-medium">{job.job_number}</span>
+                  <Link href={jobPath(job.id)} className="font-medium hover:text-sky">
+                    {job.job_number}
+                  </Link>
                   <span className="text-muted"> · {job.name}</span>
                 </td>
                 <td>{job.party_id ? names.get(job.party_id) : "—"}</td>

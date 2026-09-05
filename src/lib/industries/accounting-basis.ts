@@ -23,6 +23,7 @@ export function accountingBasisQuestion(
     prompt: "Accounting basis",
     help: "This controls when activity shows up on your profit & loss — when you earn or owe it (accrual), or when cash actually moves (cash).",
     type: "select",
+    section: "accounting",
     default: "accrual",
     options: ACCOUNTING_BASIS_OPTIONS,
     ...overrides,
