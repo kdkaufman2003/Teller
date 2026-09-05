@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveDocumentAmountPaid } from "@/lib/accounting/balances";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee, voidInvoice } from "@/lib/accounting/post";
+import { recordTellerPayment } from "@/lib/accounting/payments";
 import { invoicePaymentProgress, resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
 import {
@@ -466,43 +468,6 @@ async function findInvoiceForPayment(
   return null;
 }
 
-async function recordTellerPayment(
-  supabase: SupabaseClient,
-  input: {
-    organizationId: string;
-    documentId: string;
-    partyId: string | null;
-    jobId: string | null;
-    amount: number;
-    feeAmount: number;
-    netAmount: number;
-    paymentDate: string;
-    processorName?: string;
-    externalId?: string | null;
-    journalEntryId: string;
-    metadata?: Record<string, unknown>;
-  },
-) {
-  const { error } = await supabase.from("teller_payments").insert({
-    organization_id: input.organizationId,
-    document_id: input.documentId,
-    party_id: input.partyId,
-    job_id: input.jobId,
-    amount: input.amount,
-    fee_amount: input.feeAmount,
-    net_amount: input.netAmount,
-    payment_date: input.paymentDate,
-    processor: input.processorName ?? null,
-    external_source: input.externalId ? HFAC_EXTERNAL_SOURCE : null,
-    external_id: input.externalId ?? null,
-    journal_entry_id: input.journalEntryId,
-    metadata: input.metadata ?? {},
-  });
-  if (error && !error.message.includes("duplicate")) {
-    throw new Error(error.message);
-  }
-}
-
 export async function importPaymentFromHfac(
   supabase: SupabaseClient,
   organizationId: string,
@@ -539,7 +504,12 @@ export async function importPaymentFromHfac(
   }
 
   const invoiceTotal = asNumber(invoice.total);
-  const priorPaid = asNumber(invoice.amount_paid);
+  const priorPaid = await resolveDocumentAmountPaid(
+    supabase,
+    organizationId,
+    invoice.id,
+    asNumber(invoice.amount_paid),
+  );
   const paymentAmount = asNumber(payment.amount) || invoiceTotal;
   const { fullyPaid } = invoicePaymentProgress(priorPaid, paymentAmount, invoiceTotal);
 
@@ -633,6 +603,7 @@ export async function importPaymentFromHfac(
     netAmount: resolvedNet,
     paymentDate: paidDate,
     processorName,
+    externalSource: paymentExternalId ? HFAC_EXTERNAL_SOURCE : null,
     externalId: paymentExternalId,
     journalEntryId: entryId,
     metadata: {

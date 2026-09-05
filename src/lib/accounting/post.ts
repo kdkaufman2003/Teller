@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
+import { validateDocumentPayment } from "./balances";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import {
@@ -8,6 +9,8 @@ import {
   paymentProcessingFeeAccount,
   resolvePaymentAmounts,
 } from "./payment-fees";
+import { recordTellerPayment } from "./payments";
+import { assertEntryDateOpen, booksClosedThrough } from "./periods";
 
 type JournalLineInput = {
   account_id: string;
@@ -17,6 +20,20 @@ type JournalLineInput = {
   job_id?: string | null;
   memo?: string;
 };
+
+async function assertOrgPeriodOpen(
+  supabase: SupabaseClient,
+  organizationId: string,
+  entryDate: string,
+) {
+  const { data: closes, error } = await supabase
+    .from("teller_period_closes")
+    .select("period_end")
+    .eq("organization_id", organizationId);
+
+  if (error) throw new Error(error.message);
+  assertEntryDateOpen(booksClosedThrough(closes ?? []), entryDate);
+}
 
 export function assertBalanced(lines: JournalLineInput[]) {
   const debit = lines.reduce((sum, line) => sum + asNumber(line.debit), 0);
@@ -169,6 +186,8 @@ export async function voidInvoice(
     entryIds.add(entry.id as string);
   }
   if (input.postedEntryId) entryIds.add(input.postedEntryId);
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.voidDate);
 
   for (const entryId of entryIds) {
     const { count } = await supabase
@@ -337,6 +356,9 @@ export async function postInvoicePaid(
     feeAmount?: number | null;
     netAmount?: number | null;
     processorName?: string;
+    actorId?: string | null;
+    externalSource?: string | null;
+    externalId?: string | null;
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -344,16 +366,24 @@ export async function postInvoicePaid(
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
   if (!cash || !ar) throw new Error("Cash or AR account is missing");
 
-  const { grossAmount, feeAmount, netAmount } = resolvePaymentAmounts({
-    grossAmount: input.total,
+  const invoiceTotal = input.invoiceTotal ?? input.total;
+  const priorPaid = input.priorPaid ?? 0;
+  const { paymentAmount: grossAmount } = validateDocumentPayment({
+    documentTotal: invoiceTotal,
+    amountPaid: priorPaid,
+    paymentAmount: input.total,
+  });
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+
+  const { feeAmount, netAmount } = resolvePaymentAmounts({
+    grossAmount,
     feeAmount: input.feeAmount,
     netAmount: input.netAmount,
   });
   const feeAccount =
     feeAmount > 0.009 ? paymentProcessingFeeAccount(accounts) : null;
 
-  const invoiceTotal = input.invoiceTotal ?? grossAmount;
-  const priorPaid = input.priorPaid ?? 0;
   const { amountPaid, fullyPaid } = invoicePaymentProgress(
     priorPaid,
     grossAmount,
@@ -418,9 +448,31 @@ export async function postInvoicePaid(
 
   if (error) throw new Error(error.message);
 
+  await recordTellerPayment(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    partyId: input.partyId,
+    jobId: input.jobId,
+    amount: grossAmount,
+    feeAmount,
+    netAmount,
+    paymentDate: input.issueDate,
+    processorName: input.processorName,
+    externalSource: input.externalSource ?? null,
+    externalId: input.externalId ?? null,
+    journalEntryId: entryId,
+  });
+
+  const auditAction = fullyPaid
+    ? "invoice.payment.completed"
+    : priorPaid > 0.009
+      ? "invoice.payment.partial"
+      : "invoice.payment.recorded";
+
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
-    action: fullyPaid ? "invoice.paid" : "invoice.partial_payment",
+    actorId: input.actorId,
+    action: auditAction,
     resourceKind: "invoice",
     resourceId: input.documentId,
     metadata: {
@@ -589,4 +641,192 @@ export async function postExpense(
   });
 
   return entryId;
+}
+
+/** Void a posted expense by reversing all linked GL entries. */
+export async function voidExpense(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    documentId: string;
+    number: string;
+    voidDate: string;
+    postedEntryId?: string | null;
+    amountPaid?: number;
+    actorId?: string | null;
+  },
+) {
+  const amountPaid = asNumber(input.amountPaid);
+  if (amountPaid > 0.009) {
+    throw new Error(
+      "Cannot void an expense with payments recorded. Reverse payments first.",
+    );
+  }
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.voidDate);
+
+  const { data: linkedEntries, error: entriesError } = await supabase
+    .from("teller_journal_entries")
+    .select("id, source_kind, created_at")
+    .eq("organization_id", input.organizationId)
+    .eq("source_id", input.documentId)
+    .is("reverses_entry_id", null)
+    .neq("source_kind", "reversal")
+    .order("created_at", { ascending: false });
+
+  if (entriesError) throw new Error(entriesError.message);
+
+  const entryIds = new Set<string>();
+  for (const entry of linkedEntries ?? []) {
+    entryIds.add(entry.id as string);
+  }
+  if (input.postedEntryId) entryIds.add(input.postedEntryId);
+
+  for (const entryId of entryIds) {
+    const { count } = await supabase
+      .from("teller_journal_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("reverses_entry_id", entryId);
+
+    if ((count ?? 0) > 0) continue;
+
+    await reverseJournalEntry(supabase, {
+      organizationId: input.organizationId,
+      entryId,
+      entryDate: input.voidDate,
+      memo: `Void expense ${input.number}`,
+      sourceId: input.documentId,
+      actorId: input.actorId,
+    });
+  }
+
+  const { error: docError } = await supabase
+    .from("teller_documents")
+    .update({
+      status: "void",
+      amount_paid: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.documentId);
+
+  if (docError) throw new Error(docError.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: "expense.void",
+    resourceKind: "expense",
+    resourceId: input.documentId,
+    metadata: { number: input.number, reversedEntries: entryIds.size },
+  });
+}
+
+export async function postExpensePaid(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    documentId: string;
+    partyId: string | null;
+    jobId: string | null;
+    issueDate: string;
+    number: string;
+    /** Payment amount on this posting. */
+    paymentAmount: number;
+    expenseTotal?: number;
+    priorPaid?: number;
+    paymentMemo?: string;
+    actorId?: string | null;
+  },
+) {
+  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
+  const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
+  if (!cash || !ap) throw new Error("Cash or AP account is missing");
+
+  const expenseTotal = input.expenseTotal ?? input.paymentAmount;
+  const priorPaid = input.priorPaid ?? 0;
+  const { paymentAmount } = validateDocumentPayment({
+    documentTotal: expenseTotal,
+    amountPaid: priorPaid,
+    paymentAmount: input.paymentAmount,
+  });
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+
+  const { amountPaid, fullyPaid } = invoicePaymentProgress(
+    priorPaid,
+    paymentAmount,
+    expenseTotal,
+  );
+
+  const memo = input.paymentMemo
+    ? `Bill payment ${input.number} · ${input.paymentMemo}`
+    : `Bill payment ${input.number}`;
+
+  const entryId = await postJournal(supabase, {
+    organizationId: input.organizationId,
+    entryDate: input.issueDate,
+    memo,
+    sourceKind: "expense-payment",
+    sourceId: input.documentId,
+    lines: [
+      {
+        account_id: ap.id,
+        debit: paymentAmount,
+        party_id: input.partyId,
+        job_id: input.jobId,
+        memo: "Clear accounts payable",
+      },
+      {
+        account_id: cash.id,
+        credit: paymentAmount,
+        party_id: input.partyId,
+        job_id: input.jobId,
+        memo: "Vendor payment",
+      },
+    ],
+    actorId: input.actorId,
+  });
+
+  const { error } = await supabase
+    .from("teller_documents")
+    .update({
+      status: fullyPaid ? "paid" : "partially_paid",
+      amount_paid: amountPaid,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.documentId);
+
+  if (error) throw new Error(error.message);
+
+  await recordTellerPayment(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    partyId: input.partyId,
+    jobId: input.jobId,
+    amount: paymentAmount,
+    paymentDate: input.issueDate,
+    journalEntryId: entryId,
+  });
+
+  const auditAction = fullyPaid
+    ? "expense.payment.completed"
+    : "expense.payment.recorded";
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: auditAction,
+    resourceKind: "expense",
+    resourceId: input.documentId,
+    metadata: {
+      number: input.number,
+      paymentAmount,
+      amountPaid,
+      expenseTotal,
+      entryId,
+    },
+  });
+
+  return { entryId, amountPaid, fullyPaid };
 }

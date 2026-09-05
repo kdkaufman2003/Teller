@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ExpenseActions } from "@/components/ExpenseActions";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate, money } from "@/lib/format";
+import { documentRemainingBalance } from "@/lib/accounting/balances";
+import { asNumber, formatDate, money } from "@/lib/format";
 import {
   getReceiptSignedUrl,
   guessReceiptMime,
@@ -81,6 +83,8 @@ export default async function ExpenseDetailPage({
     ? await getReceiptSignedUrl(supabase, attachmentPath)
     : null;
   const receiptMime = attachmentPath ? guessReceiptMime(attachmentPath) : null;
+  const amountPaid = asNumber(expense.amount_paid);
+  const remaining = documentRemainingBalance(expense.total, amountPaid);
 
   return (
     <div className="space-y-6">
@@ -105,12 +109,16 @@ export default async function ExpenseDetailPage({
           <p>{formatDate(expense.issue_date)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-muted">Amount</p>
-          <p className="font-tabular">{money(expense.total)}</p>
+          <p className="text-muted">Due</p>
+          <p>{formatDate(expense.due_date)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-muted">Receipt</p>
-          <p>{attachmentPath ? "Attached" : "None"}</p>
+          <p className="text-muted">Amount paid</p>
+          <p className="font-tabular">{money(amountPaid)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-muted">Remaining</p>
+          <p className="font-tabular">{money(remaining)}</p>
         </div>
       </div>
 
@@ -154,6 +162,14 @@ export default async function ExpenseDetailPage({
       </div>
 
       {expense.memo ? <p className="text-sm text-muted">{expense.memo}</p> : null}
+
+      <ExpenseActions
+        id={expense.id}
+        status={expense.status}
+        total={asNumber(expense.total)}
+        amountPaid={amountPaid}
+        remaining={remaining}
+      />
 
       {attachmentPath ? (
         <section className="card p-4 space-y-3">

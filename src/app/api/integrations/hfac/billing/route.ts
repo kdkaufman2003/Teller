@@ -1,12 +1,10 @@
-import { NextResponse } from "next/server";
 import {
   importBillingEntriesFromHfac,
   recordHfacWebhookDelivery,
   reconcileRemovedBillingInvoices,
   type HfacBillingEntry,
 } from "@/lib/integrations/hfac";
-import { hfacWebhookAuthorized } from "@/lib/integrations/hfac-auth";
-import { createServiceClient, hasServiceRole } from "@/lib/supabase/admin";
+import { handleHfacWebhook } from "@/lib/integrations/hfac-webhook";
 
 function normalizeEntries(body: {
   entry?: HfacBillingEntry;
@@ -22,16 +20,6 @@ function normalizeEntries(body: {
 }
 
 export async function POST(request: Request) {
-  if (!hfacWebhookAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!hasServiceRole()) {
-    return NextResponse.json(
-      { error: "SUPABASE_SERVICE_ROLE_KEY is required for inbound billing" },
-      { status: 500 },
-    );
-  }
-
   const body = (await request.json()) as {
     organizationId?: string;
     entry?: HfacBillingEntry;
@@ -39,40 +27,31 @@ export async function POST(request: Request) {
     reconcile?: { activeExternalIds?: string[] };
   };
 
-  if (!body.organizationId) {
-    return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
-  }
-
   const entries = normalizeEntries(body);
   const activeExternalIds = body.reconcile?.activeExternalIds;
   const hasReconcile = Array.isArray(activeExternalIds);
 
   if (!entries.length && !hasReconcile) {
-    return NextResponse.json({ error: "entry, entries, or reconcile is required" }, { status: 400 });
+    return Response.json({ error: "entry, entries, or reconcile is required" }, { status: 400 });
   }
 
-  const supabase = createServiceClient();
-
-  try {
+  return handleHfacWebhook(request, "billing", body, async (supabase, organizationId) => {
     let result = { created: 0, updated: 0, paid: 0, voided: 0, skipped: 0 };
 
     if (entries.length) {
-      result = await importBillingEntriesFromHfac(supabase, body.organizationId, entries);
+      result = await importBillingEntriesFromHfac(supabase, organizationId, entries);
     }
 
     if (hasReconcile) {
       const reconciled = await reconcileRemovedBillingInvoices(
         supabase,
-        body.organizationId,
+        organizationId,
         activeExternalIds ?? [],
       );
       result = { ...result, voided: result.voided + reconciled };
     }
 
-    await recordHfacWebhookDelivery(supabase, body.organizationId, result, "billing");
-    return NextResponse.json({ ok: true, result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Import failed";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+    await recordHfacWebhookDelivery(supabase, organizationId, result, "billing");
+    return result;
+  });
 }

@@ -3,6 +3,7 @@ import { titleCase } from "@/lib/format";
 const TONES: Record<string, string> = {
   draft: "bg-rule/60 text-muted",
   open: "bg-sky/15 text-sky",
+  partially_paid: "bg-brass/15 text-brass-deep",
   paid: "bg-ok/15 text-ok",
   void: "bg-danger/10 text-danger",
   estimate: "bg-brass/15 text-brass-deep",

@@ -51,6 +51,7 @@ export async function POST(request: Request) {
     amount?: number;
     memo?: string;
     issueDate?: string;
+    dueDate?: string;
     paid?: boolean;
     expenseType?: ExpenseType;
     attachmentPath?: string;
@@ -125,6 +126,8 @@ export async function POST(request: Request) {
     (existing ?? []).map((row) => row.number),
   );
   const issueDate = body.issueDate || todayISO();
+  const paid = body.paid !== false;
+  const dueDate = !paid ? body.dueDate || issueDate : null;
 
   const { data: doc, error } = await supabase
     .from("teller_documents")
@@ -136,6 +139,7 @@ export async function POST(request: Request) {
       job_id: body.jobId || null,
       status: "draft",
       issue_date: issueDate,
+      due_date: dueDate,
       subtotal: amount,
       tax: 0,
       total: amount,
@@ -181,7 +185,7 @@ export async function POST(request: Request) {
     number,
     amount,
     accountId,
-    paid: body.paid !== false,
+    paid,
   });
 
   return NextResponse.json({ id: doc.id, number });

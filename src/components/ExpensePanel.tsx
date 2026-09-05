@@ -42,6 +42,8 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [payLater, setPayLater] = useState(false);
+  const [dueDate, setDueDate] = useState(todayISO());
 
   const mileageAccount = useMemo(
     () =>
@@ -112,7 +114,8 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
 
     const body: Record<string, unknown> = {
       issueDate,
-      paid: true,
+      paid: mode === "mileage" ? true : !payLater,
+      dueDate: mode !== "mileage" && payLater ? dueDate : undefined,
       expenseType: mode,
       attachmentPath,
     };
@@ -333,9 +336,46 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
             />
         ) : null}
 
+        {mode !== "mileage" ? (
+          <>
+            <fieldset className="text-sm space-y-2">
+              <legend className="text-muted">Payment status</legend>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="paymentStatus"
+                  checked={!payLater}
+                  onChange={() => setPayLater(false)}
+                />
+                Already paid
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="paymentStatus"
+                  checked={payLater}
+                  onChange={() => setPayLater(true)}
+                />
+                Pay later (accounts payable)
+              </label>
+            </fieldset>
+            {payLater ? (
+              <label className="text-sm block max-w-xs">
+                <span className="mb-1 block text-muted">Due date</span>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
+                  required
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn btn-primary" disabled={pending || analyzing} type="submit">
-            {pending ? "Saving…" : "Record expense"}
+            {pending ? "Saving…" : payLater && mode !== "mileage" ? "Record bill" : "Record expense"}
           </button>
           {attachmentPath ? (
             <span className="text-xs text-muted">Receipt attached</span>

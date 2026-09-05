@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildApAging,
   buildArAging,
   buildBalanceSheet,
   buildCashFlowStatement,
@@ -86,6 +87,38 @@ describe("buildArAging", () => {
     expect(report.total).toBe(1500);
     expect(report.buckets.find((row) => row.id === "90_plus")?.amount).toBe(1000);
     expect(report.topCustomers[0]?.name).toBe("ABC Mechanical");
+  });
+});
+
+describe("buildApAging", () => {
+  it("uses remaining balance after partial payments", () => {
+    const report = buildApAging(
+      [
+        {
+          status: "partially_paid",
+          total: 1000,
+          amount_paid: 400,
+          issue_date: "2026-03-01",
+          due_date: "2026-03-15",
+          party_id: "v1",
+          posted_entry_id: "je-1",
+        },
+        {
+          status: "paid",
+          total: 500,
+          amount_paid: 500,
+          issue_date: "2026-03-01",
+          due_date: "2026-03-15",
+          party_id: "v2",
+          posted_entry_id: "je-2",
+        },
+      ],
+      new Map([["v1", "Supply Co"]]),
+      "2026-03-31",
+    );
+
+    expect(report.total).toBe(600);
+    expect(report.topCustomers[0]?.total).toBe(600);
   });
 });
 

@@ -276,7 +276,11 @@ export function buildApAging(
   asOf: string,
 ): AgingReport {
   return buildDocumentAging(
-    expenses.filter((row) => row.status === "open" && Boolean(row.posted_entry_id)),
+    expenses.filter(
+      (row) =>
+        (row.status === "open" || row.status === "partially_paid") &&
+        Boolean(row.posted_entry_id),
+    ),
     partyNames,
     asOf,
     (row) => row.due_date || row.issue_date,

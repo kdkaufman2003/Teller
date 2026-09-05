@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  documentRemainingBalance,
+  resolveDocumentAmountPaid,
+} from "@/lib/accounting/balances";
 import { postInvoiceOpen, postInvoicePaid, voidInvoice } from "@/lib/accounting/post";
-import { asNumber } from "@/lib/format";
+import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 type Params = { params: Promise<{ id: string }> };
@@ -26,7 +30,18 @@ export async function GET(_request: Request, { params }: Params) {
     .eq("document_id", id)
     .order("sort_order");
 
-  return NextResponse.json({ invoice, lines: lines ?? [] });
+  const amountPaid = await resolveDocumentAmountPaid(
+    supabase,
+    organizationId,
+    id,
+    asNumber(invoice.amount_paid),
+  );
+  const remaining = documentRemainingBalance(invoice.total, amountPaid);
+
+  return NextResponse.json({
+    invoice: { ...invoice, amount_paid: amountPaid, remaining_balance: remaining },
+    lines: lines ?? [],
+  });
 }
 
 export async function POST(request: Request, { params }: Params) {
@@ -34,7 +49,12 @@ export async function POST(request: Request, { params }: Params) {
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
-  const body = (await request.json()) as { action?: "open" | "paid" | "void" };
+  const body = (await request.json()) as {
+    action?: "open" | "pay" | "paid" | "void";
+    amount?: number;
+    paymentDate?: string;
+    memo?: string;
+  };
 
   const { data: invoice, error } = await supabase
     .from("teller_documents")
@@ -60,7 +80,7 @@ export async function POST(request: Request, { params }: Params) {
         organizationId,
         documentId: id,
         number: invoice.number,
-        voidDate: new Date().toISOString().slice(0, 10),
+        voidDate: todayISO(),
         postedEntryId: invoice.posted_entry_id,
         actorId: session.userId,
       });
@@ -89,7 +109,14 @@ export async function POST(request: Request, { params }: Params) {
     });
   }
 
-  if (body.action === "paid") {
+  if (body.action === "pay" || body.action === "paid") {
+    if (invoice.status === "void") {
+      return jsonError("Cannot pay a void invoice", 400);
+    }
+    if (invoice.status === "paid") {
+      return jsonError("Invoice is already paid", 400);
+    }
+
     if (invoice.status === "draft") {
       await postInvoiceOpen(supabase, {
         organizationId,
@@ -102,16 +129,43 @@ export async function POST(request: Request, { params }: Params) {
         lines: lines ?? [],
       });
     }
-    if (invoice.status !== "paid") {
-      await postInvoicePaid(supabase, {
+
+    const invoiceTotal = asNumber(invoice.total);
+    const priorPaid = await resolveDocumentAmountPaid(
+      supabase,
+      organizationId,
+      id,
+      asNumber(invoice.amount_paid),
+    );
+    const remaining = documentRemainingBalance(invoiceTotal, priorPaid);
+
+    const paymentAmount =
+      body.action === "pay"
+        ? asNumber(body.amount)
+        : remaining;
+
+    if (remaining <= 0.009) {
+      return jsonError("Nothing left to pay on this invoice", 400);
+    }
+
+    try {
+      const result = await postInvoicePaid(supabase, {
         organizationId,
         documentId: id,
         partyId: invoice.party_id,
         jobId: invoice.job_id,
-        issueDate: invoice.issue_date,
+        issueDate: body.paymentDate || todayISO(),
         number: invoice.number,
-        total: asNumber(invoice.total),
+        total: paymentAmount,
+        invoiceTotal,
+        priorPaid,
+        paymentMemo: body.memo,
+        actorId: session.userId,
       });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not record payment";
+      return jsonError(message, 400);
     }
   }
 

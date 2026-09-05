@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InvoiceActions } from "@/components/InvoiceActions";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate, money } from "@/lib/format";
+import { documentRemainingBalance } from "@/lib/accounting/balances";
+import { asNumber, formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
@@ -49,6 +50,9 @@ export default async function InvoiceDetailPage({
     fee?: number;
     processor?: string | null;
   } } | null)?.payment;
+
+  const amountPaid = asNumber(invoice.amount_paid);
+  const remaining = documentRemainingBalance(invoice.total, amountPaid);
 
   return (
     <div className="space-y-6">
@@ -120,7 +124,13 @@ export default async function InvoiceDetailPage({
       ) : null}
 
       {invoice.memo ? <p className="text-sm text-muted">{invoice.memo}</p> : null}
-      <InvoiceActions id={invoice.id} status={invoice.status} />
+      <InvoiceActions
+        id={invoice.id}
+        status={invoice.status}
+        total={asNumber(invoice.total)}
+        amountPaid={amountPaid}
+        remaining={remaining}
+      />
     </div>
   );
 }
