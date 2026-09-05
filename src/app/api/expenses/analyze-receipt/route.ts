@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks } from "@/lib/api";
 import {
-  classifyReceiptImage,
+  classifyReceipt,
   isAllowedReceiptMime,
   MAX_RECEIPT_BYTES,
-} from "@/lib/expenses/receipt-vision";
+} from "@/lib/expenses/receipt-analyze";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const ctx = await requireBooks();
@@ -54,24 +56,16 @@ export async function POST(request: Request) {
     );
   }
 
-  let classification;
-  if (file.type === "application/pdf") {
-    const { classifyExpenseText } = await import("@/lib/expenses/classify");
-    classification = classifyExpenseText(accounts, {
-      vendorName: file.name.replace(/\.[^.]+$/, ""),
-      memo: "PDF receipt — confirm amount and category",
-    });
-  } else {
-    classification = await classifyReceiptImage(accounts, {
-      base64: buffer.toString("base64"),
-      mimeType: file.type,
-      fileName: file.name,
-    });
-  }
+  const { classification, readMethod, aiEnabled } = await classifyReceipt(accounts, {
+    buffer,
+    mimeType: file.type,
+    fileName: file.name,
+  });
 
   return NextResponse.json({
     attachmentPath,
     classification,
-    aiEnabled: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    readMethod,
+    aiEnabled,
   });
 }

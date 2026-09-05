@@ -20,6 +20,8 @@ type Classification = {
   source: "ai" | "rules";
 };
 
+type ReadMethod = "vision" | "pdf-text" | "rules";
+
 type ExpenseMode = "receipt" | "mileage" | "manual";
 
 export function ExpensePanel({ accounts }: { accounts: Account[] }) {
@@ -34,6 +36,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const [ratePerMile, setRatePerMile] = useState(String(DEFAULT_MILEAGE_RATE));
   const [attachmentPath, setAttachmentPath] = useState<string | null>(null);
   const [classification, setClassification] = useState<Classification | null>(null);
+  const [readMethod, setReadMethod] = useState<ReadMethod | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +62,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
     setAnalyzing(true);
     setError("");
     setClassification(null);
+    setReadMethod(null);
     setAttachmentPath(null);
     try {
       const form = new FormData();
@@ -71,6 +75,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
         error?: string;
         attachmentPath?: string;
         classification?: Classification;
+        readMethod?: ReadMethod;
         aiEnabled?: boolean;
       };
       if (!response.ok) throw new Error(payload.error || "Could not analyze receipt");
@@ -80,6 +85,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
 
       setAttachmentPath(payload.attachmentPath ?? null);
       setClassification(result);
+      setReadMethod(payload.readMethod ?? null);
       setAiEnabled(Boolean(payload.aiEnabled));
       setVendorName(result.vendorName);
       setMemo(result.memo);
@@ -149,6 +155,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       setMiles("");
       setAttachmentPath(null);
       setClassification(null);
+      setReadMethod(null);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");
@@ -193,15 +200,41 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
               />
             </label>
             {analyzing ? (
-              <p className="text-sm text-muted">Reading receipt and suggesting a category…</p>
+              <p className="text-sm text-muted">Reading vendor, amount, and description…</p>
             ) : null}
             {classification ? (
-              <p className="rounded-lg bg-paper px-3 py-2 text-sm text-muted">
-                Suggested <strong className="text-ink">{classification.accountCode}</strong> —{" "}
-                {classification.reason}
-                {classification.confidence !== "high" ? " (please confirm)" : ""}
-                {!aiEnabled ? " · Rule-based (set OPENAI_API_KEY for vision)" : ""}
-              </p>
+              <div className="rounded-lg bg-paper px-3 py-2 text-sm text-muted space-y-1">
+                <p>
+                  <strong className="text-ink">Vendor:</strong>{" "}
+                  {classification.vendorName || "—"}
+                  {classification.amount != null ? (
+                    <>
+                      {" "}
+                      · <strong className="text-ink">Amount:</strong> $
+                      {classification.amount.toFixed(2)}
+                    </>
+                  ) : null}
+                </p>
+                {classification.memo ? (
+                  <p>
+                    <strong className="text-ink">Description:</strong> {classification.memo}
+                  </p>
+                ) : null}
+                <p>
+                  <strong className="text-ink">Category:</strong> {classification.accountCode} —{" "}
+                  {classification.reason}
+                  {classification.confidence !== "high" ? " (please confirm)" : ""}
+                </p>
+                <p className="text-xs">
+                  {readMethod === "vision"
+                    ? "Read from photo"
+                    : readMethod === "pdf-text"
+                      ? "Read from PDF"
+                      : aiEnabled
+                        ? "Could not auto-read — review fields"
+                        : "Add OPENAI_API_KEY on Vercel to auto-read receipts"}
+                </p>
+              </div>
             ) : null}
           </>
         ) : null}
@@ -287,7 +320,11 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
         )}
 
         {mode !== "mileage" ? (
-          <input placeholder="Memo" value={memo} onChange={(event) => setMemo(event.target.value)} />
+            <input
+              placeholder="Description / memo"
+              value={memo}
+              onChange={(event) => setMemo(event.target.value)}
+            />
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">

@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { ExpensePanel } from "@/components/ExpensePanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate, money } from "@/lib/format";
+import { expensePath, routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
-import { routes } from "@/lib/routes";
 import { redirect } from "next/navigation";
 
 export default async function ExpensesPage() {
@@ -49,6 +50,7 @@ export default async function ExpensesPage() {
               <th>Date</th>
               <th>Status</th>
               <th className="text-right">Amount</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -63,13 +65,28 @@ export default async function ExpensesPage() {
               return (
               <tr key={row.id}>
                 <td className="text-muted">{typeLabel}</td>
-                <td>{row.number}</td>
+                <td>
+                  <Link href={expensePath(row.id)} className="font-medium">
+                    {row.number}
+                  </Link>
+                </td>
                 <td>{row.party_id ? names.get(row.party_id) : row.memo || "—"}</td>
                 <td>{formatDate(row.issue_date)}</td>
                 <td>
                   <StatusBadge status={row.status} />
                 </td>
                 <td className="text-right font-tabular">{money(row.total)}</td>
+                <td className="text-right text-sm">
+                  {row.attachment_path ? (
+                    <Link href={expensePath(row.id)} className="text-sky hover:underline">
+                      Receipt
+                    </Link>
+                  ) : (
+                    <Link href={expensePath(row.id)} className="text-muted hover:underline">
+                      View
+                    </Link>
+                  )}
+                </td>
               </tr>
               );
             })}

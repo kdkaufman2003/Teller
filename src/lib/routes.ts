@@ -19,3 +19,7 @@ export const routes = {
 export function invoicePath(id: string) {
   return `${routes.invoices}/${id}`;
 }
+
+export function expensePath(id: string) {
+  return `${routes.expenses}/${id}`;
+}
