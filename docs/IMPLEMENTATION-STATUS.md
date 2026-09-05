@@ -19,6 +19,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Accounting health engine | ✓ (Phase 8) | `src/lib/health/`, dashboard score + needs-attention list, `/api/health` |
 | Advanced reporting | ✓ (Phase 9) | `financial-reports.ts`, balance sheet, cash flow, AR/AP aging tabs on `/app/reports` |
 | Advanced accounting | ✓ (Phase 10) | `010_accounting_periods.sql`, period close, CPA mode, CSV exports, manual adjustments on `/app/accounting` |
+| Intelligence / automation | ✓ (Phase 11) | `011_intelligence.sql`, `src/lib/intelligence/`, dashboard narrative + scan suggestions with human review |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
@@ -38,7 +39,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Partial payments | Cumulative `amount_paid`, open until fully paid | Payment UI, customer statements |
 | Jurisdiction tax rules | Engine + loader ready; `taxMode: jurisdiction` optional | Authoritative MO/KS rule specs after professional review |
 | Bank reconciliation UI | Import + match suggestions; confirm/ignore | Statement balance reconciliation, period close |
-| Health engine | Score + attention on dashboard | Anomaly detection, period-close gates |
+| Health engine | Score + attention on dashboard | Anomaly detection wired via intelligence scan |
 | Immutability | Journal UPDATE/DELETE blocked; period close locks posting dates | Reopen workflow + adjustment audit trail |
 | Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |
@@ -53,7 +54,6 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Medium | Rate limiting on auth + webhooks |
 | Medium | Authoritative MO/KS tax rule packs (populate engine after review) |
 | Medium | Full bank reconciliation (statement balances, period lock) |
-| Low | AI categorization with human review gate |
 | Low | SOC 2 / formal compliance program |
 
 ## Explicit non-goals for V1

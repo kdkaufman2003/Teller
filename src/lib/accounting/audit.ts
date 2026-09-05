@@ -12,7 +12,8 @@ export type AuditAction =
   | "settings.updated"
   | "period.closed"
   | "period.reopened"
-  | "data.exported";
+  | "data.exported"
+  | "intelligence.scanned";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

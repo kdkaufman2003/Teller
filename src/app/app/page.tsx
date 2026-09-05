@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { HealthPanel } from "@/components/HealthPanel";
+import { IntelligencePanel } from "@/components/IntelligencePanel";
 import { computeHealthReport } from "@/lib/health/engine";
 import { gatherHealthSignals } from "@/lib/health/signals";
+import { buildIntelligenceReport } from "@/lib/intelligence/engine";
+import { gatherIntelligenceContext, isAiEnabled } from "@/lib/intelligence/signals";
+import type { IntelligenceSuggestion } from "@/lib/intelligence/types";
+import { canWriteBooks } from "@/lib/auth/roles";
+import { parseFiscalYearStart } from "@/lib/org/config";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { isBilledInvoice } from "@/lib/accounting/reports";
@@ -82,6 +88,41 @@ export default async function DashboardPage() {
   });
   const healthReport = computeHealthReport(healthSignals);
 
+  const answers = session.settings?.answers ?? {};
+  const intelligenceContext = await gatherIntelligenceContext(supabase, {
+    organizationId,
+    answers,
+    fiscalYearStart: parseFiscalYearStart(answers.fiscalYearStart),
+  });
+  const { data: suggestionRows } = await supabase
+    .from("teller_intelligence_suggestions")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const intelligenceReport = buildIntelligenceReport({
+    context: intelligenceContext,
+    persistedSuggestions: (suggestionRows ?? []).map(
+      (row): IntelligenceSuggestion => ({
+        id: row.id,
+        kind: row.kind,
+        fingerprint: row.fingerprint,
+        title: row.title,
+        description: row.description,
+        confidence: row.confidence ?? undefined,
+        href: row.href ?? undefined,
+        payload:
+          row.payload && typeof row.payload === "object"
+            ? (row.payload as Record<string, unknown>)
+            : undefined,
+        resourceKind: row.resource_kind ?? undefined,
+        resourceId: row.resource_id ?? undefined,
+      }),
+    ),
+    aiEnabled: isAiEnabled(),
+  });
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -95,6 +136,11 @@ export default async function DashboardPage() {
       </header>
 
       <HealthPanel report={healthReport} />
+
+      <IntelligencePanel
+        report={intelligenceReport}
+        canManage={canWriteBooks(session.profile?.role)}
+      />
 
       <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {metricDefs.map((metric) => (
