@@ -13,6 +13,7 @@ Provider event → webhook/API route → adapter (hfac.ts) → accounting/post.t
 | Provider | Adapter | Routes |
 |----------|---------|--------|
 | Hassle Free AC | `hfac.ts` | `/api/integrations/hfac/*` |
+| Plaid (read-only) | `src/lib/banking/` | `/api/banking/*` |
 
 Legacy `quoter.ts` routes remain for backward compatibility; new work uses HFAC naming.
 

@@ -13,6 +13,7 @@ export const routes = {
   accounts: "/app/accounts",
   ledger: "/app/ledger",
   reports: "/app/reports",
+  banking: "/app/banking",
   settings: "/app/settings",
 } as const;
 

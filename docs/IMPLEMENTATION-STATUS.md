@@ -15,6 +15,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | HVAC industry profile | ✓ (Phase 4) | Residential/commercial COA, job detail P&L, dashboard labels |
 | HFAC structured integration | ✓ (Phase 5) | `007_payments_idempotency.sql`, `teller_payments`, idempotency keys, partial payments, quote COGS metadata |
 | Jurisdiction tax engine | ✓ (Phase 6) | `008_tax_engine.sql`, `src/lib/tax/`, `tax-rules/` spec + loader; no MO/KS rules shipped |
+| Banking adapter (read-only) | ✓ (Phase 7) | `009_banking.sql`, `src/lib/banking/`, Plaid Link, transaction import + match suggestions |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
 | Industry packs + setup | ✓ | Setup wizard, `teller_industry_settings` |
@@ -33,6 +34,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | HFAC integration | Manual sync button + webhooks; structured won-deal metadata | Event-driven hooks in HFAC; post estimated COGS to GL |
 | Partial payments | Cumulative `amount_paid`, open until fully paid | Payment UI, customer statements |
 | Jurisdiction tax rules | Engine + loader ready; `taxMode: jurisdiction` optional | Authoritative MO/KS rule specs after professional review |
+| Bank reconciliation UI | Import + match suggestions; confirm/ignore | Statement balance reconciliation, period close |
 | Immutability | Journal UPDATE/DELETE blocked; period close not yet | Accounting period close / lock |
 | Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |
@@ -47,8 +49,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Medium | Granular permissions beyond four roles |
 | Medium | MFA requirement for owner/admin |
 | Medium | Rate limiting on auth + webhooks |
-| Medium | Banking adapter (Plaid read-only) |
 | Medium | Authoritative MO/KS tax rule packs (populate engine after review) |
+| Medium | Full bank reconciliation (statement balances, period lock) |
 | Low | AI categorization with human review gate |
 | Low | SOC 2 / formal compliance program |
 

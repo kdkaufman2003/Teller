@@ -17,6 +17,7 @@ const NAV: NavItem[] = [
   { href: routes.reports, label: "Reports" },
   { href: routes.accounts, label: "Accounts" },
   { href: routes.ledger, label: "Ledger" },
+  { href: routes.banking, label: "Banking" },
   { href: routes.settings, label: "Settings" },
 ];
 
