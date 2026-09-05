@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks } from "@/lib/api";
 import { attachPartner, detachPartner } from "@/lib/partners/attachment";
-import { getHfacPlatformUrl, getHfacWebhookUrl, getHfacWebhookUrls, getPartner } from "@/lib/partners/registry";
+import { getHfacPlatformUrl, getHfacWebhookUrl, getHfacWebhookUrls, getPartner, getTellerPublicUrl } from "@/lib/partners/registry";
+import { hasServiceRole } from "@/lib/supabase/admin";
 
 export async function GET() {
   const ctx = await requireBooks();
@@ -27,6 +28,14 @@ export async function GET() {
     platformUrl: getHfacPlatformUrl(),
     webhookUrl: getHfacWebhookUrl(),
     webhookUrls: getHfacWebhookUrls(),
+    diagnostics: {
+      webhookSecretConfigured: Boolean(
+        process.env.TELLER_HFAC_WEBHOOK_SECRET?.trim() ||
+          process.env.TELLER_QUOTER_WEBHOOK_SECRET?.trim(),
+      ),
+      serviceRoleConfigured: hasServiceRole(),
+      publicUrlConfigured: Boolean(getTellerPublicUrl()),
+    },
     organizationId,
     hfac: hfacIntegration ?? null,
   });

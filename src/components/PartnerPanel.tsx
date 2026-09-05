@@ -25,6 +25,11 @@ type PartnerState = {
     last_synced_at?: string | null;
     last_sync_summary?: unknown;
   } | null;
+  diagnostics?: {
+    webhookSecretConfigured: boolean;
+    serviceRoleConfigured: boolean;
+    publicUrlConfigured: boolean;
+  };
 };
 
 export function PartnerPanel() {
@@ -117,7 +122,37 @@ export function PartnerPanel() {
               Last webhook {new Date(state.hfac.last_synced_at).toLocaleString()}
             </p>
           ) : (
-            <p className="text-muted">No imports yet — manual entry works anytime.</p>
+            <div className="rounded-lg border border-brass/40 bg-paper p-3 text-sm">
+              <p className="font-medium text-navy">Nothing imported yet?</p>
+              <p className="mt-1 text-muted">
+                Connecting in Teller only links accounts — Hassle Free AC must send
+                data. After HFAC env is set, run a dealer sync from HFAC (see below).
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                <li>
+                  Teller Vercel: <code className="text-xs">TELLER_HFAC_WEBHOOK_SECRET</code>{" "}
+                  {state.diagnostics?.webhookSecretConfigured ? "✓" : "✗ missing"}
+                </li>
+                <li>
+                  Teller Vercel: <code className="text-xs">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
+                  {state.diagnostics?.serviceRoleConfigured ? "✓" : "✗ missing"}
+                </li>
+                <li>
+                  Teller Vercel: <code className="text-xs">NEXT_PUBLIC_SITE_URL</code>{" "}
+                  {state.diagnostics?.publicUrlConfigured ? "✓" : "✗ missing"}
+                </li>
+                <li>HFAC: <code className="text-xs">NEXT_PUBLIC_TELLER_INTEGRATION=1</code></li>
+                <li>
+                  HFAC: same webhook secret +{" "}
+                  <code className="text-xs">TELLER_ORGANIZATION_ID</code> as below
+                </li>
+                <li>
+                  HFAC admin (logged in):{" "}
+                  <code className="text-xs">POST /api/platform/teller/sync</code> to import
+                  dealers
+                </li>
+              </ul>
+            </div>
           )}
           <div className="rounded-lg border border-rule bg-paper p-3 text-xs">
             <p className="font-medium text-navy">Hassle Free AC env (optional)</p>
