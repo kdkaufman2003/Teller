@@ -202,15 +202,6 @@ textarea:focus {
   background: rgba(246, 241, 232, 0.65);
 }
 
-.ledger-rule {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 27px,
-    rgba(217, 207, 192, 0.55) 28px
-  );
-}
-
 .ledger-book {
   position: relative;
   border: 1px solid var(--rule);
@@ -281,13 +272,29 @@ textarea:focus {
 
 .ledger-book-scroll {
   overflow-x: auto;
+  background: var(--paper-strong);
+}
+
+.ledger-sheet-body {
+  --ledger-line: 28px;
+  background-color: var(--paper-strong);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--ledger-line) - 1px),
+    rgba(217, 207, 192, 0.72) calc(var(--ledger-line) - 1px),
+    rgba(217, 207, 192, 0.72) var(--ledger-line)
+  );
+  background-size: 100% var(--ledger-line);
 }
 
 .ledger-book-table {
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  table-layout: fixed;
+  font-size: 0.8125rem;
+  --ledger-line: 28px;
 }
 
 .ledger-book-table thead {
@@ -298,72 +305,98 @@ textarea:focus {
 }
 
 .ledger-book-table th {
-  padding: 0.55rem 0.65rem;
+  box-sizing: border-box;
+  height: var(--ledger-line);
+  padding: 0 0.65rem;
   border-bottom: 2px solid var(--navy);
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   text-align: left;
   color: var(--navy);
   font-family: var(--font-ui);
+  line-height: calc(var(--ledger-line) - 2px);
+  vertical-align: middle;
 }
 
-.ledger-book-table td {
-  padding: 0.45rem 0.65rem;
-  vertical-align: top;
-  line-height: 1.55;
+.ledger-book-table tbody td {
+  box-sizing: border-box;
+  height: var(--ledger-line);
+  max-height: var(--ledger-line);
+  padding: 0 0.65rem;
+  line-height: var(--ledger-line);
+  vertical-align: middle;
   font-family: var(--font-sans);
+  overflow: hidden;
 }
 
 .ledger-book-table tbody tr {
   background: transparent;
 }
 
-.ledger-row-entry-start td {
-  padding-top: 0.85rem;
+.ledger-cell-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ledger-row-entry-end td {
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid rgba(11, 31, 51, 0.14);
+  box-shadow: inset 0 -2px 0 rgba(11, 31, 51, 0.1);
 }
 
-.ledger-row-entry-end + .ledger-row-entry-start td {
-  padding-top: 1rem;
+.ledger-row-spacer td {
+  height: var(--ledger-line);
+  padding: 0;
+  box-shadow: none;
 }
 
 .ledger-col-date {
-  width: 7.5rem;
+  width: 7.25rem;
   white-space: nowrap;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .ledger-col-folio {
-  width: 3.25rem;
+  width: 3rem;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .ledger-col-acct {
-  width: 3.5rem;
+  width: 3.25rem;
   color: var(--navy);
   font-weight: 600;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .ledger-col-particulars {
-  min-width: 12rem;
+  overflow: hidden;
   color: var(--ink);
 }
 
+.ledger-particulars-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  height: var(--ledger-line);
+}
+
+.ledger-particulars-inner .ledger-cell-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .ledger-col-amount {
-  width: 6.5rem;
+  width: 6.25rem;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .ledger-debit {
@@ -376,24 +409,24 @@ textarea:focus {
 
 .ledger-source-tag {
   display: inline-block;
-  margin-left: 0.45rem;
-  padding: 0.05rem 0.35rem;
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: 2px;
   font-family: var(--font-ui);
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
-  vertical-align: 0.05em;
+  line-height: 1.35;
+  vertical-align: 1px;
 }
 
 .ledger-row-unbalanced td {
   background: rgba(155, 44, 44, 0.06);
   color: var(--danger);
-  font-size: 0.8rem;
-  border-bottom: 1px solid rgba(155, 44, 44, 0.2);
+  font-size: 0.75rem;
 }
 
 .sr-only {

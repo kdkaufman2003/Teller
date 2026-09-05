@@ -49,8 +49,8 @@ export function LedgerBook({ entries }: { entries: LedgerEntryRow[] }) {
                 </th>
               </tr>
             </thead>
-            <tbody className="ledger-rule">
-              {entries.flatMap((entry) => {
+            <tbody className="ledger-sheet-body">
+              {entries.flatMap((entry, entryIndex) => {
                 const debitTotal = entry.lines.reduce(
                   (sum, line) => sum + asNumber(line.debit),
                   0,
@@ -84,11 +84,13 @@ export function LedgerBook({ entries }: { entries: LedgerEntryRow[] }) {
                         {isFirst ? entry.folio : null}
                       </td>
                       <td className="ledger-col-acct font-tabular">{line.accountCode}</td>
-                      <td className="ledger-col-particulars">
-                        <span>{particulars}</span>
-                        {isFirst && entry.source_kind ? (
-                          <span className="ledger-source-tag">{entry.source_kind}</span>
-                        ) : null}
+                      <td className="ledger-col-particulars" title={particulars}>
+                        <div className="ledger-particulars-inner">
+                          <span className="ledger-cell-text">{particulars}</span>
+                          {isFirst && entry.source_kind ? (
+                            <span className="ledger-source-tag">{entry.source_kind}</span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="ledger-col-amount ledger-debit font-tabular">
                         {asNumber(line.debit) > 0 ? money(line.debit) : ""}
@@ -104,10 +106,20 @@ export function LedgerBook({ entries }: { entries: LedgerEntryRow[] }) {
                   rows.push(
                     <tr key={`${entry.id}-warn`} className="ledger-row-unbalanced">
                       <td colSpan={4}>
-                        Entry out of balance — review before closing the period.
+                        <span className="ledger-cell-text">
+                          Entry out of balance — review before closing the period.
+                        </span>
                       </td>
                       <td className="ledger-col-amount font-tabular">{money(debitTotal)}</td>
                       <td className="ledger-col-amount font-tabular">{money(creditTotal)}</td>
+                    </tr>,
+                  );
+                }
+
+                if (entryIndex < entries.length - 1) {
+                  rows.push(
+                    <tr key={`${entry.id}-gap`} className="ledger-row-spacer" aria-hidden>
+                      <td colSpan={6} />
                     </tr>,
                   );
                 }
