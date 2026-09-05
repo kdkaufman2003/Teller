@@ -242,7 +242,7 @@ export async function recordHfacWebhookDelivery(
   supabase: SupabaseClient,
   organizationId: string,
   result: Record<string, unknown>,
-  event: "quotes" | "subscribers" | "payments" = "quotes",
+  event: "quotes" | "subscribers" | "payments" | "billing" = "quotes",
 ) {
   const { data: current } = await supabase
     .from("teller_integrations")
@@ -529,6 +529,246 @@ export async function importPaymentFromHfac(
     invoiceNumber: invoice.number,
     amount: total,
   };
+}
+
+/** Platform billing ledger row from Hassle Free AC contractor profiles. */
+export type HfacBillingEntry = {
+  id: string;
+  companyId: string;
+  date: string;
+  description: string;
+  amountCents: number;
+  status: "invoiced" | "paid" | "pending" | "credit";
+  reference?: string;
+  stripeInvoiceId?: string;
+};
+
+export function billingExternalId(entry: Pick<HfacBillingEntry, "id" | "companyId" | "stripeInvoiceId">): string {
+  if (entry.stripeInvoiceId?.trim()) {
+    return `stripe-invoice:${entry.stripeInvoiceId.trim()}`;
+  }
+  return `billing:${entry.companyId}:${entry.id}`;
+}
+
+type BillingInvoiceRow = {
+  id: string;
+  number: string;
+  status: string;
+  party_id: string | null;
+  job_id: string | null;
+  total: number;
+};
+
+async function postBillingInvoicePaid(
+  supabase: SupabaseClient,
+  organizationId: string,
+  invoice: BillingInvoiceRow,
+  paidDate: string,
+  paymentMemo: string,
+) {
+  if (invoice.status === "draft") {
+    const [{ data: lines }, { data: doc }] = await Promise.all([
+      supabase
+        .from("teller_document_lines")
+        .select("amount, account_id, description")
+        .eq("document_id", invoice.id),
+      supabase
+        .from("teller_documents")
+        .select("tax")
+        .eq("id", invoice.id)
+        .maybeSingle(),
+    ]);
+
+    await postInvoiceOpen(supabase, {
+      organizationId,
+      documentId: invoice.id,
+      partyId: invoice.party_id,
+      jobId: invoice.job_id,
+      issueDate: paidDate,
+      number: invoice.number,
+      tax: asNumber(doc?.tax),
+      lines: lines ?? [],
+    });
+  }
+
+  await postInvoicePaid(supabase, {
+    organizationId,
+    documentId: invoice.id,
+    partyId: invoice.party_id,
+    jobId: invoice.job_id,
+    issueDate: paidDate,
+    number: invoice.number,
+    total: asNumber(invoice.total),
+    paymentMemo,
+  });
+}
+
+/** Import HFAC platform billing ledger rows as Teller invoices (open or paid). */
+export async function importBillingEntriesFromHfac(
+  supabase: SupabaseClient,
+  organizationId: string,
+  entries: HfacBillingEntry[],
+) {
+  let created = 0;
+  let updated = 0;
+  let paid = 0;
+  let skipped = 0;
+
+  const { data: existingDocs } = await supabase
+    .from("teller_documents")
+    .select("number")
+    .eq("organization_id", organizationId)
+    .eq("kind", "invoice");
+
+  const invoiceNumbers = (existingDocs ?? []).map((row) => row.number);
+
+  const { data: accounts } = await supabase
+    .from("teller_accounts")
+    .select("id, code, type")
+    .eq("organization_id", organizationId);
+
+  const accountByCode = new Map((accounts ?? []).map((row) => [row.code, row.id]));
+  const revenueAccountId =
+    accountByCode.get(revenueCodeForItemType("subscription", accounts ?? [])) ?? null;
+
+  for (const entry of entries) {
+    if (!entry.id?.trim() || !entry.companyId?.trim()) {
+      skipped += 1;
+      continue;
+    }
+    if (entry.status === "credit") {
+      skipped += 1;
+      continue;
+    }
+
+    const amountCents = Math.round(asNumber(entry.amountCents));
+    if (amountCents <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const amount = amountCents / 100;
+    const issueDate = entry.date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+    const description = entry.description?.trim() || "Platform billing";
+    const externalId = billingExternalId(entry);
+
+    const { data: party } = await supabase
+      .from("teller_parties")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .in("external_source", [...LEGACY_HFAC_EXTERNAL_SOURCES])
+      .eq("external_id", entry.companyId.trim())
+      .maybeSingle();
+
+    if (!party?.id) {
+      skipped += 1;
+      continue;
+    }
+
+    const paymentMemo = entry.stripeInvoiceId
+      ? `Stripe invoice ${entry.stripeInvoiceId}`
+      : entry.reference?.trim()
+        ? `HFAC ${entry.reference.trim()}`
+        : "Hassle Free AC billing";
+
+    const { data: existing } = await supabase
+      .from("teller_documents")
+      .select("id, number, status, party_id, job_id, total")
+      .eq("organization_id", organizationId)
+      .eq("kind", "invoice")
+      .in("external_source", [...LEGACY_HFAC_EXTERNAL_SOURCES])
+      .eq("external_id", externalId)
+      .maybeSingle();
+
+    if (existing) {
+      const row = existing as BillingInvoiceRow;
+      if (entry.status === "paid" && row.status !== "paid") {
+        await postBillingInvoicePaid(supabase, organizationId, row, issueDate, paymentMemo);
+        paid += 1;
+        updated += 1;
+      } else if (entry.status === "invoiced" && row.status === "draft") {
+        const { data: lines } = await supabase
+          .from("teller_document_lines")
+          .select("amount, account_id, description")
+          .eq("document_id", row.id);
+        await postInvoiceOpen(supabase, {
+          organizationId,
+          documentId: row.id,
+          partyId: row.party_id,
+          jobId: row.job_id,
+          issueDate,
+          number: row.number,
+          tax: 0,
+          lines: lines ?? [],
+        });
+        updated += 1;
+      } else {
+        skipped += 1;
+      }
+      continue;
+    }
+
+    const invoiceNumber = nextNumber("INV", invoiceNumbers);
+    invoiceNumbers.push(invoiceNumber);
+
+    const shouldOpen = entry.status === "invoiced" || entry.status === "paid";
+    const memoParts = [entry.reference?.trim(), "Imported from Hassle Free AC billing"].filter(Boolean);
+
+    const { data: doc, error: docError } = await supabase
+      .from("teller_documents")
+      .insert({
+        organization_id: organizationId,
+        kind: "invoice",
+        number: invoiceNumber,
+        party_id: party.id,
+        job_id: null,
+        status: "draft",
+        memo: memoParts.join(" · "),
+        issue_date: issueDate,
+        subtotal: amount,
+        tax: 0,
+        total: amount,
+        external_source: HFAC_EXTERNAL_SOURCE,
+        external_id: externalId,
+      })
+      .select("id, number, status, party_id, job_id, total")
+      .single();
+
+    if (docError || !doc) throw new Error(docError?.message || "Invoice insert failed");
+
+    const { error: lineError } = await supabase.from("teller_document_lines").insert({
+      document_id: doc.id,
+      description,
+      quantity: 1,
+      unit_price: amount,
+      amount,
+      item_type: "subscription",
+      account_id: revenueAccountId,
+      sort_order: 0,
+    });
+    if (lineError) throw new Error(lineError.message);
+
+    created += 1;
+
+    const row = doc as BillingInvoiceRow;
+    if (entry.status === "paid") {
+      await postBillingInvoicePaid(supabase, organizationId, row, issueDate, paymentMemo);
+      paid += 1;
+    } else if (shouldOpen) {
+      await postInvoiceOpen(supabase, {
+        organizationId,
+        documentId: row.id,
+        partyId: row.party_id,
+        jobId: row.job_id,
+        issueDate,
+        number: row.number,
+        tax: 0,
+        lines: [{ description, amount, account_id: revenueAccountId }],
+      });
+    }
+  }
+
+  return { created, updated, paid, skipped };
 }
 
 /** @deprecated use HfacWonQuote */

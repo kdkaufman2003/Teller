@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { importSubscribersFromHfac } from "./hfac";
+import { billingExternalId, importSubscribersFromHfac } from "./hfac";
 
 function mockSupabase(responses: {
   existing?: { id: string } | null;
@@ -32,6 +32,27 @@ function mockSupabase(responses: {
     update,
   };
 }
+
+describe("billingExternalId", () => {
+  it("prefers Stripe invoice id when present", () => {
+    expect(
+      billingExternalId({
+        id: "entry-1",
+        companyId: "co-1",
+        stripeInvoiceId: "in_abc123",
+      }),
+    ).toBe("stripe-invoice:in_abc123");
+  });
+
+  it("falls back to company and entry id", () => {
+    expect(
+      billingExternalId({
+        id: "entry-1",
+        companyId: "co-1",
+      }),
+    ).toBe("billing:co-1:entry-1");
+  });
+});
 
 describe("importSubscribersFromHfac", () => {
   it("creates a new subscriber party", async () => {

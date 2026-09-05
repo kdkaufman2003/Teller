@@ -18,6 +18,7 @@ type PartnerState = {
     quotes: string | null;
     subscribers: string | null;
     payments: string | null;
+    billing: string | null;
   };
   organizationId: string;
   hfac: {
@@ -162,6 +163,7 @@ export function PartnerPanel() {
               <li>TELLER_SUBSCRIBERS_URL={state.webhookUrls?.subscribers ?? "<teller-url>/api/integrations/hfac/subscribers"}</li>
               <li>TELLER_QUOTES_URL={state.webhookUrls?.quotes ?? state.webhookUrl ?? "<teller-url>/api/integrations/hfac/quotes"}</li>
               <li>TELLER_PAYMENTS_URL={state.webhookUrls?.payments ?? "<teller-url>/api/integrations/hfac/payments"}</li>
+              <li>TELLER_BILLING_URL={state.webhookUrls?.billing ?? "<teller-url>/api/integrations/hfac/billing"}</li>
             </ul>
           </div>
           <button

@@ -61,10 +61,17 @@ export function getHfacPaymentsWebhookUrl(): string | null {
   return `${base}/api/integrations/hfac/payments`;
 }
 
+export function getHfacBillingWebhookUrl(): string | null {
+  const base = getTellerPublicUrl();
+  if (!base) return null;
+  return `${base}/api/integrations/hfac/billing`;
+}
+
 export function getHfacWebhookUrls() {
   return {
     quotes: getHfacWebhookUrl(),
     subscribers: getHfacSubscribersWebhookUrl(),
     payments: getHfacPaymentsWebhookUrl(),
+    billing: getHfacBillingWebhookUrl(),
   };
 }
