@@ -41,6 +41,123 @@ const PHASE4_RPCS = [
   "teller_write_off_invoice",
 ];
 
+const RPC_PROBE_UUID = "00000000-0000-0000-0000-000000000001";
+
+const RPC_PROBES = {
+  teller_import_bank_transactions: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_bank_account_id: RPC_PROBE_UUID,
+    p_provider: "manual_csv",
+    p_transactions: [],
+    p_removed_provider_ids: [],
+  },
+  teller_confirm_bank_match: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_bank_transaction_id: RPC_PROBE_UUID,
+    p_matched_resource_type: "customer_payment",
+    p_matched_resource_id: RPC_PROBE_UUID,
+    p_matched_amount: 1,
+    p_idempotency_event_id: "preflight-probe",
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_remove_bank_match: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_match_id: RPC_PROBE_UUID,
+    p_actor_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+  },
+  teller_exclude_bank_transaction: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_bank_transaction_id: RPC_PROBE_UUID,
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_categorize_bank_transaction: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_bank_transaction_id: RPC_PROBE_UUID,
+    p_category_kind: "expense",
+    p_account_id: RPC_PROBE_UUID,
+    p_party_id: null,
+    p_job_id: null,
+    p_memo: "preflight-probe",
+    p_idempotency_event_id: "preflight-probe",
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_split_categorize_bank_transaction: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_bank_transaction_id: RPC_PROBE_UUID,
+    p_splits: [],
+    p_idempotency_event_id: "preflight-probe",
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_create_bank_transfer: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_source_bank_transaction_id: RPC_PROBE_UUID,
+    p_destination_bank_transaction_id: RPC_PROBE_UUID,
+    p_amount: 1,
+    p_transfer_date: "2026-01-01",
+    p_idempotency_event_id: "preflight-probe",
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_finalize_bank_reconciliation: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_reconciliation_id: RPC_PROBE_UUID,
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_reopen_bank_reconciliation: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_reconciliation_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+    p_actor_id: RPC_PROBE_UUID,
+  },
+  teller_reverse_payment: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_payment_id: RPC_PROBE_UUID,
+    p_reversal_date: "2026-01-01",
+    p_reversal_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+  },
+  teller_reverse_deposit_application: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_allocation_id: RPC_PROBE_UUID,
+    p_reversal_date: "2026-01-01",
+    p_reversal_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+  },
+  teller_reverse_document_allocation: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_allocation_id: RPC_PROBE_UUID,
+    p_reversal_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+  },
+  teller_refund_customer_deposit: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_deposit_payment_id: RPC_PROBE_UUID,
+    p_amount: 1,
+    p_refund_date: "2026-01-01",
+    p_refund_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+    p_cash_account_id: RPC_PROBE_UUID,
+  },
+  teller_refund_customer_credit: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_credit_memo_id: RPC_PROBE_UUID,
+    p_amount: 1,
+    p_refund_date: "2026-01-01",
+    p_refund_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+    p_cash_account_id: RPC_PROBE_UUID,
+  },
+  teller_write_off_invoice: {
+    p_organization_id: RPC_PROBE_UUID,
+    p_invoice_id: RPC_PROBE_UUID,
+    p_amount: 1,
+    p_writeoff_date: "2026-01-01",
+    p_writeoff_event_id: RPC_PROBE_UUID,
+    p_reason: "preflight-probe",
+    p_bad_debt_account_id: RPC_PROBE_UUID,
+  },
+};
+
 async function countRows(supabase, table, orgId = null) {
   let query = supabase.from(table).select("id", { count: "exact", head: true });
   if (orgId) query = query.eq("organization_id", orgId);
@@ -50,18 +167,17 @@ async function countRows(supabase, table, orgId = null) {
 }
 
 async function tableExists(supabase, table) {
-  const { error } = await supabase.from(table).select("id", { count: "exact", head: true });
+  const { error } = await supabase.from(table).select("id").limit(0);
   if (!error) return true;
   const message = error.message.toLowerCase();
   return !message.includes("does not exist") && !message.includes("could not find");
 }
 
 async function rpcExists(supabase, name) {
-  const { error } = await supabase.rpc(name, {});
+  const probeArgs = RPC_PROBES[name] ?? {};
+  const { error } = await supabase.rpc(name, probeArgs);
   if (!error) return true;
-  const message = error.message.toLowerCase();
-  if (message.includes("does not exist") || message.includes("could not find")) return false;
-  return true;
+  return !(error.message ?? "").includes("Could not find the function");
 }
 
 async function journalBalanceCheck(supabase, orgId) {
@@ -223,19 +339,33 @@ async function main() {
     orphanAllocations: await orphanAllocationProbe(supabase, HFAC_ORG_ID),
   };
 
+  const phase5Columns = {};
+  for (const [table, column] of [
+    ["teller_bank_transactions", "normalized_amount"],
+    ["teller_bank_transactions", "status"],
+    ["teller_bank_transactions", "import_fingerprint"],
+  ]) {
+    const { error } = await supabase.from(table).select(column).limit(0);
+    phase5Columns[`${table}.${column}`] = !error;
+  }
+
+  const migrations018To020Present =
+    Object.values(phase5Tables).some(Boolean) ||
+    Object.values(phase5Columns).some(Boolean);
+
   const report = {
     capturedAt: new Date().toISOString(),
     projectRef: PRODUCTION_REF,
     hfacOrganizationId: HFAC_ORG_ID,
-    migrations018To020Present: Object.values(phase5Tables).some(Boolean),
+    migrations018To020Present,
     phase5Tables,
+    phase5Columns,
     phase5Rpcs,
     phase4Rpcs,
     banking,
     hfac,
     readyForPhase5Migration:
-      !Object.values(phase5Tables).some(Boolean) &&
-      !Object.values(phase5Rpcs).some(Boolean),
+      !migrations018To020Present && !Object.values(phase5Rpcs).some(Boolean),
   };
 
   const dir = resolve(process.cwd(), "artifacts/controlled-prod-snapshots");
