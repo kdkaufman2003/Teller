@@ -8,7 +8,8 @@ export type JournalLinkKind =
   | "refund"
   | "writeoff"
   | "reversal"
-  | "adjustment";
+  | "adjustment"
+  | "deposit_application";
 
 const SOURCE_KIND_TO_LINK: Record<string, JournalLinkKind> = {
   invoice: "accrual",
@@ -18,6 +19,8 @@ const SOURCE_KIND_TO_LINK: Record<string, JournalLinkKind> = {
   "invoice-payment-fee": "fee",
   reversal: "reversal",
   adjustment: "adjustment",
+  "deposit-application": "deposit_application",
+  "customer-deposit": "payment",
 };
 
 export function linkKindFromSourceKind(sourceKind: string | null | undefined): JournalLinkKind | null {

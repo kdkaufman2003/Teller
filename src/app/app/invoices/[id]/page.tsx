@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CreditMemoForm } from "@/components/CreditMemoForm";
+import { ApplyDepositForm } from "@/components/ApplyDepositForm";
 import { InvoiceActions } from "@/components/InvoiceActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   authoritativeDocumentRemaining,
   authoritativeDocumentSettled,
 } from "@/lib/accounting/balances";
+import { batchDepositRemainingForPayments } from "@/lib/accounting/deposits";
+import { computeCustomerNetPosition } from "@/lib/accounting/deposit-reconciliation";
+import { authoritativeCustomerArBalance } from "@/lib/accounting/party-balances";
 import { asNumber, formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -70,6 +74,50 @@ export default async function InvoiceDetailPage({
     .eq("organization_id", organizationId)
     .eq("type", "revenue")
     .order("code");
+
+  let depositOptions: {
+    id: string;
+    remaining: number;
+    payment_date: string;
+    reference_number?: string | null;
+  }[] = [];
+  let netDue: number | null = null;
+
+  if (invoice.party_id) {
+    const { data: depositPayments } = await supabase
+      .from("teller_payments")
+      .select("id, amount, payment_date, reference_number")
+      .eq("organization_id", organizationId)
+      .eq("party_id", invoice.party_id)
+      .eq("payment_type", "customer_deposit")
+      .eq("status", "posted");
+
+    const rows = depositPayments ?? [];
+    const remainingMap = await batchDepositRemainingForPayments(
+      supabase,
+      organizationId,
+      rows.map((row) => ({ id: row.id as string, amount: asNumber(row.amount) })),
+    );
+    depositOptions = rows.map((row) => ({
+      id: row.id as string,
+      payment_date: row.payment_date as string,
+      reference_number: row.reference_number,
+      remaining: remainingMap.get(row.id as string) ?? asNumber(row.amount),
+    }));
+
+    const customerAr = await authoritativeCustomerArBalance(
+      supabase,
+      organizationId,
+      invoice.party_id,
+    );
+    const netPosition = await computeCustomerNetPosition(
+      supabase,
+      organizationId,
+      invoice.party_id,
+      customerAr.netAr,
+    );
+    netDue = netPosition.netDue;
+  }
 
   return (
     <div className="space-y-6">
@@ -141,6 +189,11 @@ export default async function InvoiceDetailPage({
       ) : null}
 
       {invoice.memo ? <p className="text-sm text-muted">{invoice.memo}</p> : null}
+      {netDue != null && invoice.party_id ? (
+        <p className="text-sm text-muted">
+          Customer net due after unapplied deposits: ${netDue.toFixed(2)}
+        </p>
+      ) : null}
       <InvoiceActions
         id={invoice.id}
         status={invoice.status}
@@ -148,6 +201,14 @@ export default async function InvoiceDetailPage({
         amountPaid={settled.payments}
         remaining={remaining}
       />
+      {invoice.party_id && invoice.status !== "draft" && invoice.status !== "void" ? (
+        <ApplyDepositForm
+          invoiceId={invoice.id}
+          partyId={invoice.party_id}
+          invoiceRemaining={remaining}
+          deposits={depositOptions}
+        />
+      ) : null}
       {invoice.party_id && invoice.status !== "draft" && invoice.status !== "void" ? (
         <CreditMemoForm
           invoiceId={invoice.id}

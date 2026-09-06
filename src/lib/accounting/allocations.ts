@@ -33,6 +33,16 @@ export function paymentTypeForDocumentKind(documentKind: string): PaymentType {
   return "customer_payment";
 }
 
+export type PaymentAllocationRow = {
+  id: string;
+  payment_id: string;
+  document_id: string;
+  amount: number;
+  allocation_kind: string;
+  application_journal_entry_id?: string | null;
+  application_event_id?: string | null;
+};
+
 export async function recordPaymentAllocation(
   supabase: SupabaseClient,
   input: {
@@ -41,40 +51,61 @@ export async function recordPaymentAllocation(
     documentId: string;
     amount: number;
     allocationKind: AllocationKind;
+    applicationJournalEntryId?: string | null;
+    applicationEventId?: string | null;
   },
-): Promise<string> {
+): Promise<{ id: string; inserted: boolean }> {
   const amount = roundMoney(asNumber(input.amount));
   if (amount <= 0.009) {
     throw new Error("Allocation amount must be greater than zero.");
   }
 
+  const row: Record<string, unknown> = {
+    organization_id: input.organizationId,
+    payment_id: input.paymentId,
+    document_id: input.documentId,
+    amount,
+    allocation_kind: input.allocationKind,
+  };
+  if (input.applicationJournalEntryId) {
+    row.application_journal_entry_id = input.applicationJournalEntryId;
+  }
+  if (input.applicationEventId) {
+    row.application_event_id = input.applicationEventId;
+  }
+
   const { data, error } = await supabase
     .from("teller_payment_allocations")
-    .insert({
-      organization_id: input.organizationId,
-      payment_id: input.paymentId,
-      document_id: input.documentId,
-      amount,
-      allocation_kind: input.allocationKind,
-    })
+    .insert(row)
     .select("id")
     .single();
 
   if (error) {
     if (error.message.includes("duplicate")) {
-      const { data: existing } = await supabase
-        .from("teller_payment_allocations")
-        .select("id")
-        .eq("payment_id", input.paymentId)
-        .eq("document_id", input.documentId)
-        .eq("allocation_kind", input.allocationKind)
-        .maybeSingle();
-      if (existing?.id) return existing.id as string;
+      if (input.applicationEventId) {
+        const { data: existing } = await supabase
+          .from("teller_payment_allocations")
+          .select("id")
+          .eq("organization_id", input.organizationId)
+          .eq("application_event_id", input.applicationEventId)
+          .maybeSingle();
+        if (existing?.id) return { id: existing.id as string, inserted: false };
+      }
+      if (input.allocationKind !== "deposit_apply") {
+        const { data: existing } = await supabase
+          .from("teller_payment_allocations")
+          .select("id")
+          .eq("payment_id", input.paymentId)
+          .eq("document_id", input.documentId)
+          .eq("allocation_kind", input.allocationKind)
+          .maybeSingle();
+        if (existing?.id) return { id: existing.id as string, inserted: false };
+      }
     }
     throw new Error(error.message);
   }
 
-  return data!.id as string;
+  return { id: data!.id as string, inserted: true };
 }
 
 export async function sumAllocationsForDocument(

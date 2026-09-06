@@ -30,6 +30,10 @@ export function expensePath(id: string) {
   return `${routes.expenses}/${id}`;
 }
 
+export function customerPath(id: string) {
+  return `${routes.customers}/${id}`;
+}
+
 export function billPath(id: string) {
   return `${routes.bills}/${id}`;
 }

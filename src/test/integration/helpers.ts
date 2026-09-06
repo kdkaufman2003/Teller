@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { TRADES_ACCOUNTS } from "@/lib/industries/trades-base";
 
-const MINIMAL_ACCOUNT_CODES = new Set(["1000", "1100", "2000", "4000", "6100", "6150"]);
+const MINIMAL_ACCOUNT_CODES = new Set(["1000", "1100", "2000", "2300", "4000", "6100", "6150"]);
 
 export function integrationTestsEnabled(): boolean {
   return (

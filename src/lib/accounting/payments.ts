@@ -17,7 +17,7 @@ export async function recordTellerPayment(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
-    documentId: string;
+    documentId?: string | null;
     documentKind?: string;
     partyId: string | null;
     jobId: string | null;
@@ -93,7 +93,7 @@ export async function recordTellerPayment(
 
   const paymentId = data!.id as string;
 
-  if (input.createAllocation !== false) {
+  if (input.createAllocation !== false && input.documentId) {
     const allocationKind = allocationKindForDocumentKind(input.documentKind ?? "invoice");
     await recordPaymentAllocation(supabase, {
       organizationId: input.organizationId,
