@@ -1,4 +1,5 @@
 import { asNumber } from "@/lib/format";
+import { toNormalizedBankTransaction } from "../types";
 
 type PlaidEnv = "sandbox" | "development" | "production";
 
@@ -76,7 +77,6 @@ export const plaidProvider = {
       webhook: process.env.PLAID_WEBHOOK_URL?.trim() || undefined,
       redirect_uri: process.env.PLAID_REDIRECT_URI?.trim() || undefined,
       transactions: { days_requested: 90 },
-      // Stable id for multi-connection support per org
       metadata: { organization_id: input.organizationId },
     });
 
@@ -161,19 +161,38 @@ export const plaidProvider = {
       count: 500,
     });
 
-    const mapTxn = (row: Record<string, unknown>) => ({
-      externalTransactionId: String(row.transaction_id),
-      externalAccountId: String(row.account_id),
-      postedDate: String(row.date).slice(0, 10),
-      authorizedDate: row.authorized_date ? String(row.authorized_date).slice(0, 10) : null,
-      amount: asNumber(row.amount),
-      name: String(row.name || row.merchant_name || "Bank transaction"),
-      merchantName: row.merchant_name ? String(row.merchant_name) : null,
-      pending: Boolean(row.pending),
-      category: Array.isArray(row.category)
-        ? (row.category as string[])
-        : [],
-    });
+    const mapTxn = (row: Record<string, unknown>) => {
+      const providerTransactionId = String(row.transaction_id);
+      const providerPendingTransactionId = row.pending_transaction_id
+        ? String(row.pending_transaction_id)
+        : row.pending
+          ? providerTransactionId
+          : null;
+      const rawAmount = asNumber(row.amount);
+      const description = String(row.name || row.merchant_name || "Bank transaction");
+      const merchantName = row.merchant_name ? String(row.merchant_name) : null;
+
+      return toNormalizedBankTransaction({
+        providerTransactionId,
+        externalTransactionId: providerTransactionId,
+        providerAccountId: String(row.account_id),
+        externalAccountId: String(row.account_id),
+        providerPendingTransactionId,
+        postedDate: String(row.date).slice(0, 10),
+        authorizedDate: row.authorized_date ? String(row.authorized_date).slice(0, 10) : null,
+        rawAmount,
+        amount: rawAmount,
+        description,
+        name: description,
+        merchantName,
+        transactionType: row.transaction_type ? String(row.transaction_type) : null,
+        pending: Boolean(row.pending),
+        currency: row.iso_currency_code ? String(row.iso_currency_code) : "USD",
+        providerCategory: Array.isArray(row.category) ? (row.category as string[]) : [],
+        category: Array.isArray(row.category) ? (row.category as string[]) : [],
+        rawProviderMetadata: row as Record<string, unknown>,
+      });
+    };
 
     let added = payload.added.map(mapTxn);
     let modified = payload.modified.map(mapTxn);

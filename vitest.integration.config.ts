@@ -21,6 +21,7 @@ export default defineConfig({
     environment: "node",
     include: ["src/test/integration/**/*.test.ts"],
     setupFiles: ["src/test/integration/setup.ts"],
+    globalSetup: ["src/test/integration/global-setup.ts"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     env: {

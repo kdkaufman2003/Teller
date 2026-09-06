@@ -37,7 +37,7 @@ export async function gatherHealthSignals(
       .eq("organization_id", organizationId),
     supabase
       .from("teller_bank_transactions")
-      .select("match_status")
+      .select("status, match_status")
       .eq("organization_id", organizationId),
     supabase
       .from("teller_tax_determinations")
@@ -85,8 +85,15 @@ export async function gatherHealthSignals(
   const bankConnectionErrorCount = bankRows.filter((row) => row.status === "error").length;
 
   const txnRows = bankTransactions.data ?? [];
-  const unmatchedBankCount = txnRows.filter((row) => row.match_status === "unmatched").length;
-  const suggestedBankCount = txnRows.filter((row) => row.match_status === "suggested").length;
+  const unmatchedBankCount = txnRows.filter(
+    (row) => row.status === "unreviewed" || row.match_status === "unmatched",
+  ).length;
+  const suggestedBankCount = txnRows.filter(
+    (row) =>
+      row.status === "suggested" ||
+      row.status === "partially_matched" ||
+      row.match_status === "suggested",
+  ).length;
 
   let hfacStaleSync = false;
   let hfacLastSyncedAt: string | null = null;

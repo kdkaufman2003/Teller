@@ -59,7 +59,7 @@ export async function gatherIntelligenceContext(
       .order("code"),
     supabase
       .from("teller_bank_transactions")
-      .select("id, posted_date, amount, name, merchant_name, match_status, match_confidence")
+      .select("id, posted_date, amount, normalized_amount, name, merchant_name, status, match_status, match_confidence")
       .eq("organization_id", input.organizationId)
       .order("posted_date", { ascending: false })
       .limit(40),
@@ -141,6 +141,7 @@ export async function gatherIntelligenceContext(
       amount: asNumber(row.amount),
       name: row.name,
       merchant_name: row.merchant_name,
+      status: row.status,
       match_status: row.match_status,
       match_confidence: row.match_confidence,
     })),

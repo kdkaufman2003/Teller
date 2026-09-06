@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Apply migrations 001–017 to the isolated Supabase database only.
+ * Apply migrations 001–020 to the isolated Supabase database only.
  * Requires .env.integration with SUPABASE_DB_URL and safety opt-in flags.
  *
  * Usage: npm run migrate:integration

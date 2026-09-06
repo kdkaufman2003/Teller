@@ -1,4 +1,5 @@
 import { classifyExpenseText, type ExpenseAccountOption } from "@/lib/expenses/classify";
+import { bankTransactionHasSuggestion, bankTransactionIsUnreviewed } from "@/lib/banking/normalize";
 import { money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { detectAnomalies } from "./anomalies";
@@ -63,7 +64,7 @@ export function buildLiveInsights(context: IntelligenceContext): IntelligenceIns
     });
   }
 
-  const unmatchedBank = context.bankTransactions.filter((row) => row.match_status === "unmatched");
+  const unmatchedBank = context.bankTransactions.filter((row) => bankTransactionIsUnreviewed(row));
   if (unmatchedBank.length > 0) {
     insights.push({
       id: "bank-unmatched",
@@ -73,7 +74,7 @@ export function buildLiveInsights(context: IntelligenceContext): IntelligenceIns
     });
   }
 
-  const suggestedBank = context.bankTransactions.filter((row) => row.match_status === "suggested");
+  const suggestedBank = context.bankTransactions.filter((row) => bankTransactionHasSuggestion(row));
   if (suggestedBank.length > 0) {
     insights.push({
       id: "bank-suggested",
@@ -119,7 +120,7 @@ export function buildScanSuggestions(context: IntelligenceContext): Intelligence
   }
 
   for (const txn of context.bankTransactions) {
-    if (txn.match_status !== "unmatched") continue;
+    if (!bankTransactionIsUnreviewed(txn)) continue;
     const haystack = txn.merchant_name || txn.name;
     const classification = classifyExpenseText(
       context.expenseAccounts as ExpenseAccountOption[],
@@ -145,7 +146,7 @@ export function buildScanSuggestions(context: IntelligenceContext): Intelligence
   }
 
   for (const txn of context.bankTransactions) {
-    if (txn.match_status !== "suggested") continue;
+    if (!bankTransactionHasSuggestion(txn)) continue;
     suggestions.push({
       kind: "reconciliation",
       fingerprint: `reconciliation:bank:${txn.id}`,

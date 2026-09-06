@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
-import { confirmBankTransactionMatch } from "@/lib/banking/sync";
-import { suggestBankTransactionMatches } from "@/lib/banking/match";
+import { removeBankMatch } from "@/lib/banking/categorize";
+import {
+  confirmBankTransactionMatch,
+  excludeBankTransaction,
+  loadTransactionMatchSuggestions,
+} from "@/lib/banking/sync";
+import { TAB_STATUS_MAP, type BankTransactionTab } from "@/lib/banking/types";
+
+function tabFromParam(value: string | null): BankTransactionTab | null {
+  if (!value) return null;
+  if (value in TAB_STATUS_MAP) return value as BankTransactionTab;
+  return null;
+}
 
 export async function GET(request: Request) {
   const ctx = await requireBooks();
@@ -11,72 +22,39 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const transactionId = url.searchParams.get("transactionId");
   const limit = Math.min(Number(url.searchParams.get("limit") || 50), 200);
-  const status = url.searchParams.get("status");
+  const tab = tabFromParam(url.searchParams.get("tab"));
+  const bankAccountId = url.searchParams.get("bankAccountId");
+  const legacyStatus = url.searchParams.get("status");
+
+  if (transactionId) {
+    try {
+      const payload = await loadTransactionMatchSuggestions(
+        supabase,
+        organizationId,
+        transactionId,
+      );
+      return NextResponse.json(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Transaction not found";
+      return jsonError(message, error instanceof Error && message.includes("not found") ? 404 : 500);
+    }
+  }
 
   let query = supabase
     .from("teller_bank_transactions")
     .select(
-      "id, bank_account_id, posted_date, amount, name, merchant_name, pending, match_status, match_confidence, matched_document_id, matched_journal_entry_id, metadata",
+      "id, bank_account_id, posted_date, amount, normalized_amount, direction, description, name, merchant_name, pending, status, match_status, match_confidence, metadata, provider_lifecycle_state",
     )
     .eq("organization_id", organizationId)
     .order("posted_date", { ascending: false })
     .limit(limit);
 
-  if (status) query = query.eq("match_status", status);
+  if (bankAccountId) query = query.eq("bank_account_id", bankAccountId);
+  if (tab) query = query.in("status", TAB_STATUS_MAP[tab]);
+  else if (legacyStatus) query = query.eq("match_status", legacyStatus);
 
   const { data, error } = await query;
   if (error) return jsonError(error.message, 500);
-
-  if (transactionId) {
-    const txn = (data ?? []).find((row) => row.id === transactionId);
-    if (!txn) return jsonError("Transaction not found", 404);
-
-    const [{ data: invoices }, { data: expenses }, { data: entries }] = await Promise.all([
-      supabase
-        .from("teller_documents")
-        .select("id, number, total, amount_paid, issue_date, status")
-        .eq("organization_id", organizationId)
-        .eq("kind", "invoice"),
-      supabase
-        .from("teller_documents")
-        .select("id, number, total, issue_date, memo")
-        .eq("organization_id", organizationId)
-        .eq("kind", "expense"),
-      supabase
-        .from("teller_journal_entries")
-        .select("id, entry_date, memo")
-        .eq("organization_id", organizationId),
-    ]);
-
-    const entryIds = (entries ?? []).map((row) => row.id);
-    const { data: journalLines } = entryIds.length
-      ? await supabase
-          .from("teller_journal_lines")
-          .select("entry_id, debit")
-          .in("entry_id", entryIds)
-          .gt("debit", 0)
-      : { data: [] };
-
-    const entryById = new Map((entries ?? []).map((row) => [row.id, row]));
-    const journalDeposits = (journalLines ?? []).map((row) => {
-      const entry = entryById.get(row.entry_id as string);
-      return {
-        id: row.entry_id as string,
-        entry_date: entry?.entry_date ?? "",
-        memo: entry?.memo ?? "",
-        debit: Number(row.debit),
-      };
-    });
-
-    return NextResponse.json({
-      transaction: txn,
-      suggestions: suggestBankTransactionMatches(txn, {
-        invoices: invoices ?? [],
-        expenses: expenses ?? [],
-        journalDeposits,
-      }),
-    });
-  }
 
   return NextResponse.json({ transactions: data ?? [] });
 }
@@ -84,36 +62,67 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, session } = ctx;
 
   const body = (await request.json()) as {
     transactionId?: string;
+    action?: "confirm" | "exclude" | "remove_match";
+    matchedResourceType?: string;
+    matchedResourceId?: string;
+    matchedAmount?: number;
+    matchId?: string;
+    reason?: string;
+    idempotencyEventId?: string | null;
     documentId?: string | null;
     journalEntryId?: string | null;
-    action?: "confirm" | "ignore";
   };
 
-  if (!body.transactionId) return jsonError("transactionId is required");
+  if (!body.transactionId && body.action !== "remove_match") {
+    return jsonError("transactionId is required");
+  }
 
   try {
-    if (body.action === "ignore") {
-      const { error } = await supabase
-        .from("teller_bank_transactions")
-        .update({ match_status: "ignored", updated_at: new Date().toISOString() })
-        .eq("organization_id", organizationId)
-        .eq("id", body.transactionId);
-      if (error) throw new Error(error.message);
-      return NextResponse.json({ ok: true });
+    if (body.action === "exclude") {
+      const result = await excludeBankTransaction(supabase, {
+        organizationId,
+        bankTransactionId: body.transactionId!,
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
     }
 
-    await confirmBankTransactionMatch(supabase, {
+    if (body.action === "remove_match") {
+      if (!body.matchId) return jsonError("matchId is required");
+      const result = await removeBankMatch(supabase, {
+        organizationId,
+        matchId: body.matchId,
+        reason: body.reason ?? "Removed by user",
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    const matchedResourceType =
+      body.matchedResourceType ??
+      (body.journalEntryId ? "journal_entry" : body.documentId ? "document" : null);
+    const matchedResourceId =
+      body.matchedResourceId ?? body.journalEntryId ?? body.documentId ?? null;
+
+    if (!matchedResourceType || !matchedResourceId) {
+      return jsonError("matchedResourceType and matchedResourceId are required");
+    }
+
+    const result = await confirmBankTransactionMatch(supabase, {
       organizationId,
-      transactionId: body.transactionId,
-      documentId: body.documentId,
-      journalEntryId: body.journalEntryId,
+      transactionId: body.transactionId!,
+      matchedResourceType,
+      matchedResourceId,
+      matchedAmount: body.matchedAmount,
+      idempotencyEventId: body.idempotencyEventId,
+      actorId: session.userId,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Match update failed";
     return jsonError(message, 500);

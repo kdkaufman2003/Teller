@@ -52,6 +52,7 @@ export type IntelligenceBankTransaction = {
   amount: number;
   name: string;
   merchant_name?: string | null;
+  status?: string | null;
   match_status: string;
   match_confidence?: number | null;
 };

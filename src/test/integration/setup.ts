@@ -2,6 +2,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assertSafeIntegrationDatabase, readCurrentGitBranch } from "@/lib/integration/safety";
 
+const PROBE_FILE = resolve(process.cwd(), "artifacts/integration-db-probe.json");
+
+function integrationDbProbeReachable(): boolean {
+  if (!existsSync(PROBE_FILE)) return true;
+  try {
+    const probe = JSON.parse(readFileSync(PROBE_FILE, "utf8")) as { reachable?: boolean };
+    return probe.reachable !== false;
+  } catch {
+    return true;
+  }
+}
+
 function clearSupabaseEnvVars() {
   delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -39,12 +51,18 @@ function loadIntegrationEnvFile() {
 
 const loaded = loadIntegrationEnvFile();
 if (loaded) {
-  try {
-    assertSafeIntegrationDatabase({ currentBranch: readCurrentGitBranch() });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Integration setup blocked: ${message}`);
+  if (!integrationDbProbeReachable()) {
     delete process.env.RUN_INTEGRATION_TESTS;
     delete process.env.TELLER_ALLOW_INTEGRATION_DB;
+    console.warn("Integration tests skipped: isolated Supabase database unreachable.");
+  } else {
+    try {
+      assertSafeIntegrationDatabase({ currentBranch: readCurrentGitBranch() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Integration setup blocked: ${message}`);
+      delete process.env.RUN_INTEGRATION_TESTS;
+      delete process.env.TELLER_ALLOW_INTEGRATION_DB;
+    }
   }
 }
