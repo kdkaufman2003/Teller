@@ -277,7 +277,9 @@ type InvoiceRow = {
 /** Posted to the ledger (billed) — excludes drafts and voided pipeline invoices. */
 export function isBilledInvoice(row: Pick<InvoiceRow, "status" | "posted_entry_id">): boolean {
   if (row.status === "void" || row.status === "draft") return false;
-  if (row.status !== "open" && row.status !== "paid") return false;
+  if (row.status !== "open" && row.status !== "paid" && row.status !== "partially_paid") {
+    return false;
+  }
   return Boolean(row.posted_entry_id);
 }
 
@@ -313,7 +315,7 @@ export function buildSalesSummary(
       collected += total;
       paidCount += 1;
     }
-    if (row.status === "open") {
+    if (row.status === "open" || row.status === "partially_paid") {
       open += total - asNumber(row.amount_paid);
       openCount += 1;
     }

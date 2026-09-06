@@ -82,6 +82,7 @@ export async function POST(request: Request, { params }: Params) {
         number: invoice.number,
         voidDate: todayISO(),
         postedEntryId: invoice.posted_entry_id,
+        currentStatus: invoice.status as "draft" | "open" | "partially_paid" | "paid" | "void",
         actorId: session.userId,
       });
     } catch (err) {

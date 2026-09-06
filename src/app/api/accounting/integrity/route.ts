@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
+import { recordAuditEvent } from "@/lib/accounting/audit";
 import { runFinancialIntegrityChecks } from "@/lib/accounting/integrity";
-import { auditLegacyPayments, reconcileSubledgerToControl } from "@/lib/accounting/legacy-payments";
+import { auditLegacyPayments } from "@/lib/accounting/legacy-payments";
+import { reconcileSubledgersToGl } from "@/lib/accounting/subledger";
 import { jsonError, requireAdminBooks } from "@/lib/api";
 
 /** Read-only integrity and legacy payment audit for owners/admins. */
@@ -14,8 +17,20 @@ export async function GET(request: Request) {
 
   const [integrityIssues, subledger] = await Promise.all([
     runFinancialIntegrityChecks(supabase, organizationId),
-    reconcileSubledgerToControl(supabase, organizationId),
+    reconcileSubledgersToGl(supabase, organizationId),
   ]);
+
+  await recordAuditEvent(supabase, {
+    organizationId,
+    actorId: ctx.session.userId,
+    action: "subledger.integrity_checked",
+    resourceKind: "organization",
+    resourceId: organizationId,
+    metadata: {
+      issueCount: integrityIssues.length,
+      subledgerConsistent: subledger.every((row) => row.consistent),
+    },
+  });
 
   const payload: Record<string, unknown> = {
     integrityIssues,

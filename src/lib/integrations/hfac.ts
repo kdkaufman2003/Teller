@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveDocumentAmountPaid } from "@/lib/accounting/balances";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee, voidInvoice } from "@/lib/accounting/post";
-import { recordTellerPayment } from "@/lib/accounting/payments";
 import { invoicePaymentProgress, resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
 import {
@@ -565,6 +564,18 @@ export async function importPaymentFromHfac(
     payment.netAmount ??
     (payment.netReceivedCents != null ? payment.netReceivedCents / 100 : undefined);
 
+  const paymentExternalId =
+    payment.stripePaymentIntentId?.trim() ||
+    payment.stripeInvoiceId?.trim() ||
+    payment.hfacDealId?.trim() ||
+    idempotencyKey;
+
+  const { feeAmount: resolvedFee, netAmount: resolvedNet } = resolvePaymentAmounts({
+    grossAmount: total,
+    feeAmount,
+    netAmount,
+  });
+
   const { entryId, amountPaid } = await postInvoicePaid(supabase, {
     organizationId,
     documentId: invoice.id,
@@ -579,34 +590,9 @@ export async function importPaymentFromHfac(
     netAmount,
     processorName,
     paymentMemo: payment.memo ? `${paymentMemo} · ${payment.memo}` : paymentMemo,
-  });
-
-  const { feeAmount: resolvedFee, netAmount: resolvedNet } = resolvePaymentAmounts({
-    grossAmount: total,
-    feeAmount,
-    netAmount,
-  });
-
-  const paymentExternalId =
-    payment.stripePaymentIntentId?.trim() ||
-    payment.stripeInvoiceId?.trim() ||
-    payment.hfacDealId?.trim() ||
-    idempotencyKey;
-
-  await recordTellerPayment(supabase, {
-    organizationId,
-    documentId: invoice.id,
-    partyId: invoice.party_id,
-    jobId: invoice.job_id,
-    amount: total,
-    feeAmount: resolvedFee,
-    netAmount: resolvedNet,
-    paymentDate: paidDate,
-    processorName,
     externalSource: paymentExternalId ? HFAC_EXTERNAL_SOURCE : null,
     externalId: paymentExternalId,
-    journalEntryId: entryId,
-    metadata: {
+    paymentMetadata: {
       stripePaymentIntentId: payment.stripePaymentIntentId ?? null,
       stripeInvoiceId: payment.stripeInvoiceId ?? null,
       hfacDealId: payment.hfacDealId ?? null,

@@ -1,14 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountByCode, accountBySubtype } from "./accounts";
+import {
+  authoritativeAmountPaidByDocuments,
+  sumAllocationsForDocument,
+} from "./allocations";
 import { roundMoney } from "./payment-fees";
 
 /**
  * Accounting truth hierarchy
  * ---------------------------------
- * 1. teller_payments — posted payment records (primary truth)
- * 2. teller_journal_lines — ledger-derived totals (reconciliation)
- * 3. teller_documents.amount_paid — denormalized cache for UI only
+ * 1. teller_payment_allocations (+ posted teller_payments) — primary truth
+ * 2. teller_payments.document_id — legacy fallback pre-backfill
+ * 3. teller_journal_lines — ledger-derived totals (reconciliation)
+ * 4. teller_documents.amount_paid — denormalized cache for UI only
  */
 
 export type DocumentKind = "invoice" | "expense";
@@ -26,23 +31,23 @@ export function documentRemainingBalance(total: number, amountPaid: number): num
   return roundMoney(Math.max(0, asNumber(total) - asNumber(amountPaid)));
 }
 
-/** Primary accounting truth: sum of posted teller_payments for a document. */
+/** Primary accounting truth: sum of posted allocations for a document. */
 export async function authoritativeDocumentAmountPaid(
   supabase: SupabaseClient,
   organizationId: string,
   documentId: string,
 ): Promise<number> {
-  const { data: payments, error } = await supabase
-    .from("teller_payments")
-    .select("amount")
-    .eq("organization_id", organizationId)
-    .eq("document_id", documentId);
-
-  if (error) throw new Error(error.message);
-
-  return roundMoney(
-    (payments ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0),
+  const fromAllocations = await sumAllocationsForDocument(
+    supabase,
+    organizationId,
+    documentId,
   );
+  if (fromAllocations > 0.009) return fromAllocations;
+
+  const map = await authoritativeAmountPaidByDocuments(supabase, organizationId, [
+    documentId,
+  ]);
+  return map.get(documentId) ?? 0;
 }
 
 /** Ledger-derived payment total for reconciliation checks. */
@@ -192,6 +197,22 @@ export type DocumentCacheRepairResult = {
   before: number;
   after: number;
 };
+
+/** Overlay authoritative amount_paid on document rows for reporting/list views. */
+export async function enrichDocumentsWithAuthoritativePaid<
+  T extends { id: string; amount_paid?: number | string },
+>(supabase: SupabaseClient, organizationId: string, documents: T[]): Promise<T[]> {
+  if (!documents.length) return documents;
+  const paidMap = await authoritativeAmountPaidByDocuments(
+    supabase,
+    organizationId,
+    documents.map((row) => row.id),
+  );
+  return documents.map((row) => ({
+    ...row,
+    amount_paid: paidMap.get(row.id) ?? 0,
+  }));
+}
 
 /** Repair denormalized amount_paid from authoritative payment records. */
 export async function repairDocumentAmountPaidCache(

@@ -64,19 +64,13 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ ok: true, alreadyVoid: true });
     }
     try {
-      const amountPaid = await resolveDocumentAmountPaid(
-        supabase,
-        organizationId,
-        id,
-        asNumber(expense.amount_paid),
-      );
       await voidExpense(supabase, {
         organizationId,
         documentId: id,
         number: expense.number,
         voidDate: todayISO(),
         postedEntryId: expense.posted_entry_id,
-        amountPaid,
+        currentStatus: expense.status as "draft" | "open" | "partially_paid" | "paid" | "void",
         actorId: session.userId,
       });
     } catch (err) {
