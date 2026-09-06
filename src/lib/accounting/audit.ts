@@ -63,7 +63,14 @@ export type AuditAction =
   | "period.closed"
   | "period.reopened"
   | "data.exported"
-  | "intelligence.scanned";
+  | "intelligence.scanned"
+  | "job.created"
+  | "job.updated"
+  | "job.completed"
+  | "job.closed"
+  | "job.reopened"
+  | "job.cancelled"
+  | "job.budget_updated";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

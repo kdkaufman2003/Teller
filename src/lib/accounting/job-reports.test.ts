@@ -8,13 +8,19 @@ const ACCOUNTS = [
 ];
 
 describe("buildJobProfitability", () => {
-  it("totals revenue, cogs, and gross profit for a job", () => {
+  it("totals revenue, direct cost, and indirect cost for a job", () => {
     const report = buildJobProfitability(
       "job-1",
       [
         { account_id: "r1", debit: 0, credit: 5000, job_id: "job-1" },
-        { account_id: "c1", debit: 1800, credit: 0, job_id: "job-1" },
-        { account_id: "e1", debit: 200, credit: 0, job_id: "job-1" },
+        { account_id: "c1", debit: 1800, credit: 0, job_id: "job-1", cost_classification: "direct" },
+        {
+          account_id: "e1",
+          debit: 200,
+          credit: 0,
+          job_id: "job-1",
+          cost_classification: "indirect",
+        },
         { account_id: "r1", debit: 0, credit: 1000, job_id: "job-2" },
       ],
       ACCOUNTS,

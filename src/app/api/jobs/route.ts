@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { nextNumber } from "@/lib/accounting/accounts";
-import { asNumber } from "@/lib/format";
+import { createJob } from "@/lib/accounting/jobs";
+import { buildJobProfitabilitySummary } from "@/lib/accounting/job-profitability";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
 export async function GET() {
@@ -16,58 +16,63 @@ export async function GET() {
 
   if (error) return jsonError(error.message, 500);
 
-  const { data: parties } = await supabase
-    .from("teller_parties")
-    .select("id, name")
-    .eq("organization_id", organizationId);
-  const names = new Map((parties ?? []).map((row) => [row.id, row.name]));
+  const summaries = await Promise.all(
+    (data ?? []).map(async (job) => {
+      try {
+        const profitability = await buildJobProfitabilitySummary(
+          supabase,
+          organizationId,
+          job.id as string,
+        );
+        return { job, profitability };
+      } catch {
+        return { job, profitability: null };
+      }
+    }),
+  );
 
-  return NextResponse.json({
-    jobs: (data ?? []).map((row) => ({
-      ...row,
-      party_name: row.party_id ? names.get(row.party_id) || "" : "",
-    })),
-  });
+  return NextResponse.json({ jobs: summaries });
 }
 
 export async function POST(request: Request) {
   const ctx = await requireWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, session } = ctx;
   const body = (await request.json()) as {
     name?: string;
+    customerPartyId?: string;
     partyId?: string;
     jobType?: string;
-    quotedAmount?: number;
+    description?: string;
     address?: string;
+    originalContractAmount?: number;
+    quotedAmount?: number;
+    estimatedRevenue?: number;
+    estimatedCost?: number;
+    startedAt?: string;
+    estimatedCompletionDate?: string;
   };
 
   const name = String(body.name || "").trim();
   if (!name) return jsonError("Job name is required");
 
-  const { data: existing } = await supabase
-    .from("teller_jobs")
-    .select("job_number")
-    .eq("organization_id", organizationId);
-  const jobNumber = nextNumber(
-    "JOB",
-    (existing ?? []).map((row) => row.job_number),
-  );
+  const customerPartyId = body.customerPartyId || body.partyId || null;
+  const contractAmount = body.originalContractAmount ?? body.quotedAmount;
 
-  const { data, error } = await supabase
-    .from("teller_jobs")
-    .insert({
-      organization_id: organizationId,
-      job_number: jobNumber,
-      name,
-      party_id: body.partyId || null,
-      job_type: body.jobType || "install",
-      quoted_amount: asNumber(body.quotedAmount),
-      address: String(body.address || "").trim(),
-    })
-    .select("*")
-    .single();
+  const job = await createJob(supabase, {
+    organizationId,
+    name,
+    customerPartyId,
+    jobType: body.jobType,
+    description: body.description,
+    address: body.address,
+    originalContractAmount: contractAmount,
+    estimatedRevenue: body.estimatedRevenue ?? contractAmount,
+    estimatedCost: body.estimatedCost,
+    startedAt: body.startedAt,
+    estimatedCompletionDate: body.estimatedCompletionDate,
+    actorId: session.userId,
+  });
 
-  if (error) return jsonError(error.message, 500);
-  return NextResponse.json({ job: data });
+  return NextResponse.json({ job });
 }

@@ -73,6 +73,7 @@ export async function POST(request: Request) {
       jobId?: string;
       costCategory?: string;
       costType?: string;
+      costClassification?: string;
     }[];
     acknowledgeDuplicateWarnings?: boolean;
     duplicateWarningContext?: Record<string, unknown>;
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
       job_id: line.jobId || null,
       cost_category: line.costCategory || "",
       cost_type: line.costType || "",
+      cost_classification: line.costClassification || "direct",
       item_type: "expense",
       sort_order: index,
     };

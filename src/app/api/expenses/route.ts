@@ -47,6 +47,9 @@ export async function POST(request: Request) {
     vendorName?: string;
     partyId?: string;
     jobId?: string;
+    costCategory?: string;
+    costType?: string;
+    costClassification?: string;
     accountId?: string;
     amount?: number;
     memo?: string;
@@ -159,6 +162,10 @@ export async function POST(request: Request) {
     unit_price: amount,
     amount,
     account_id: accountId,
+    job_id: body.jobId || null,
+    cost_category: body.costCategory || "",
+    cost_type: body.costType || "",
+    cost_classification: body.costClassification || "direct",
     item_type: expenseType === "mileage" ? "mileage" : "expense",
   });
 
@@ -186,6 +193,7 @@ export async function POST(request: Request) {
     amount,
     accountId,
     paid,
+    costClassification: body.costClassification || "direct",
   });
 
   return NextResponse.json({ id: doc.id, number });

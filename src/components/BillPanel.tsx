@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { todayISO } from "@/lib/format";
 
 type Account = { id: string; code: string; name: string; type: string };
 type Party = { id: string; name: string };
+type Job = { id: string; job_number: string; name: string };
+type CostCategory = { id: string; code: string; name: string };
 
 export function BillPanel({
   accounts,
@@ -26,6 +28,27 @@ export function BillPanel({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [showJobs, setShowJobs] = useState(false);
+  const [jobId, setJobId] = useState("");
+  const [costCategory, setCostCategory] = useState("");
+  const [costType, setCostType] = useState("");
+  const [costClassification, setCostClassification] = useState("direct");
+  const [categories, setCategories] = useState<CostCategory[]>([]);
+
+  useEffect(() => {
+    fetch("/api/lookups")
+      .then((res) => res.json())
+      .then((data: { jobs?: Job[]; settings?: { modules?: string[] } }) => {
+        setJobs(data.jobs ?? []);
+        setShowJobs(Boolean(data.settings?.modules?.includes("jobs")));
+      })
+      .catch(() => undefined);
+    fetch("/api/job-cost-categories")
+      .then((res) => res.json())
+      .then((data: { categories?: CostCategory[] }) => setCategories(data.categories ?? []))
+      .catch(() => undefined);
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -38,6 +61,7 @@ export function BillPanel({
         body: JSON.stringify({
           partyId: partyId || undefined,
           vendorName: partyId ? undefined : vendorName.trim() || undefined,
+          jobId: jobId || undefined,
           issueDate,
           dueDate,
           memo,
@@ -48,6 +72,10 @@ export function BillPanel({
               quantity: 1,
               unit_price: Number(amount),
               accountId,
+              jobId: jobId || undefined,
+              costCategory: costCategory || undefined,
+              costType: costType || undefined,
+              costClassification,
             },
           ],
         }),
@@ -124,6 +152,50 @@ export function BillPanel({
             ))}
           </select>
         </label>
+        {showJobs ? (
+          <>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Job</span>
+              <select value={jobId} onChange={(event) => setJobId(event.target.value)}>
+                <option value="">None</option>
+                {jobs.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.job_number} · {job.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Cost category</span>
+              <select value={costCategory} onChange={(event) => setCostCategory(event.target.value)}>
+                <option value="">None</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.code}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Cost type</span>
+              <input
+                value={costType}
+                onChange={(event) => setCostType(event.target.value)}
+                placeholder="material, labor…"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Classification</span>
+              <select
+                value={costClassification}
+                onChange={(event) => setCostClassification(event.target.value)}
+              >
+                <option value="direct">Direct</option>
+                <option value="indirect">Indirect</option>
+              </select>
+            </label>
+          </>
+        ) : null}
         <label className="text-sm md:col-span-2">
           <span className="mb-1 block text-muted">Description</span>
           <input value={description} onChange={(event) => setDescription(event.target.value)} />

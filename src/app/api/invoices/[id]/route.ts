@@ -98,7 +98,7 @@ export async function POST(request: Request, { params }: Params) {
 
   const { data: lines } = await supabase
     .from("teller_document_lines")
-    .select("amount, account_id, description")
+    .select("amount, account_id, description, job_id, cost_classification")
     .eq("document_id", id);
 
   if (body.action === "open" && invoice.status === "draft") {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveDocumentAmountPaid } from "@/lib/accounting/balances";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
+import { allocateJobNumber } from "@/lib/accounting/job-numbering";
 import { postInvoiceOpen, postInvoicePaid, reconcilePaymentProcessingFee, voidInvoice } from "@/lib/accounting/post";
 import { invoicePaymentProgress, resolvePaymentAmounts } from "@/lib/accounting/payment-fees";
 import { asNumber } from "@/lib/format";
@@ -112,7 +113,6 @@ export async function importWonQuotesFromHfac(
     ]);
 
   const invoiceNumbers = (existingDocs ?? []).map((row) => row.number as string);
-  const jobNumbers = (existingJobs ?? []).map((row) => row.job_number as string);
   const importedIds = new Set(
     (existingDocs ?? []).map((row) => String(row.external_id || "")),
   );
@@ -173,8 +173,7 @@ export async function importWonQuotesFromHfac(
 
     let jobId: string | null = null;
     if (options.createJobs) {
-      const jobNumber = nextNumber("JOB", jobNumbers);
-      jobNumbers.push(jobNumber);
+      const jobNumber = await allocateJobNumber(supabase, organizationId);
       const { data: job, error: jobError } = await supabase
         .from("teller_jobs")
         .insert({
@@ -182,7 +181,7 @@ export async function importWonQuotesFromHfac(
           job_number: jobNumber,
           name: quote.name || quote.customer_name || "HFAC job",
           party_id: partyId,
-          status: "estimate",
+          status: "draft",
           job_type: mapHfacJobType(quote.job_type),
           quoted_amount: asNumber(quote.total_amount),
           external_source: HFAC_EXTERNAL_SOURCE,

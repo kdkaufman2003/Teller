@@ -33,6 +33,8 @@ type JournalLineInput = {
   credit?: number;
   party_id?: string | null;
   job_id?: string | null;
+  job_cost_category_id?: string | null;
+  cost_classification?: string | null;
   memo?: string;
 };
 
@@ -91,6 +93,8 @@ function journalLinesPayload(lines: JournalLineInput[]) {
     credit: asNumber(line.credit),
     party_id: line.party_id ?? null,
     job_id: line.job_id ?? null,
+    job_cost_category_id: line.job_cost_category_id ?? null,
+    cost_classification: line.cost_classification ?? "",
     memo: line.memo ?? "",
   }));
 }
@@ -349,7 +353,13 @@ export async function postInvoiceOpen(
     issueDate: string;
     number: string;
     tax: number;
-    lines: { amount: number; account_id: string | null; description: string }[];
+    lines: {
+      amount: number;
+      account_id: string | null;
+      description: string;
+      job_id?: string | null;
+      cost_classification?: string | null;
+    }[];
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -377,11 +387,13 @@ export async function postInvoiceOpen(
   for (const line of input.lines) {
     const revenueId = line.account_id || fallbackRevenue?.id;
     if (!revenueId) throw new Error("No revenue account available");
+    const lineJobId = line.job_id ?? input.jobId;
     journal.push({
       account_id: revenueId,
       credit: asNumber(line.amount),
       party_id: input.partyId,
-      job_id: input.jobId,
+      job_id: lineJobId,
+      cost_classification: line.cost_classification ?? "",
       memo: line.description,
     });
   }
@@ -765,6 +777,8 @@ export async function postExpense(
     amount: number;
     accountId: string;
     paid: boolean;
+    costClassification?: string | null;
+    jobCostCategoryId?: string | null;
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -785,12 +799,14 @@ export async function postExpense(
         debit: asNumber(input.amount),
         party_id: input.partyId,
         job_id: input.jobId,
+        job_cost_category_id: input.jobCostCategoryId ?? null,
+        cost_classification: input.costClassification ?? "direct",
       },
       {
         account_id: creditAccount.id,
         credit: asNumber(input.amount),
         party_id: input.partyId,
-        job_id: input.jobId,
+        job_id: null,
       },
     ],
   });

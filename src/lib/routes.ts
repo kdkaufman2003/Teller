@@ -15,6 +15,8 @@ export const routes = {
   vendorCredits: "/app/vendor-credits",
   billPay: "/app/bills/pay",
   jobs: "/app/jobs",
+  jobNew: "/app/jobs/new",
+  jobsUnassigned: "/app/jobs/unassigned",
   accounts: "/app/accounts",
   ledger: "/app/ledger",
   accounting: "/app/accounting",

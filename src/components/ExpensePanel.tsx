@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Car, PenLine } from "lucide-react";
 import { DEFAULT_MILEAGE_RATE, mileageAmount } from "@/lib/expenses/classify";
 import { todayISO } from "@/lib/format";
 
 type Account = { id: string; code: string; name: string };
+type Job = { id: string; job_number: string; name: string };
+type CostCategory = { id: string; code: string; name: string };
 
 type Classification = {
   vendorName: string;
@@ -44,6 +46,26 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const [pending, setPending] = useState(false);
   const [payLater, setPayLater] = useState(false);
   const [dueDate, setDueDate] = useState(todayISO());
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [showJobs, setShowJobs] = useState(false);
+  const [jobId, setJobId] = useState("");
+  const [costCategory, setCostCategory] = useState("");
+  const [costClassification, setCostClassification] = useState("direct");
+  const [categories, setCategories] = useState<CostCategory[]>([]);
+
+  useEffect(() => {
+    fetch("/api/lookups")
+      .then((res) => res.json())
+      .then((data: { jobs?: Job[]; settings?: { modules?: string[] } }) => {
+        setJobs(data.jobs ?? []);
+        setShowJobs(Boolean(data.settings?.modules?.includes("jobs")));
+      })
+      .catch(() => undefined);
+    fetch("/api/job-cost-categories")
+      .then((res) => res.json())
+      .then((data: { categories?: CostCategory[] }) => setCategories(data.categories ?? []))
+      .catch(() => undefined);
+  }, []);
 
   const mileageAccount = useMemo(
     () =>
@@ -137,6 +159,9 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       body.accountId = accountId;
       body.amount = Number(amount);
       body.memo = memo;
+      if (jobId) body.jobId = jobId;
+      if (costCategory) body.costCategory = costCategory;
+      body.costClassification = costClassification;
       if (classification) {
         body.classification = {
           confidence: classification.confidence,
@@ -327,6 +352,43 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
             />
           </div>
         )}
+
+        {mode !== "mileage" && showJobs ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Job</span>
+              <select value={jobId} onChange={(event) => setJobId(event.target.value)}>
+                <option value="">None</option>
+                {jobs.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.job_number} · {job.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Cost category</span>
+              <select value={costCategory} onChange={(event) => setCostCategory(event.target.value)}>
+                <option value="">None</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.code}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Classification</span>
+              <select
+                value={costClassification}
+                onChange={(event) => setCostClassification(event.target.value)}
+              >
+                <option value="direct">Direct</option>
+                <option value="indirect">Indirect</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
 
         {mode !== "mileage" ? (
             <input

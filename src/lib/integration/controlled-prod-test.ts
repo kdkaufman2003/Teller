@@ -14,6 +14,8 @@ export const CONTROLLED_FOREIGN_TEST_ORG_NAME = "Teller Phase 4 Foreign Test";
 export const CONTROLLED_PHASE5_DEMO_ORG_NAME = "Teller Phase 5 Demo";
 export const CONTROLLED_PHASE6_DEMO_ORG_NAME = "Teller Phase 6 Demo";
 export const CONTROLLED_PHASE6_FOREIGN_ORG_NAME = "Teller Phase 6 Foreign Test";
+export const CONTROLLED_PHASE7_DEMO_ORG_NAME = "Teller Phase 7 Demo";
+export const CONTROLLED_PHASE7_FOREIGN_ORG_NAME = "Teller Phase 7 Foreign Test";
 
 export const CONTROLLED_TEST_ORG_METADATA_MARKER = "teller_phase4_controlled_test";
 
@@ -115,7 +117,9 @@ export function isControlledTestOrgName(name: string | null | undefined): boolea
     normalized === CONTROLLED_FOREIGN_TEST_ORG_NAME ||
     normalized === CONTROLLED_PHASE5_DEMO_ORG_NAME ||
     normalized === CONTROLLED_PHASE6_DEMO_ORG_NAME ||
-    normalized === CONTROLLED_PHASE6_FOREIGN_ORG_NAME
+    normalized === CONTROLLED_PHASE6_FOREIGN_ORG_NAME ||
+    normalized === CONTROLLED_PHASE7_DEMO_ORG_NAME ||
+    normalized === CONTROLLED_PHASE7_FOREIGN_ORG_NAME
   );
 }
 

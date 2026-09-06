@@ -18,6 +18,7 @@ type Line = {
   quantity: string;
   unit_price: string;
   item_type: string;
+  jobId: string;
 };
 
 const ITEM_TYPES = [
@@ -42,7 +43,7 @@ export function InvoiceForm() {
   const [taxRate, setTaxRate] = useState(0);
   const [collectTax, setCollectTax] = useState(true);
   const [lines, setLines] = useState<Line[]>([
-    { description: "", quantity: "1", unit_price: "", item_type: "equipment" },
+    { description: "", quantity: "1", unit_price: "", item_type: "equipment", jobId: "" },
   ]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -94,6 +95,7 @@ export function InvoiceForm() {
             quantity: asNumber(line.quantity, 1),
             unit_price: asNumber(line.unit_price),
             item_type: line.item_type,
+            jobId: line.jobId || jobId || undefined,
           })),
         }),
       });
@@ -160,6 +162,7 @@ export function InvoiceForm() {
             <tr>
               <th>Description</th>
               <th>Type</th>
+              {showJobs ? <th>Job</th> : null}
               <th className="text-right">Qty</th>
               <th className="text-right">Price</th>
             </tr>
@@ -186,6 +189,21 @@ export function InvoiceForm() {
                     ))}
                   </select>
                 </td>
+                {showJobs ? (
+                  <td className="px-3 py-2">
+                    <select
+                      value={line.jobId}
+                      onChange={(event) => updateLine(index, { jobId: event.target.value })}
+                    >
+                      <option value="">Use header job</option>
+                      {lookups?.jobs.map((job) => (
+                        <option key={job.id} value={job.id}>
+                          {job.job_number}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                ) : null}
                 <td className="px-3 py-2">
                   <input
                     value={line.quantity}
@@ -208,7 +226,7 @@ export function InvoiceForm() {
           onClick={() =>
             setLines((current) => [
               ...current,
-              { description: "", quantity: "1", unit_price: "", item_type: "equipment" },
+              { description: "", quantity: "1", unit_price: "", item_type: "equipment", jobId: "" },
             ])
           }
         >

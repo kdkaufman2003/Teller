@@ -13,3 +13,11 @@ export function canViewVendorTaxInfo(role: string | null | undefined): boolean {
 export function canApproveBills(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
+
+export function canCloseJobs(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function canReopenJobs(role: string | null | undefined): boolean {
+  return role === "owner" || role === "admin";
+}

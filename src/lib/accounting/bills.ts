@@ -26,6 +26,8 @@ type JournalLineInput = {
   credit?: number;
   party_id?: string | null;
   job_id?: string | null;
+  job_cost_category_id?: string | null;
+  cost_classification?: string | null;
   memo?: string;
 };
 
@@ -46,6 +48,7 @@ export async function postBillOpen(
       job_id?: string | null;
       cost_category?: string;
       cost_type?: string;
+      cost_classification?: string | null;
     }[];
     actorId?: string | null;
   },
@@ -82,6 +85,7 @@ export async function postBillOpen(
       debit: asNumber(line.amount),
       party_id: input.partyId,
       job_id: line.job_id ?? input.jobId,
+      cost_classification: line.cost_classification ?? "direct",
       memo: line.description,
     });
   }

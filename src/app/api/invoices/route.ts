@@ -72,6 +72,8 @@ export async function POST(request: Request) {
       quantity?: number;
       unit_price?: number;
       item_type?: string;
+      jobId?: string;
+      costClassification?: string;
     }[];
   };
 
@@ -87,6 +89,8 @@ export async function POST(request: Request) {
 
   const accountByCode = new Map((accounts ?? []).map((row) => [row.code, row.id]));
 
+  const headerJobId = body.jobId || null;
+
   const built = lines.map((line, index) => {
     const quantity = asNumber(line.quantity, 1);
     const unitPrice = asNumber(line.unit_price);
@@ -100,6 +104,8 @@ export async function POST(request: Request) {
       amount,
       item_type: itemType,
       account_id: accountByCode.get(code) ?? null,
+      job_id: line.jobId || headerJobId,
+      cost_classification: line.costClassification || "",
       sort_order: index,
     };
   });

@@ -128,7 +128,7 @@ async function approveAndPostBill(
 
   const { data: lines } = await supabase
     .from("teller_document_lines")
-    .select("amount, account_id, description, job_id, cost_category, cost_type")
+    .select("amount, account_id, description, job_id, cost_category, cost_type, cost_classification")
     .eq("document_id", input.documentId);
 
   await postBillOpen(supabase, {
@@ -146,6 +146,7 @@ async function approveAndPostBill(
       job_id: line.job_id as string | null,
       cost_category: line.cost_category as string,
       cost_type: line.cost_type as string,
+      cost_classification: (line.cost_classification as string) || "direct",
     })),
     actorId: input.actorId,
   });
