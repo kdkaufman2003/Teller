@@ -2,29 +2,8 @@
 -- Extends existing teller_bank_* tables; does not create a parallel banking system.
 
 -- ---------------------------------------------------------------------------
--- Helpers
+-- Helpers (no teller_bank_accounts.gl_account_id until column is added below)
 -- ---------------------------------------------------------------------------
-
-create or replace function public.teller_bank_account_gl_kind(p_bank_account_id uuid)
-returns text
-language sql
-stable
-security definer
-set search_path = pg_catalog, public
-as $$
-  select case
-    when gl.type = 'liability'
-      or lower(coalesce(ba.account_type, '')) = 'credit'
-      or lower(coalesce(ba.account_subtype, '')) like '%credit%'
-      then 'credit_card_liability'
-    else 'asset_bank'
-  end
-  from public.teller_bank_accounts ba
-  left join public.teller_accounts gl
-    on gl.id = coalesce(ba.gl_account_id, ba.teller_account_id)
-  where ba.id = p_bank_account_id
-  limit 1;
-$$;
 
 create or replace function public.teller_compute_normalized_bank_amount(
   p_raw_amount numeric,
@@ -166,6 +145,27 @@ update public.teller_bank_accounts
 set gl_account_id = teller_account_id
 where gl_account_id is null
   and teller_account_id is not null;
+
+create or replace function public.teller_bank_account_gl_kind(p_bank_account_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select case
+    when gl.type = 'liability'
+      or lower(coalesce(ba.account_type, '')) = 'credit'
+      or lower(coalesce(ba.account_subtype, '')) like '%credit%'
+      then 'credit_card_liability'
+    else 'asset_bank'
+  end
+  from public.teller_bank_accounts ba
+  left join public.teller_accounts gl
+    on gl.id = coalesce(ba.gl_account_id, ba.teller_account_id)
+  where ba.id = p_bank_account_id
+  limit 1;
+$$;
 
 update public.teller_bank_accounts ba
 set institution_name = bc.institution_name
