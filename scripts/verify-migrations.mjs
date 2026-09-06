@@ -3,6 +3,7 @@
  * Verify Phase 0 / 0.5 migrations against Supabase.
  * Usage: npm run verify:migrations
  */
+import "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 function requiredEnv(name) {

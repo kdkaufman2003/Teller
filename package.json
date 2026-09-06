@@ -13,6 +13,7 @@
     "legacy:payment-audit": "tsx scripts/legacy-payment-audit.ts",
     "legacy:payment-backfill": "tsx scripts/legacy-payment-backfill.ts",
     "hfac:integration-report": "node scripts/hfac-integration-report.mjs",
+    "verify:phase06": "node scripts/verify-phase06.mjs",
     "tax-rules:load": "node scripts/load-tax-rules.mjs"
   },
   "dependencies": {

@@ -5,6 +5,7 @@
  *   npm run legacy:payment-audit
  *   ORGANIZATION_ID=<uuid> npm run legacy:payment-audit
  */
+import "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
 import {
   auditLegacyPayments,
