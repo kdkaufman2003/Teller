@@ -1,19 +1,19 @@
 import { redirect } from "next/navigation";
-import { BankingPanel } from "@/components/BankingPanel";
+import { ReconciliationLanding } from "@/components/banking/reconciliation/ReconciliationLanding";
 import { getSessionContext } from "@/lib/session";
 import { routes } from "@/lib/routes";
 
-export default async function BankingPage() {
+export default async function ReconcileLandingPage() {
   const session = await getSessionContext();
   if (!session?.organization) redirect(routes.setup);
 
   return (
     <>
       <header className="page-header">
-        <h1>Banking</h1>
-        <p>Import bank transactions and match them to your books</p>
+        <h1>Reconcile</h1>
+        <p>Match your books to a bank statement — works with CSV imports or connected accounts</p>
       </header>
-      <BankingPanel />
+      <ReconciliationLanding />
     </>
   );
 }

@@ -19,6 +19,8 @@ export const routes = {
   accounting: "/app/accounting",
   reports: "/app/reports",
   banking: "/app/banking",
+  bankingReconcile: "/app/banking/reconcile",
+  bankingReconciliations: "/app/banking/reconciliations",
   settings: "/app/settings",
 } as const;
 
@@ -48,4 +50,12 @@ export function vendorCreditPath(id: string) {
 
 export function jobPath(id: string) {
   return `${routes.jobs}/${id}`;
+}
+
+export function bankingReconcilePath(id?: string) {
+  return id ? `${routes.bankingReconcile}/${id}` : routes.bankingReconcile;
+}
+
+export function bankingReconciliationPath(id: string) {
+  return `${routes.bankingReconciliations}/${id}`;
 }

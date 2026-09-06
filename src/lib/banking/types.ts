@@ -208,6 +208,94 @@ export type ReconciliationSummary = {
   status: string;
 };
 
+export type ReconciliationRecord = {
+  id: string;
+  bankAccountId: string;
+  statementStartDate: string;
+  statementEndDate: string;
+  beginningReconciledBalance: number;
+  statementEndingBalance: number;
+  status: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  reopenedAt: string | null;
+  reopenReason: string | null;
+  startedBy: string | null;
+  completedBy: string | null;
+  reopenedBy: string | null;
+};
+
+export type ReconciliationItemDetail = {
+  id: string;
+  bankTransactionId: string | null;
+  journalEntryId: string | null;
+  journalLineId: string | null;
+  clearedAmount: number;
+  clearedDate: string;
+  signedAmount: number;
+  postedDate: string | null;
+  description: string | null;
+  status: string | null;
+  provider: string | null;
+  matchStatus: string | null;
+};
+
+export type ReconciliationCandidate = {
+  bankTransactionId: string;
+  postedDate: string;
+  description: string;
+  normalizedAmount: number;
+  moneyIn: number;
+  moneyOut: number;
+  status: string;
+  provider: string | null;
+  cleared: boolean;
+  reconciliationItemId: string | null;
+  lockedElsewhere: boolean;
+};
+
+export type ReconciliationLandingAccount = {
+  bankAccountId: string;
+  name: string;
+  mask: string | null;
+  accountType: string | null;
+  accountSubtype: string | null;
+  institutionName: string | null;
+  providerBalance: number | null;
+  bookBalance: number;
+  lastSyncedAt: string | null;
+  lastReconciledDate: string | null;
+  lastReconciledEndingBalance: number | null;
+  activeReconciliation: {
+    id: string;
+    status: string;
+    statementEndDate: string;
+  } | null;
+};
+
+export type ReconciliationWorkspacePayload = {
+  reconciliation: ReconciliationRecord;
+  summary: ReconciliationSummary;
+  items: ReconciliationItemDetail[];
+  candidates: ReconciliationCandidate[];
+  bankAccount: {
+    id: string;
+    name: string;
+    mask: string | null;
+    accountType: string | null;
+    accountSubtype: string | null;
+    glKind: "asset_bank" | "credit_card_liability";
+  };
+  auditEvents: Array<{
+    action: string;
+    createdAt: string;
+    metadata: Record<string, unknown> | null;
+  }>;
+};
+
+export const EDITABLE_RECONCILIATION_STATUSES = ["draft", "in_progress", "reopened"] as const;
+export const ACTIVE_RECONCILIATION_STATUSES = ["draft", "in_progress", "reopened"] as const;
+
 /** Provider adapter — no money movement, read-only bank data import. */
 export type BankingProvider = {
   name: BankingProviderName;
