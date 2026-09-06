@@ -6,7 +6,27 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_7_COMPLETE` | **true** | Migration 023 applied; deploy `faa6bb9`; controlled prod 45/45 Phase 7 demo, 32/32 Phase 6, 18/18 Phase 5; GL revenue/cost reconciliation difference $0.00; HFAC baseline unchanged |
 | `PHASE_6_COMPLETE` | **true** | Controlled prod: 32/32 Phase 6 demo scenarios (incl. 10 accounting/control cases), Phase 5 verify+demo green, HFAC baseline unchanged (8 docs, 3 payments, 16 journals) |
+
+### Phase 7 invariants (job costing)
+
+- Jobs are **analytical dimensions** over the GL — not a parallel ledger.
+- **Economic** revenue/cost journal lines may carry `job_id` and `cost_classification`.
+- **Settlement/control** lines (AR, AP, cash/bank clearing on payments) do **not** drive job profitability.
+- Customer/vendor **payments do not create** revenue or direct cost.
+- **Customer deposits** are liability movements — not revenue until applied to invoices.
+- **Purchase orders** represent commitment; actual cost posts on bills/expenses only.
+- Canonical job profitability reconciles to GL activity within explicit revenue/direct-cost scope (`GL_*_DIFFERENCE = 0.00` in controlled demo).
+- **Labor payroll** job costing remains deferred (no payroll engine in V1).
+- Legacy job status values remain temporarily accepted in migration 023 for deploy compatibility; cleanup migration deferred.
+
+### Phase 7 deferred polish
+
+| Item | Notes |
+|------|-------|
+| Customer detail related-jobs panel | UI deferred from Phase 7 MVP |
+| Legacy job status cleanup migration | Remove temporary dual status CHECK after deploy window |
 
 ## Implemented
 
@@ -36,6 +56,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Service role for inbound webhooks | ✓ | `createServiceClient()` on integration routes |
 | Basic roles | ✓ | `owner`, `admin`, `bookkeeper`, `viewer` |
 | Accounts payable & purchasing (Phase 6) | ✓ | Migrations 021–022, vendors, PO/receiving, multi-bill pay, vendor credits, recurring bills, AP dashboard; controlled prod demo covers multi-bill payment, over-allocation rejection, multi-bill credit apply, bank→bill_payment match (no extra journal), closed-period bill/payment rejection, tenant isolation, PO receipt/bill controls, approval rejection |
+| Job costing & profitability (Phase 7) | ✓ | Migration 023, atomic job numbering, line-level job attribution on invoices/expenses/bills, cost categories/budgets, lifecycle APIs, jobs UI, canonical profitability + GL bridge; `postBillOpen` persists document lines; settlement lines exclude `job_id` |
 
 ## Partial
 

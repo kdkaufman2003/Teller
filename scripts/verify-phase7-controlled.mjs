@@ -118,7 +118,8 @@ async function main() {
     build.ok &&
     deploymentCompat.ok &&
     Boolean(compatReport.SAFE_TO_APPLY_023);
-  const PHASE_7_COMPLETE = false;
+  const PHASE_7_COMPLETE =
+    schemaApplied && unit.ok && build.ok && deploymentCompat.ok && hfacUnchanged;
 
   console.log(
     JSON.stringify(
