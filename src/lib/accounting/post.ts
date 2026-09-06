@@ -4,10 +4,12 @@ import {
   authoritativeDocumentAmountPaid,
   checkDocumentBalanceConsistency,
   validateDocumentPayment,
+  type DocumentKind,
 } from "./balances";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import { documentHasActivePayments } from "./allocations";
+import { documentHasAppliedCredits } from "./document-allocations";
 import {
   assertInvoiceStatusTransition,
   assertExpenseStatusTransition,
@@ -34,7 +36,7 @@ type JournalLineInput = {
   memo?: string;
 };
 
-async function assertOrgPeriodOpen(
+export async function assertOrgPeriodOpen(
   supabase: SupabaseClient,
   organizationId: string,
   entryDate: string,
@@ -55,7 +57,7 @@ async function assertDocumentCacheConsistent(
     documentId: string;
     documentTotal: number;
     cachedAmountPaid: number;
-    kind: "invoice" | "expense";
+    kind: DocumentKind;
   },
 ) {
   const result = await checkDocumentBalanceConsistency(supabase, {
@@ -213,18 +215,29 @@ export async function voidInvoice(
     input.organizationId,
     input.documentId,
   );
+  const hasAppliedCredits = await documentHasAppliedCredits(
+    supabase,
+    input.organizationId,
+    input.documentId,
+    false,
+  );
 
-  if (hasActivePayments) {
+  if (hasActivePayments || hasAppliedCredits) {
     await recordAuditEvent(supabase, {
       organizationId: input.organizationId,
       actorId: input.actorId,
       action: "invoice.void_blocked",
       resourceKind: "invoice",
       resourceId: input.documentId,
-      metadata: { number: input.number, reason: "active_payments" },
+      metadata: {
+        number: input.number,
+        reason: hasActivePayments ? "active_payments" : "applied_credits",
+      },
     });
     throw new Error(
-      "Cannot void an invoice with payment activity. Reverse or refund payments before voiding.",
+      hasActivePayments
+        ? "Cannot void an invoice with payment activity. Reverse or refund payments before voiding."
+        : "Cannot void an invoice with applied credit memos. Reverse credit applications first.",
     );
   }
 
@@ -934,6 +947,9 @@ export async function postExpensePaid(
     expenseTotal?: number;
     priorPaid?: number;
     paymentMemo?: string;
+    paymentMethod?: string;
+    referenceNumber?: string;
+    documentKind?: "expense" | "bill";
     actorId?: string | null;
   },
 ) {
@@ -942,6 +958,7 @@ export async function postExpensePaid(
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
   if (!cash || !ap) throw new Error("Cash or AP account is missing");
 
+  const documentKind = input.documentKind ?? "expense";
   const expenseTotal = input.expenseTotal ?? input.paymentAmount;
   const priorPaid = input.priorPaid ?? 0;
   const { paymentAmount } = validateDocumentPayment({
@@ -966,7 +983,7 @@ export async function postExpensePaid(
     organizationId: input.organizationId,
     entryDate: input.issueDate,
     memo,
-    sourceKind: "expense-payment",
+    sourceKind: documentKind === "bill" ? "bill-payment" : "expense-payment",
     sourceId: input.documentId,
     lines: [
       {
@@ -987,10 +1004,11 @@ export async function postExpensePaid(
     actorId: input.actorId,
   });
 
+  const nextStatus = fullyPaid ? "paid" : "partially_paid";
   const { error } = await supabase
     .from("teller_documents")
     .update({
-      status: fullyPaid ? "paid" : "partially_paid",
+      status: nextStatus,
       amount_paid: amountPaid,
       updated_at: new Date().toISOString(),
     })
@@ -1001,11 +1019,13 @@ export async function postExpensePaid(
   const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
     documentId: input.documentId,
-    documentKind: "expense",
+    documentKind,
     partyId: input.partyId,
     jobId: input.jobId,
     amount: paymentAmount,
     paymentDate: input.issueDate,
+    paymentMethod: input.paymentMethod,
+    referenceNumber: input.referenceNumber,
     journalEntryId: entryId,
   });
 
@@ -1022,8 +1042,12 @@ export async function postExpensePaid(
     documentId: input.documentId,
     documentTotal: expenseTotal,
     cachedAmountPaid: amountPaid,
-    kind: "expense",
+    kind: documentKind === "bill" ? "bill" : "expense",
   });
+
+  if (documentKind === "bill") {
+    return { entryId, amountPaid, fullyPaid, paymentId };
+  }
 
   const auditAction = fullyPaid
     ? "expense.payment.completed"

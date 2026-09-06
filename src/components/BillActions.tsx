@@ -4,17 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { todayISO } from "@/lib/format";
 
-export function InvoiceActions({
+export function BillActions({
   id,
   status,
   total,
   amountPaid,
+  creditsApplied,
   remaining,
 }: {
   id: string;
   status: string;
   total: number;
   amountPaid: number;
+  creditsApplied: number;
   remaining: number;
 }) {
   const router = useRouter();
@@ -24,12 +26,18 @@ export function InvoiceActions({
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayISO());
   const [memo, setMemo] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
 
-  async function run(action: "open" | "void") {
+  const canPay =
+    (status === "open" || status === "partially_paid") && remaining > 0.009;
+  const isOpenBill = status === "open" || status === "partially_paid";
+
+  async function run(action: "void" | "post") {
     setError("");
     setPending(true);
     try {
-      const response = await fetch(`/api/invoices/${id}`, {
+      const response = await fetch(`/api/bills/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
@@ -49,7 +57,7 @@ export function InvoiceActions({
     setPending(true);
     try {
       const amount = payRemaining ? remaining : Number(paymentAmount);
-      const response = await fetch(`/api/invoices/${id}`, {
+      const response = await fetch(`/api/bills/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,13 +65,14 @@ export function InvoiceActions({
           amount,
           paymentDate,
           memo: memo.trim() || undefined,
+          paymentMethod: paymentMethod.trim() || undefined,
+          referenceNumber: referenceNumber.trim() || undefined,
         }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Payment failed");
       setShowPayForm(false);
       setPaymentAmount("");
-      setMemo("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed");
@@ -72,36 +81,33 @@ export function InvoiceActions({
     }
   }
 
-  const canPay =
-    (status === "open" || status === "partially_paid") && remaining > 0.009;
-  const hasPartialPayment = amountPaid > 0.009 && remaining > 0.009;
-
   return (
     <div className="space-y-3">
-      {(status === "open" || status === "paid") && total > 0 ? (
-        <div className="card p-4 text-sm grid gap-2 md:grid-cols-3">
+      {isOpenBill || status === "paid" ? (
+        <div className="card p-4 text-sm grid gap-2 md:grid-cols-4">
           <div>
-            <p className="text-muted">Invoice total</p>
+            <p className="text-muted">Bill total</p>
             <p className="font-tabular font-medium">${total.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-muted">Amount paid</p>
+            <p className="text-muted">Paid</p>
             <p className="font-tabular font-medium">${amountPaid.toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-muted">Remaining balance</p>
+            <p className="text-muted">Credits applied</p>
+            <p className="font-tabular font-medium">${creditsApplied.toFixed(2)}</p>
+          </div>
+          <div>
+            <p className="text-muted">Remaining</p>
             <p className="font-tabular font-medium">${remaining.toFixed(2)}</p>
           </div>
-          {hasPartialPayment ? (
-            <p className="md:col-span-3 text-muted">Partial payment recorded — balance remains open.</p>
-          ) : null}
         </div>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
         {status === "draft" ? (
-          <button className="btn btn-primary" disabled={pending} onClick={() => void run("open")}>
-            Post to ledger
+          <button className="btn btn-brass" disabled={pending} onClick={() => void run("post")}>
+            Post bill
           </button>
         ) : null}
         {canPay ? (
@@ -127,7 +133,7 @@ export function InvoiceActions({
             ) : null}
           </>
         ) : null}
-        {status !== "void" && status !== "paid" ? (
+        {status !== "void" ? (
           <button className="btn btn-ghost" disabled={pending} onClick={() => void run("void")}>
             Void
           </button>
@@ -136,10 +142,10 @@ export function InvoiceActions({
 
       {showPayForm && canPay ? (
         <div className="card p-4 space-y-3">
-          <p className="text-sm font-medium">Record payment</p>
-          <div className="grid gap-3 md:grid-cols-3">
+          <p className="text-sm font-medium">Record bill payment</p>
+          <div className="grid gap-3 md:grid-cols-2">
             <label className="text-sm">
-              <span className="mb-1 block text-muted">Amount received</span>
+              <span className="mb-1 block text-muted">Payment amount</span>
               <input
                 type="number"
                 min="0.01"
@@ -158,7 +164,22 @@ export function InvoiceActions({
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-muted">Memo (optional)</span>
+              <span className="mb-1 block text-muted">Method</span>
+              <input
+                value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value)}
+                placeholder="Check, ACH, card…"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Reference #</span>
+              <input
+                value={referenceNumber}
+                onChange={(event) => setReferenceNumber(event.target.value)}
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="mb-1 block text-muted">Memo</span>
               <input value={memo} onChange={(event) => setMemo(event.target.value)} />
             </label>
           </div>
@@ -169,7 +190,7 @@ export function InvoiceActions({
               onClick={() => void recordPayment(false)}
               type="button"
             >
-              Post payment
+              Record payment
             </button>
             <button
               className="btn btn-ghost"

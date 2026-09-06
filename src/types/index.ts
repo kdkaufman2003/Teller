@@ -7,8 +7,20 @@ export type AccountType =
   | "expense";
 
 export type PartyKind = "customer" | "vendor" | "both";
-export type DocumentKind = "invoice" | "bill" | "expense";
-export type DocumentStatus = "draft" | "open" | "partially_paid" | "paid" | "void";
+export type DocumentKind =
+  | "invoice"
+  | "bill"
+  | "expense"
+  | "credit_memo"
+  | "vendor_credit";
+export type DocumentStatus =
+  | "draft"
+  | "open"
+  | "partially_paid"
+  | "paid"
+  | "partially_applied"
+  | "applied"
+  | "void";
 export type JobStatus =
   | "estimate"
   | "scheduled"

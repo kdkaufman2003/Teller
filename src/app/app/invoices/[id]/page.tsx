@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CreditMemoForm } from "@/components/CreditMemoForm";
 import { InvoiceActions } from "@/components/InvoiceActions";
 import { StatusBadge } from "@/components/StatusBadge";
-import { documentRemainingBalance } from "@/lib/accounting/balances";
+import {
+  authoritativeDocumentRemaining,
+  authoritativeDocumentSettled,
+} from "@/lib/accounting/balances";
 import { asNumber, formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -51,8 +55,21 @@ export default async function InvoiceDetailPage({
     processor?: string | null;
   } } | null)?.payment;
 
-  const amountPaid = asNumber(invoice.amount_paid);
-  const remaining = documentRemainingBalance(invoice.total, amountPaid);
+  const organizationId = session.organization.id;
+  const settled = await authoritativeDocumentSettled(supabase, organizationId, id);
+  const remaining = await authoritativeDocumentRemaining(
+    supabase,
+    organizationId,
+    id,
+    asNumber(invoice.total),
+  );
+
+  const { data: revenueAccounts } = await supabase
+    .from("teller_accounts")
+    .select("id, code, name")
+    .eq("organization_id", organizationId)
+    .eq("type", "revenue")
+    .order("code");
 
   return (
     <div className="space-y-6">
@@ -128,9 +145,18 @@ export default async function InvoiceDetailPage({
         id={invoice.id}
         status={invoice.status}
         total={asNumber(invoice.total)}
-        amountPaid={amountPaid}
+        amountPaid={settled.payments}
         remaining={remaining}
       />
+      {invoice.party_id && invoice.status !== "draft" && invoice.status !== "void" ? (
+        <CreditMemoForm
+          invoiceId={invoice.id}
+          partyId={invoice.party_id}
+          invoiceTotal={asNumber(invoice.total)}
+          remaining={remaining}
+          revenueAccounts={revenueAccounts ?? []}
+        />
+      ) : null}
     </div>
   );
 }

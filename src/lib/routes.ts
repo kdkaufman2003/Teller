@@ -9,6 +9,10 @@ export const routes = {
   invoiceNew: "/app/invoices/new",
   customers: "/app/customers",
   expenses: "/app/expenses",
+  bills: "/app/bills",
+  billNew: "/app/bills/new",
+  creditMemos: "/app/credit-memos",
+  vendorCredits: "/app/vendor-credits",
   jobs: "/app/jobs",
   accounts: "/app/accounts",
   ledger: "/app/ledger",
@@ -24,6 +28,18 @@ export function invoicePath(id: string) {
 
 export function expensePath(id: string) {
   return `${routes.expenses}/${id}`;
+}
+
+export function billPath(id: string) {
+  return `${routes.bills}/${id}`;
+}
+
+export function creditMemoPath(id: string) {
+  return `${routes.creditMemos}/${id}`;
+}
+
+export function vendorCreditPath(id: string) {
+  return `${routes.vendorCredits}/${id}`;
 }
 
 export function jobPath(id: string) {

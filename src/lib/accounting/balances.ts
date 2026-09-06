@@ -5,6 +5,10 @@ import {
   authoritativeAmountPaidByDocuments,
   sumAllocationsForDocument,
 } from "./allocations";
+import {
+  batchCreditsAppliedToDocuments,
+  sumCreditsAppliedToDocument,
+} from "./document-allocations";
 import { roundMoney } from "./payment-fees";
 
 /**
@@ -16,7 +20,7 @@ import { roundMoney } from "./payment-fees";
  * 4. teller_documents.amount_paid — denormalized cache for UI only
  */
 
-export type DocumentKind = "invoice" | "expense";
+export type DocumentKind = "invoice" | "expense" | "bill";
 
 export type BalanceConsistencyResult = {
   consistent: boolean;
@@ -80,7 +84,7 @@ export async function ledgerDerivedDocumentPaymentTotal(
   const sourceKinds =
     kind === "invoice"
       ? ["invoice-payment", "invoice-payment-fee"]
-      : ["expense-payment"];
+      : ["expense-payment", "bill-payment"];
 
   const { data: entries, error: entriesError } = await supabase
     .from("teller_journal_entries")
@@ -132,6 +136,78 @@ export async function resolveDocumentAmountPaid(
   _documentAmountPaid?: number,
 ): Promise<number> {
   return authoritativeDocumentAmountPaid(supabase, organizationId, documentId);
+}
+
+export function validateDocumentSettlement(input: {
+  documentTotal: number;
+  amountPaid: number;
+  creditsApplied?: number;
+  settlementAmount: number;
+}): { remainingBefore: number; settlementAmount: number } {
+  const creditsApplied = asNumber(input.creditsApplied);
+  const settled = roundMoney(asNumber(input.amountPaid) + creditsApplied);
+  const remainingBefore = documentRemainingBalance(input.documentTotal, settled);
+  if (remainingBefore <= 0.009) {
+    throw new Error("Nothing left to settle on this document.");
+  }
+
+  const settlementAmount = roundMoney(asNumber(input.settlementAmount));
+  if (settlementAmount <= 0.009) {
+    throw new Error("Settlement amount must be greater than zero.");
+  }
+  if (settlementAmount > remainingBefore + 0.009) {
+    throw new Error(
+      `Settlement of $${settlementAmount.toFixed(2)} exceeds remaining balance of $${remainingBefore.toFixed(2)}.`,
+    );
+  }
+
+  return { remainingBefore, settlementAmount };
+}
+
+/** Authoritative credits applied against a document (non-cash). */
+export async function authoritativeDocumentCreditsApplied(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+): Promise<number> {
+  return sumCreditsAppliedToDocument(supabase, organizationId, documentId);
+}
+
+/** Total settled against a document: cash payments + credit applications. */
+export async function authoritativeDocumentSettled(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+): Promise<{ payments: number; credits: number; total: number }> {
+  const [payments, credits] = await Promise.all([
+    authoritativeDocumentAmountPaid(supabase, organizationId, documentId),
+    sumCreditsAppliedToDocument(supabase, organizationId, documentId),
+  ]);
+  return { payments, credits, total: roundMoney(payments + credits) };
+}
+
+/** Remaining balance using authoritative payments and credit applications. */
+export async function authoritativeDocumentRemaining(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+  documentTotal: number,
+): Promise<number> {
+  const { total } = await authoritativeDocumentSettled(
+    supabase,
+    organizationId,
+    documentId,
+  );
+  return documentRemainingBalance(documentTotal, total);
+}
+
+/** Batch credit-applied amounts keyed by target document id. */
+export async function batchCreditsAppliedToDocumentsMap(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentIds: string[],
+): Promise<Map<string, number>> {
+  return batchCreditsAppliedToDocuments(supabase, organizationId, documentIds);
 }
 
 export function validateDocumentPayment(input: {

@@ -2,19 +2,38 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountByCode, accountBySubtype } from "./accounts";
 import { authoritativeAmountPaidByDocuments } from "./allocations";
+import { batchCreditsAppliedToDocuments } from "./document-allocations";
 import { documentRemainingBalance } from "./balances";
+import {
+  computeApControlSubledgerTotal,
+  computeArControlSubledgerTotal,
+} from "./party-balances";
 import { roundMoney } from "./payment-fees";
 
 const TOLERANCE = 0.01;
 
+export type SubledgerReconciliationDiagnostics = {
+  invoiceRemainingTotal?: number;
+  billRemainingTotal?: number;
+  unappliedCreditTotal?: number;
+  unappliedVendorCreditTotal?: number;
+  partyCount: number;
+  invoiceCount?: number;
+  creditMemoCount?: number;
+  billCount?: number;
+  vendorCreditCount?: number;
+};
+
 export type SubledgerReconciliationResult = {
   side: "ar" | "ap";
+  /** Net control subledger balance (party net AR/AP totals). */
   subledgerOpenBalance: number;
   glControlBalance: number;
   difference: number;
   consistent: boolean;
   documentCount: number;
   note: string;
+  diagnostics: SubledgerReconciliationDiagnostics;
 };
 
 type ControlAccountRow = {
@@ -85,6 +104,10 @@ function isArOpenDocument(row: { status: string; posted_entry_id?: string | null
   return Boolean(row.posted_entry_id);
 }
 
+/**
+ * Open invoice aging total — per-invoice remaining only.
+ * Unapplied customer credits appear separately in aging; not netted here.
+ */
 export async function computeArOpenSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
@@ -99,21 +122,27 @@ export async function computeArOpenSubledgerTotal(
   if (error) throw new Error(error.message);
 
   const openDocs = (documents ?? []).filter(isArOpenDocument);
-  const paidMap = await authoritativeAmountPaidByDocuments(
-    supabase,
-    organizationId,
-    openDocs.map((row) => row.id as string),
-  );
+  const docIds = openDocs.map((row) => row.id as string);
+  const [paidMap, creditsMap] = await Promise.all([
+    authoritativeAmountPaidByDocuments(supabase, organizationId, docIds),
+    batchCreditsAppliedToDocuments(supabase, organizationId, docIds),
+  ]);
 
   let total = 0;
   for (const doc of openDocs) {
-    const paid = paidMap.get(doc.id as string) ?? 0;
-    total += documentRemainingBalance(asNumber(doc.total), paid);
+    const id = doc.id as string;
+    const paid = paidMap.get(id) ?? 0;
+    const credits = creditsMap.get(id) ?? 0;
+    total += documentRemainingBalance(asNumber(doc.total), roundMoney(paid + credits));
   }
 
   return { total: roundMoney(total), documentCount: openDocs.length };
 }
 
+/**
+ * Open AP obligation aging total — per-bill remaining only.
+ * Unapplied vendor credits appear separately in aging; not netted here.
+ */
 export async function computeApOpenSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
@@ -128,16 +157,18 @@ export async function computeApOpenSubledgerTotal(
   if (error) throw new Error(error.message);
 
   const openDocs = (documents ?? []).filter(isApOpenDocument);
-  const paidMap = await authoritativeAmountPaidByDocuments(
-    supabase,
-    organizationId,
-    openDocs.map((row) => row.id as string),
-  );
+  const docIds = openDocs.map((row) => row.id as string);
+  const [paidMap, creditsMap] = await Promise.all([
+    authoritativeAmountPaidByDocuments(supabase, organizationId, docIds),
+    batchCreditsAppliedToDocuments(supabase, organizationId, docIds),
+  ]);
 
   let total = 0;
   for (const doc of openDocs) {
-    const paid = paidMap.get(doc.id as string) ?? 0;
-    total += documentRemainingBalance(asNumber(doc.total), paid);
+    const id = doc.id as string;
+    const paid = paidMap.get(id) ?? 0;
+    const credits = creditsMap.get(id) ?? 0;
+    total += documentRemainingBalance(asNumber(doc.total), roundMoney(paid + credits));
   }
 
   return { total: roundMoney(total), documentCount: openDocs.length };
@@ -160,9 +191,9 @@ export async function reconcileSubledgersToGl(
   const apAccount =
     accountBySubtype(accountRows, "payable") || accountByCode(accountRows, "2000");
 
-  const [arSubledger, apSubledger] = await Promise.all([
-    computeArOpenSubledgerTotal(supabase, organizationId),
-    computeApOpenSubledgerTotal(supabase, organizationId),
+  const [arControl, apControl] = await Promise.all([
+    computeArControlSubledgerTotal(supabase, organizationId),
+    computeApControlSubledgerTotal(supabase, organizationId),
   ]);
 
   const results: SubledgerReconciliationResult[] = [];
@@ -174,16 +205,23 @@ export async function reconcileSubledgersToGl(
       arAccount,
       "ar",
     );
-    const difference = roundMoney(Math.abs(arSubledger.total - controlBalance));
+    const difference = roundMoney(Math.abs(arControl.netSubledgerBalance - controlBalance));
     results.push({
       side: "ar",
-      subledgerOpenBalance: arSubledger.total,
+      subledgerOpenBalance: arControl.netSubledgerBalance,
       glControlBalance: controlBalance,
       difference,
       consistent: difference <= TOLERANCE,
-      documentCount: arSubledger.documentCount,
+      documentCount: arControl.invoiceCount + arControl.creditMemoCount,
       note:
-        "Open invoice AR only. Customer deposits and unapplied funds are excluded from AR control.",
+        "Customer net AR: SUM(invoice remaining after applied credits) − SUM(unapplied customer credits) = GL AR.",
+      diagnostics: {
+        invoiceRemainingTotal: arControl.invoiceRemainingTotal,
+        unappliedCreditTotal: arControl.unappliedCreditTotal,
+        partyCount: arControl.partyCount,
+        invoiceCount: arControl.invoiceCount,
+        creditMemoCount: arControl.creditMemoCount,
+      },
     });
   }
 
@@ -194,17 +232,30 @@ export async function reconcileSubledgersToGl(
       apAccount,
       "ap",
     );
-    const difference = roundMoney(Math.abs(apSubledger.total - controlBalance));
+    const difference = roundMoney(Math.abs(apControl.netSubledgerBalance - controlBalance));
     results.push({
       side: "ap",
-      subledgerOpenBalance: apSubledger.total,
+      subledgerOpenBalance: apControl.netSubledgerBalance,
       glControlBalance: controlBalance,
       difference,
       consistent: difference <= TOLERANCE,
-      documentCount: apSubledger.documentCount,
-      note: "Open AP obligations only. Direct paid expenses are excluded.",
+      documentCount: apControl.billCount + apControl.vendorCreditCount,
+      note:
+        "Vendor net AP: SUM(bill remaining after applied vendor credits) − SUM(unapplied vendor credits) = GL AP.",
+      diagnostics: {
+        billRemainingTotal: apControl.billRemainingTotal,
+        unappliedVendorCreditTotal: apControl.unappliedVendorCreditTotal,
+        partyCount: apControl.partyCount,
+        billCount: apControl.billCount,
+        vendorCreditCount: apControl.vendorCreditCount,
+      },
     });
   }
 
   return results;
 }
+
+export {
+  computeArControlSubledgerTotal,
+  computeApControlSubledgerTotal,
+} from "./party-balances";
