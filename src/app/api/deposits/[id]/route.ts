@@ -5,6 +5,10 @@ import {
   voidCustomerDeposit,
 } from "@/lib/accounting/deposits";
 import { sumDepositApplicationsForPayment } from "@/lib/accounting/deposits";
+import {
+  refundCustomerDeposit,
+  reverseDepositApplication,
+} from "@/lib/accounting/settlements";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
@@ -74,7 +78,7 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "apply" | "void";
+    action?: "apply" | "void" | "reverse_application" | "refund";
     invoiceId?: string;
     amount?: number;
     applicationDate?: string;
@@ -82,6 +86,11 @@ export async function POST(request: Request, { params }: Params) {
     memo?: string;
     reason?: string;
     voidDate?: string;
+    allocationId?: string;
+    reversalDate?: string;
+    reversalEventId?: string;
+    refundDate?: string;
+    refundEventId?: string;
   };
 
   if (body.action === "apply") {
@@ -117,6 +126,45 @@ export async function POST(request: Request, { params }: Params) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not void deposit";
       return jsonError(message, 400);
+    }
+  }
+
+  if (body.action === "reverse_application") {
+    if (!body.allocationId) return jsonError("allocationId is required", 400);
+    if (!body.reason?.trim()) return jsonError("Reason is required", 400);
+    try {
+      const result = await reverseDepositApplication(supabase, {
+        organizationId,
+        allocationId: body.allocationId,
+        reversalDate: body.reversalDate || todayISO(),
+        reversalEventId: body.reversalEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(
+        err instanceof Error ? err.message : "Could not reverse deposit application",
+        400,
+      );
+    }
+  }
+
+  if (body.action === "refund") {
+    if (!body.reason?.trim()) return jsonError("Refund reason is required", 400);
+    try {
+      const result = await refundCustomerDeposit(supabase, {
+        organizationId,
+        depositPaymentId: id,
+        amount: asNumber(body.amount),
+        refundDate: body.refundDate || todayISO(),
+        refundEventId: body.refundEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not refund deposit", 400);
     }
   }
 

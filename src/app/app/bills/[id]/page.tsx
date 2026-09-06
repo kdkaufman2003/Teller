@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { VendorCreditForm } from "@/components/VendorCreditForm";
 import { BillActions } from "@/components/BillActions";
+import { DocumentPaymentHistory } from "@/components/DocumentPaymentHistory";
 import { StatusBadge } from "@/components/StatusBadge";
 import { authoritativeDocumentSettled, authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { asNumber, formatDate, money } from "@/lib/format";
@@ -53,7 +54,7 @@ export default async function BillDetailPage({
         : Promise.resolve({ data: null }),
       supabase
         .from("teller_payments")
-        .select("id, amount, payment_date, payment_method, reference_number")
+        .select("id, amount, payment_date, payment_method, reference_number, status")
         .eq("organization_id", organizationId)
         .eq("document_id", id)
         .order("payment_date", { ascending: false }),
@@ -169,29 +170,17 @@ export default async function BillDetailPage({
       ) : null}
 
       {(payments ?? []).length ? (
-        <div className="card overflow-hidden">
-          <div className="border-b border-rule px-4 py-3 text-sm font-medium">Payment history</div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Method</th>
-                <th>Reference</th>
-                <th className="text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(payments ?? []).map((payment) => (
-                <tr key={payment.id}>
-                  <td>{formatDate(payment.payment_date)}</td>
-                  <td>{payment.payment_method || "—"}</td>
-                  <td>{payment.reference_number || "—"}</td>
-                  <td className="text-right font-tabular">{money(payment.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DocumentPaymentHistory
+          payments={(payments ?? []).map((payment) => ({
+            paymentId: payment.id as string,
+            amount: asNumber(payment.amount),
+            paymentDate: formatDate(payment.payment_date),
+            method: payment.payment_method,
+            reference: payment.reference_number,
+            status: payment.status as string,
+            canReverse: payment.status === "posted",
+          }))}
+        />
       ) : null}
 
       {(creditAllocs ?? []).length ? (

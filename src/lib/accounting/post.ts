@@ -359,6 +359,8 @@ export async function postInvoiceOpen(
 
   if (!ar) throw new Error("Accounts Receivable is missing from the chart of accounts");
 
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+
   const journal: JournalLineInput[] = [];
   const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
   const tax = asNumber(input.tax);

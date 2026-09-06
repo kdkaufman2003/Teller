@@ -8,13 +8,22 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "node scripts/run-integration-tests.mjs",
+    "test:controlled-prod": "node scripts/run-controlled-phase4-tests.mjs",
+    "snapshot:controlled-prod": "node scripts/snapshot-production-state.mjs",
+    "migrate:017:controlled": "node scripts/apply-migration-017-controlled.mjs",
+    "verify:017:controlled": "node scripts/verify-migration-017-controlled.mjs",
+    "setup:controlled-test-orgs": "node scripts/create-controlled-test-orgs.mjs",
+    "cleanup:controlled-test-orgs": "node scripts/cleanup-controlled-test-orgs.mjs",
+    "migrate:integration": "node scripts/apply-isolated-migrations.mjs",
+    "verify:integration-schema": "node scripts/verify-isolated-schema.mjs",
     "verify:migrations": "node scripts/verify-migrations.mjs",
     "legacy:payment-audit": "tsx scripts/legacy-payment-audit.ts",
     "legacy:payment-backfill": "tsx scripts/legacy-payment-backfill.ts",
     "hfac:integration-report": "node scripts/hfac-integration-report.mjs",
     "verify:phase06": "node scripts/verify-phase06.mjs",
     "phase1:backfill": "tsx scripts/phase1-backfill.ts",
+    "reconstruct:historical-payments": "tsx scripts/reconstruct-historical-payments.ts",
     "tax-rules:load": "node scripts/load-tax-rules.mjs"
   },
   "dependencies": {
@@ -36,6 +45,7 @@
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "tsx": "^4.20.5",
+    "pg": "^8.16.3",
     "typescript": "^5",
     "vitest": "^3.2.7"
   }

@@ -17,7 +17,8 @@ import { roundMoney } from "./payment-fees";
  * 1. teller_payment_allocations (+ posted teller_payments) — primary truth
  * 2. teller_payments.document_id — legacy fallback pre-backfill
  * 3. teller_journal_lines — ledger-derived totals (reconciliation)
- * 4. teller_documents.amount_paid — denormalized cache for UI only
+ * 4. teller_documents.amount_paid — denormalized cache of CASH PAYMENTS ONLY
+ *    (excludes credit applications and write-offs; see teller_refresh_invoice_settlement)
  */
 
 export type DocumentKind = "invoice" | "expense" | "bill";
@@ -35,18 +36,23 @@ export function documentRemainingBalance(total: number, amountPaid: number): num
   return roundMoney(Math.max(0, asNumber(total) - asNumber(amountPaid)));
 }
 
-/** Primary accounting truth: sum of posted allocations for a document. */
+/** Primary accounting truth: sum of posted active allocations for a document. */
 export async function authoritativeDocumentAmountPaid(
   supabase: SupabaseClient,
   organizationId: string,
   documentId: string,
 ): Promise<number> {
-  const fromAllocations = await sumAllocationsForDocument(
-    supabase,
-    organizationId,
-    documentId,
-  );
-  if (fromAllocations > 0.009) return fromAllocations;
+  const { count, error } = await supabase
+    .from("teller_payment_allocations")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("document_id", documentId);
+
+  if (error) throw new Error(error.message);
+
+  if ((count ?? 0) > 0) {
+    return sumAllocationsForDocument(supabase, organizationId, documentId);
+  }
 
   const map = await authoritativeAmountPaidByDocuments(supabase, organizationId, [
     documentId,
@@ -186,19 +192,64 @@ export async function authoritativeDocumentSettled(
   return { payments, credits, total: roundMoney(payments + credits) };
 }
 
-/** Remaining balance using authoritative payments and credit applications. */
+/** Remaining balance using authoritative payments, credits, and write-offs. */
 export async function authoritativeDocumentRemaining(
   supabase: SupabaseClient,
   organizationId: string,
   documentId: string,
   documentTotal: number,
 ): Promise<number> {
-  const { total } = await authoritativeDocumentSettled(
-    supabase,
-    organizationId,
-    documentId,
-  );
-  return documentRemainingBalance(documentTotal, total);
+  const [{ total }, writeOffs] = await Promise.all([
+    authoritativeDocumentSettled(supabase, organizationId, documentId),
+    sumWriteOffsForDocument(supabase, organizationId, documentId),
+  ]);
+  return documentRemainingBalance(documentTotal, roundMoney(total + writeOffs));
+}
+
+export async function sumWriteOffsForDocument(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("teller_write_offs")
+    .select("amount")
+    .eq("organization_id", organizationId)
+    .eq("document_id", documentId);
+
+  if (error) {
+    if (error.message.includes("teller_write_offs")) return 0;
+    throw new Error(error.message);
+  }
+  return roundMoney((data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0));
+}
+
+export async function batchWriteOffsForDocuments(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documentIds: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!documentIds.length) return result;
+  for (const id of documentIds) result.set(id, 0);
+
+  const { data, error } = await supabase
+    .from("teller_write_offs")
+    .select("document_id, amount")
+    .eq("organization_id", organizationId)
+    .in("document_id", documentIds);
+
+  if (error) {
+    if (error.message.includes("teller_write_offs")) return result;
+    throw new Error(error.message);
+  }
+
+  for (const row of data ?? []) {
+    const id = row.document_id as string;
+    result.set(id, roundMoney((result.get(id) ?? 0) + asNumber(row.amount)));
+  }
+
+  return result;
 }
 
 /** Batch credit-applied amounts keyed by target document id. */

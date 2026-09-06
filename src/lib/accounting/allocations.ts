@@ -115,7 +115,7 @@ export async function sumAllocationsForDocument(
 ): Promise<number> {
   const { data: allocations, error } = await supabase
     .from("teller_payment_allocations")
-    .select("amount, payment_id")
+    .select("amount, payment_id, allocation_kind, reversed_by_allocation_id, reversal_of_allocation_id")
     .eq("organization_id", organizationId)
     .eq("document_id", documentId);
 
@@ -139,8 +139,24 @@ export async function sumAllocationsForDocument(
 
   return roundMoney(
     allocations
-      .filter((row) => postedIds.has(row.payment_id as string))
-      .reduce((sum, row) => sum + asNumber(row.amount), 0),
+      .filter(
+        (row) =>
+          postedIds.has(row.payment_id as string) &&
+          !row.reversed_by_allocation_id &&
+          !row.reversal_of_allocation_id,
+      )
+      .reduce((sum, row) => {
+        const amount = asNumber(row.amount);
+        if (row.allocation_kind === "refund_offset") return sum - amount;
+        if (
+          row.allocation_kind === "invoice_payment" ||
+          row.allocation_kind === "bill_payment" ||
+          row.allocation_kind === "deposit_apply"
+        ) {
+          return sum + amount;
+        }
+        return sum;
+      }, 0),
   );
 }
 
@@ -151,12 +167,21 @@ export async function sumAllocationsForPayment(
 ): Promise<number> {
   const { data, error } = await supabase
     .from("teller_payment_allocations")
-    .select("amount")
+    .select("amount, allocation_kind, reversed_by_allocation_id")
     .eq("organization_id", organizationId)
     .eq("payment_id", paymentId);
 
   if (error) throw new Error(error.message);
-  return roundMoney((data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0));
+  return roundMoney(
+    (data ?? [])
+      .filter((row) => !row.reversed_by_allocation_id)
+      .reduce((sum, row) => {
+        const amount = asNumber(row.amount);
+        if (row.allocation_kind === "refund_offset") return sum - amount;
+        if (row.allocation_kind.endsWith("_reversal")) return sum;
+        return sum + amount;
+      }, 0),
+  );
 }
 
 /** Batch authoritative paid amounts keyed by document id. */
@@ -172,7 +197,9 @@ export async function authoritativeAmountPaidByDocuments(
 
   const { data: allocations, error } = await supabase
     .from("teller_payment_allocations")
-    .select("document_id, amount, payment_id")
+    .select(
+      "document_id, amount, payment_id, allocation_kind, reversed_by_allocation_id, reversal_of_allocation_id",
+    )
     .eq("organization_id", organizationId)
     .in("document_id", documentIds);
 
@@ -196,8 +223,25 @@ export async function authoritativeAmountPaidByDocuments(
 
   for (const row of allocations) {
     if (!postedIds.has(row.payment_id as string)) continue;
+    if (row.reversed_by_allocation_id) continue;
+    if (row.reversal_of_allocation_id) continue;
+
+    const amount = asNumber(row.amount);
+    const kind = row.allocation_kind as string;
+    let delta = 0;
+    if (kind === "refund_offset") delta = -amount;
+    else if (
+      kind === "invoice_payment" ||
+      kind === "bill_payment" ||
+      kind === "deposit_apply"
+    ) {
+      delta = amount;
+    } else {
+      continue;
+    }
+
     const docId = row.document_id as string;
-    result.set(docId, roundMoney((result.get(docId) ?? 0) + asNumber(row.amount)));
+    result.set(docId, roundMoney((result.get(docId) ?? 0) + delta));
   }
 
   return result;

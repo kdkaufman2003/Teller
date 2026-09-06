@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DepositSettlementActions } from "@/components/InvoiceSettlementActions";
 import { authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { batchDepositRemainingForPayments } from "@/lib/accounting/deposits";
 import { computeCustomerNetPosition } from "@/lib/accounting/deposit-reconciliation";
@@ -157,12 +158,13 @@ export default async function CustomerDetailPage({
               <th className="text-right">Received</th>
               <th className="text-right">Applied</th>
               <th className="text-right">Remaining</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {depositRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-muted">
+                <td colSpan={6} className="text-muted">
                   No deposits recorded
                 </td>
               </tr>
@@ -177,6 +179,9 @@ export default async function CustomerDetailPage({
                     <td className="text-right font-tabular">{money(amount)}</td>
                     <td className="text-right font-tabular">{money(amount - remaining)}</td>
                     <td className="text-right font-tabular">{money(remaining)}</td>
+                    <td className="text-right">
+                      <DepositSettlementActions depositId={row.id as string} remaining={remaining} />
+                    </td>
                   </tr>
                 );
               })

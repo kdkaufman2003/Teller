@@ -479,3 +479,63 @@ export async function voidCreditDocument(
     metadata: { number: input.number },
   });
 }
+
+function isCustomerCreditRefundRow(
+  row: { document_id?: string | null; metadata?: unknown },
+  creditMemoId: string,
+): boolean {
+  if (row.document_id !== creditMemoId) return false;
+  if (!row.metadata || typeof row.metadata !== "object") return false;
+  return (row.metadata as Record<string, unknown>).kind === "customer_credit_refund";
+}
+
+/** Posted cash refunds against unapplied customer credit (not deposit refunds). */
+export async function sumCustomerCreditRefundsForMemo(
+  supabase: SupabaseClient,
+  organizationId: string,
+  creditMemoId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("teller_payments")
+    .select("amount, document_id, metadata")
+    .eq("organization_id", organizationId)
+    .eq("document_id", creditMemoId)
+    .eq("payment_type", "customer_refund")
+    .eq("status", "posted");
+
+  if (error) throw new Error(error.message);
+
+  return roundMoney(
+    (data ?? [])
+      .filter((row) => isCustomerCreditRefundRow(row, creditMemoId))
+      .reduce((sum, row) => sum + asNumber(row.amount), 0),
+  );
+}
+
+export async function batchCustomerCreditRefundsForMemos(
+  supabase: SupabaseClient,
+  organizationId: string,
+  creditMemoIds: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!creditMemoIds.length) return result;
+  for (const id of creditMemoIds) result.set(id, 0);
+
+  const { data, error } = await supabase
+    .from("teller_payments")
+    .select("amount, document_id, metadata")
+    .eq("organization_id", organizationId)
+    .in("document_id", creditMemoIds)
+    .eq("payment_type", "customer_refund")
+    .eq("status", "posted");
+
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const id = row.document_id as string;
+    if (!isCustomerCreditRefundRow(row, id)) continue;
+    result.set(id, roundMoney((result.get(id) ?? 0) + asNumber(row.amount)));
+  }
+
+  return result;
+}

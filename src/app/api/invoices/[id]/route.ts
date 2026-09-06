@@ -4,6 +4,7 @@ import {
   resolveDocumentAmountPaid,
 } from "@/lib/accounting/balances";
 import { postInvoiceOpen, postInvoicePaid, voidInvoice } from "@/lib/accounting/post";
+import { writeOffInvoice } from "@/lib/accounting/settlements";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
@@ -50,10 +51,13 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "open" | "pay" | "paid" | "void";
+    action?: "open" | "pay" | "paid" | "void" | "writeoff";
     amount?: number;
     paymentDate?: string;
     memo?: string;
+    reason?: string;
+    writeoffDate?: string;
+    writeoffEventId?: string;
   };
 
   const { data: invoice, error } = await supabase
@@ -167,6 +171,24 @@ export async function POST(request: Request, { params }: Params) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not record payment";
       return jsonError(message, 400);
+    }
+  }
+
+  if (body.action === "writeoff") {
+    if (!body.reason?.trim()) return jsonError("Write-off reason is required", 400);
+    try {
+      const result = await writeOffInvoice(supabase, {
+        organizationId,
+        invoiceId: id,
+        amount: asNumber(body.amount),
+        writeoffDate: body.writeoffDate || todayISO(),
+        writeoffEventId: body.writeoffEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not write off invoice", 400);
     }
   }
 

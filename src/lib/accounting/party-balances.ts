@@ -7,7 +7,12 @@ import {
   sumCreditsAppliedFromDocument,
 } from "./document-allocations";
 import {
+  batchCustomerCreditRefundsForMemos,
+  sumCustomerCreditRefundsForMemo,
+} from "./credits";
+import {
   authoritativeDocumentRemaining,
+  batchWriteOffsForDocuments,
   documentRemainingBalance,
 } from "./balances";
 import { roundMoney } from "./payment-fees";
@@ -87,12 +92,11 @@ export async function authoritativeCreditRemaining(
   creditDocumentId: string,
   creditTotal: number,
 ): Promise<number> {
-  const applied = await sumCreditsAppliedFromDocument(
-    supabase,
-    organizationId,
-    creditDocumentId,
-  );
-  return documentRemainingBalance(creditTotal, applied);
+  const [applied, refunded] = await Promise.all([
+    sumCreditsAppliedFromDocument(supabase, organizationId, creditDocumentId),
+    sumCustomerCreditRefundsForMemo(supabase, organizationId, creditDocumentId),
+  ]);
+  return documentRemainingBalance(creditTotal, roundMoney(applied + refunded));
 }
 
 export const authoritativeVendorCreditRemaining = authoritativeCreditRemaining;
@@ -161,10 +165,13 @@ export async function computeArControlSubledgerTotal(
   const invoiceIds = invoiceRows.map((row) => row.id as string);
   const creditIds = creditRows.map((row) => row.id as string);
 
-  const [paidMap, creditsToInvoices, creditsFromMemos] = await Promise.all([
+  const [paidMap, creditsToInvoices, creditsFromMemos, creditRefunds, writeOffMap] =
+    await Promise.all([
     authoritativeAmountPaidByDocuments(supabase, organizationId, invoiceIds),
     batchCreditsAppliedToDocuments(supabase, organizationId, invoiceIds),
     batchCreditsAppliedFromDocuments(supabase, organizationId, creditIds),
+    batchCustomerCreditRefundsForMemos(supabase, organizationId, creditIds),
+    batchWriteOffsForDocuments(supabase, organizationId, invoiceIds),
   ]);
 
   const partyInvoiceRemaining = new Map<string | null, number>();
@@ -174,9 +181,10 @@ export async function computeArControlSubledgerTotal(
     const id = invoice.id as string;
     const paid = paidMap.get(id) ?? 0;
     const creditsApplied = creditsToInvoices.get(id) ?? 0;
+    const writeOffs = writeOffMap.get(id) ?? 0;
     const remaining = documentRemainingBalance(
       asNumber(invoice.total),
-      roundMoney(paid + creditsApplied),
+      roundMoney(paid + creditsApplied + writeOffs),
     );
     if (remaining <= 0.009) continue;
 
@@ -194,7 +202,11 @@ export async function computeArControlSubledgerTotal(
   for (const credit of creditRows) {
     const id = credit.id as string;
     const applied = creditsFromMemos.get(id) ?? 0;
-    const unapplied = documentRemainingBalance(asNumber(credit.total), applied);
+    const refunded = creditRefunds.get(id) ?? 0;
+    const unapplied = documentRemainingBalance(
+      asNumber(credit.total),
+      roundMoney(applied + refunded),
+    );
     if (unapplied <= 0.009) continue;
 
     unappliedCreditTotal += unapplied;

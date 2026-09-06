@@ -14,6 +14,27 @@ const TARGET_KIND_MAP: Record<string, DocumentAllocationKind> = {
   bill: "vendor_credit_apply",
 };
 
+const ACTIVE_DOCUMENT_ALLOCATION_KINDS = new Set<DocumentAllocationKind>([
+  "customer_credit_apply",
+  "vendor_credit_apply",
+]);
+
+type DocumentAllocationRow = {
+  amount: unknown;
+  reversed_by_allocation_id?: string | null;
+  reversal_of_allocation_id?: string | null;
+  allocation_kind?: string | null;
+};
+
+/** Original credit application is active iff no immutable reversal row references it. */
+export function isActiveDocumentAllocationRow(row: DocumentAllocationRow): boolean {
+  if (row.reversal_of_allocation_id) return false;
+  if (row.reversed_by_allocation_id) return false;
+  const kind = row.allocation_kind ?? "";
+  if (kind.endsWith("_reversal")) return false;
+  return ACTIVE_DOCUMENT_ALLOCATION_KINDS.has(kind as DocumentAllocationKind);
+}
+
 export function documentAllocationKind(
   sourceKind: string,
   targetKind: string,
@@ -77,12 +98,16 @@ export async function sumCreditsAppliedToDocument(
 ): Promise<number> {
   const { data, error } = await supabase
     .from("teller_document_allocations")
-    .select("amount")
+    .select("amount, reversed_by_allocation_id, reversal_of_allocation_id, allocation_kind")
     .eq("organization_id", organizationId)
     .eq("target_document_id", targetDocumentId);
 
   if (error) throw new Error(error.message);
-  return roundMoney((data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0));
+  return roundMoney(
+    (data ?? [])
+      .filter((row) => isActiveDocumentAllocationRow(row))
+      .reduce((sum, row) => sum + asNumber(row.amount), 0),
+  );
 }
 
 export async function sumCreditsAppliedFromDocument(
@@ -92,12 +117,16 @@ export async function sumCreditsAppliedFromDocument(
 ): Promise<number> {
   const { data, error } = await supabase
     .from("teller_document_allocations")
-    .select("amount")
+    .select("amount, reversed_by_allocation_id, reversal_of_allocation_id, allocation_kind")
     .eq("organization_id", organizationId)
     .eq("source_document_id", sourceDocumentId);
 
   if (error) throw new Error(error.message);
-  return roundMoney((data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0));
+  return roundMoney(
+    (data ?? [])
+      .filter((row) => isActiveDocumentAllocationRow(row))
+      .reduce((sum, row) => sum + asNumber(row.amount), 0),
+  );
 }
 
 export async function documentHasAppliedCredits(
@@ -128,13 +157,16 @@ export async function batchCreditsAppliedToDocuments(
 
   const { data, error } = await supabase
     .from("teller_document_allocations")
-    .select("target_document_id, amount")
+    .select(
+      "target_document_id, amount, reversed_by_allocation_id, reversal_of_allocation_id, allocation_kind",
+    )
     .eq("organization_id", organizationId)
     .in("target_document_id", documentIds);
 
   if (error) throw new Error(error.message);
 
   for (const row of data ?? []) {
+    if (!isActiveDocumentAllocationRow(row)) continue;
     const id = row.target_document_id as string;
     result.set(id, roundMoney((result.get(id) ?? 0) + asNumber(row.amount)));
   }
@@ -154,13 +186,16 @@ export async function batchCreditsAppliedFromDocuments(
 
   const { data, error } = await supabase
     .from("teller_document_allocations")
-    .select("source_document_id, amount")
+    .select(
+      "source_document_id, amount, reversed_by_allocation_id, reversal_of_allocation_id, allocation_kind",
+    )
     .eq("organization_id", organizationId)
     .in("source_document_id", documentIds);
 
   if (error) throw new Error(error.message);
 
   for (const row of data ?? []) {
+    if (!isActiveDocumentAllocationRow(row)) continue;
     const id = row.source_document_id as string;
     result.set(id, roundMoney((result.get(id) ?? 0) + asNumber(row.amount)));
   }

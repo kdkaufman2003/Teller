@@ -3,7 +3,7 @@ import { asNumber } from "@/lib/format";
 import { accountByCode, accountBySubtype } from "./accounts";
 import { authoritativeAmountPaidByDocuments } from "./allocations";
 import { batchCreditsAppliedToDocuments } from "./document-allocations";
-import { documentRemainingBalance } from "./balances";
+import { documentRemainingBalance, batchWriteOffsForDocuments } from "./balances";
 import {
   computeApControlSubledgerTotal,
   computeArControlSubledgerTotal,
@@ -39,7 +39,7 @@ export type SubledgerReconciliationResult = {
 type ControlAccountRow = {
   id: string;
   code: string;
-  subtype?: string;
+  subtype?: string | null;
   type: string;
 };
 
@@ -123,9 +123,10 @@ export async function computeArOpenSubledgerTotal(
 
   const openDocs = (documents ?? []).filter(isArOpenDocument);
   const docIds = openDocs.map((row) => row.id as string);
-  const [paidMap, creditsMap] = await Promise.all([
+  const [paidMap, creditsMap, writeOffMap] = await Promise.all([
     authoritativeAmountPaidByDocuments(supabase, organizationId, docIds),
     batchCreditsAppliedToDocuments(supabase, organizationId, docIds),
+    batchWriteOffsForDocuments(supabase, organizationId, docIds),
   ]);
 
   let total = 0;
@@ -133,7 +134,8 @@ export async function computeArOpenSubledgerTotal(
     const id = doc.id as string;
     const paid = paidMap.get(id) ?? 0;
     const credits = creditsMap.get(id) ?? 0;
-    total += documentRemainingBalance(asNumber(doc.total), roundMoney(paid + credits));
+    const writeOffs = writeOffMap.get(id) ?? 0;
+    total += documentRemainingBalance(asNumber(doc.total), roundMoney(paid + credits + writeOffs));
   }
 
   return { total: roundMoney(total), documentCount: openDocs.length };

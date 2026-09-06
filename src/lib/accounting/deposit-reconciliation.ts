@@ -32,7 +32,7 @@ export type DepositReconciliationResult = {
 type ControlAccountRow = {
   id: string;
   code: string;
-  subtype?: string;
+  subtype?: string | null;
   type: string;
 };
 

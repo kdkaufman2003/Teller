@@ -4,7 +4,7 @@ type AccountLookup = {
   id: string;
   code: string;
   type: string;
-  subtype?: string;
+  subtype?: string | null;
 };
 
 export function accountByCode(accounts: AccountLookup[], code: string) {

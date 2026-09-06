@@ -90,6 +90,33 @@ export function customerDepositsAccount(
   return accountBySubtype(accounts, "deposit") || accountByCode(accounts, "2300");
 }
 
+export async function sumDepositRefundsForPayment(
+  supabase: SupabaseClient,
+  organizationId: string,
+  depositPaymentId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("teller_payments")
+    .select("amount, metadata")
+    .eq("organization_id", organizationId)
+    .eq("payment_type", "customer_refund")
+    .eq("status", "posted");
+
+  if (error) throw new Error(error.message);
+
+  return roundMoney(
+    (data ?? [])
+      .filter(
+        (row) =>
+          row.metadata &&
+          typeof row.metadata === "object" &&
+          (row.metadata as Record<string, unknown>).source_deposit_payment_id ===
+            depositPaymentId,
+      )
+      .reduce((sum, row) => sum + asNumber(row.amount), 0),
+  );
+}
+
 /** Unapplied balance remaining on a customer deposit payment. */
 export async function authoritativeDepositRemaining(
   supabase: SupabaseClient,
@@ -97,8 +124,11 @@ export async function authoritativeDepositRemaining(
   paymentId: string,
   paymentAmount: number,
 ): Promise<number> {
-  const applied = await sumDepositApplicationsForPayment(supabase, organizationId, paymentId);
-  return documentRemainingBalance(paymentAmount, applied);
+  const [applied, refunded] = await Promise.all([
+    sumDepositApplicationsForPayment(supabase, organizationId, paymentId),
+    sumDepositRefundsForPayment(supabase, organizationId, paymentId),
+  ]);
+  return documentRemainingBalance(paymentAmount, roundMoney(applied + refunded));
 }
 
 export async function sumDepositApplicationsForPayment(
@@ -111,7 +141,8 @@ export async function sumDepositApplicationsForPayment(
     .select("amount")
     .eq("organization_id", organizationId)
     .eq("payment_id", paymentId)
-    .eq("allocation_kind", "deposit_apply");
+    .eq("allocation_kind", "deposit_apply")
+    .is("reversed_by_allocation_id", null);
 
   if (error) throw new Error(error.message);
   return roundMoney((data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0));
@@ -125,25 +156,17 @@ export async function batchDepositRemainingForPayments(
   const result = new Map<string, number>();
   if (!payments.length) return result;
 
-  const paymentIds = payments.map((p) => p.id);
-  for (const p of payments) {
-    result.set(p.id, roundMoney(asNumber(p.amount)));
-  }
-
-  const { data, error } = await supabase
-    .from("teller_payment_allocations")
-    .select("payment_id, amount")
-    .eq("organization_id", organizationId)
-    .in("payment_id", paymentIds)
-    .eq("allocation_kind", "deposit_apply");
-
-  if (error) throw new Error(error.message);
-
-  for (const row of data ?? []) {
-    const id = row.payment_id as string;
-    const current = result.get(id) ?? 0;
-    result.set(id, roundMoney(Math.max(0, current - asNumber(row.amount))));
-  }
+  await Promise.all(
+    payments.map(async (payment) => {
+      const remaining = await authoritativeDepositRemaining(
+        supabase,
+        organizationId,
+        payment.id,
+        payment.amount,
+      );
+      result.set(payment.id, remaining);
+    }),
+  );
 
   return result;
 }

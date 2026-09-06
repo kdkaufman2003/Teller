@@ -4,6 +4,7 @@ import {
   voidCreditDocument,
   postCreditMemoOpen,
 } from "@/lib/accounting/credits";
+import { refundCustomerCredit, reverseDocumentAllocation } from "@/lib/accounting/settlements";
 import { sumCreditsAppliedFromDocument } from "@/lib/accounting/document-allocations";
 import { authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { documentRemainingBalance } from "@/lib/accounting/balances";
@@ -53,9 +54,14 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "post" | "apply" | "void";
+    action?: "post" | "apply" | "void" | "reverse_application" | "refund";
     targetDocumentId?: string;
     amount?: number;
+    allocationId?: string;
+    reason?: string;
+    reversalEventId?: string;
+    refundDate?: string;
+    refundEventId?: string;
   };
 
   const { data: creditMemo, error } = await supabase
@@ -116,6 +122,47 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ ok: true, ...result, targetRemaining });
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Could not apply credit", 400);
+    }
+  }
+
+  if (body.action === "refund") {
+    if (!body.reason?.trim()) return jsonError("Refund reason is required", 400);
+    try {
+      const result = await refundCustomerCredit(supabase, {
+        organizationId,
+        creditMemoId: id,
+        amount: asNumber(body.amount),
+        refundDate: body.refundDate || todayISO(),
+        refundEventId: body.refundEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(
+        err instanceof Error ? err.message : "Could not refund customer credit",
+        400,
+      );
+    }
+  }
+
+  if (body.action === "reverse_application") {
+    if (!body.allocationId) return jsonError("allocationId is required", 400);
+    if (!body.reason?.trim()) return jsonError("Reason is required", 400);
+    try {
+      const result = await reverseDocumentAllocation(supabase, {
+        organizationId,
+        allocationId: body.allocationId,
+        reversalEventId: body.reversalEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(
+        err instanceof Error ? err.message : "Could not reverse credit application",
+        400,
+      );
     }
   }
 
