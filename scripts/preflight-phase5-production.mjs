@@ -137,6 +137,7 @@ const RPC_PROBES = {
     p_refund_event_id: RPC_PROBE_UUID,
     p_reason: "preflight-probe",
     p_cash_account_id: RPC_PROBE_UUID,
+    p_deposits_account_id: RPC_PROBE_UUID,
   },
   teller_refund_customer_credit: {
     p_organization_id: RPC_PROBE_UUID,
@@ -146,6 +147,7 @@ const RPC_PROBES = {
     p_refund_event_id: RPC_PROBE_UUID,
     p_reason: "preflight-probe",
     p_cash_account_id: RPC_PROBE_UUID,
+    p_ar_account_id: RPC_PROBE_UUID,
   },
   teller_write_off_invoice: {
     p_organization_id: RPC_PROBE_UUID,
@@ -155,6 +157,7 @@ const RPC_PROBES = {
     p_writeoff_event_id: RPC_PROBE_UUID,
     p_reason: "preflight-probe",
     p_bad_debt_account_id: RPC_PROBE_UUID,
+    p_ar_account_id: RPC_PROBE_UUID,
   },
 };
 
