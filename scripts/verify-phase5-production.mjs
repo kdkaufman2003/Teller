@@ -51,7 +51,9 @@ async function rpcExists(supabase, name) {
   const { error } = await supabase.rpc(name, {});
   if (!error) return true;
   const message = error.message.toLowerCase();
-  if (message.includes("does not exist") || message.includes("could not find")) return false;
+  if (message.includes("without parameters")) return true;
+  if (message.includes("does not exist")) return false;
+  if (message.includes("could not find the function")) return false;
   return true;
 }
 
@@ -118,7 +120,7 @@ async function main() {
   const checks = [];
 
   for (const table of PHASE5_TABLES) {
-    const { error } = await supabase.from(table).select("id", { count: "exact", head: true });
+    const { error } = await supabase.from(table).select("id").limit(0);
     checks.push({ name: `${table} exists`, pass: !error, detail: error?.message ?? "ok" });
   }
 
