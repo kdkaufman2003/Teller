@@ -11,6 +11,8 @@
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:controlled-prod": "node scripts/run-controlled-phase4-tests.mjs",
     "snapshot:controlled-prod": "node scripts/snapshot-production-state.mjs",
+    "migrate:016:controlled": "node scripts/apply-migration-016-controlled.mjs",
+    "verify:016:controlled": "node scripts/verify-migration-016-controlled.mjs",
     "migrate:017:controlled": "node scripts/apply-migration-017-controlled.mjs",
     "verify:017:controlled": "node scripts/verify-migration-017-controlled.mjs",
     "setup:controlled-test-orgs": "node scripts/create-controlled-test-orgs.mjs",
