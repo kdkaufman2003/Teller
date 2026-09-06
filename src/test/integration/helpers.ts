@@ -1,21 +1,22 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { TRADES_ACCOUNTS } from "@/lib/industries/trades-base";
+import {
+  assertSafeIntegrationDatabase,
+  integrationTestsEnabled as safetyIntegrationEnabled,
+} from "@/lib/integration/safety";
 
-const MINIMAL_ACCOUNT_CODES = new Set(["1000", "1100", "2000", "4000", "6100", "6150"]);
+const MINIMAL_ACCOUNT_CODES = new Set(["1000", "1100", "2000", "2300", "4000", "6100", "6150", "6850"]);
 
 export function integrationTestsEnabled(): boolean {
-  return (
-    process.env.RUN_INTEGRATION_TESTS === "1" &&
-    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) &&
-    Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim())
-  );
+  return safetyIntegrationEnabled();
 }
 
 export function createIntegrationClient(): SupabaseClient {
+  assertSafeIntegrationDatabase();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !key) {
-    throw new Error("Integration tests require Supabase URL and service role key");
+    throw new Error("Integration tests require Supabase URL and service role key in .env.integration");
   }
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -150,4 +151,161 @@ export async function createTestExpenseBill(
   });
 
   return doc as { id: string; number: string; total: number };
+}
+
+export async function createTestBill(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    expenseAccountId: string;
+    total?: number;
+    number?: string;
+    partyId?: string | null;
+  },
+) {
+  const total = input.total ?? 5000;
+  const { data: doc, error } = await supabase
+    .from("teller_documents")
+    .insert({
+      organization_id: input.organizationId,
+      kind: "bill",
+      number: input.number ?? `BILL-IT-${Date.now()}`,
+      party_id: input.partyId ?? null,
+      status: "draft",
+      issue_date: "2026-04-01",
+      due_date: "2026-04-30",
+      subtotal: total,
+      tax: 0,
+      total,
+    })
+    .select("id, number, total")
+    .single();
+
+  if (error || !doc) throw new Error(error?.message || "Could not create bill");
+
+  await supabase.from("teller_document_lines").insert({
+    document_id: doc.id,
+    description: "Integration test bill",
+    quantity: 1,
+    unit_price: total,
+    amount: total,
+    account_id: input.expenseAccountId,
+    item_type: "expense",
+  });
+
+  return doc as { id: string; number: string; total: number };
+}
+
+export async function createTestCreditMemo(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    revenueAccountId: string;
+    total?: number;
+    partyId?: string | null;
+    appliesToDocumentId?: string | null;
+  },
+) {
+  const total = input.total ?? 1000;
+  const { data: doc, error } = await supabase
+    .from("teller_documents")
+    .insert({
+      organization_id: input.organizationId,
+      kind: "credit_memo",
+      number: `CM-IT-${Date.now()}`,
+      party_id: input.partyId ?? null,
+      applies_to_document_id: input.appliesToDocumentId ?? null,
+      status: "draft",
+      issue_date: "2026-04-01",
+      subtotal: total,
+      tax: 0,
+      total,
+    })
+    .select("id, number, total")
+    .single();
+
+  if (error || !doc) throw new Error(error?.message || "Could not create credit memo");
+
+  await supabase.from("teller_document_lines").insert({
+    document_id: doc.id,
+    description: "Integration test credit",
+    quantity: 1,
+    unit_price: total,
+    amount: total,
+    account_id: input.revenueAccountId,
+    item_type: "credit",
+  });
+
+  return doc as { id: string; number: string; total: number };
+}
+
+export async function createTestVendorCredit(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    expenseAccountId: string;
+    total?: number;
+    partyId?: string | null;
+    appliesToDocumentId?: string | null;
+  },
+) {
+  const total = input.total ?? 500;
+  const { data: doc, error } = await supabase
+    .from("teller_documents")
+    .insert({
+      organization_id: input.organizationId,
+      kind: "vendor_credit",
+      number: `VC-IT-${Date.now()}`,
+      party_id: input.partyId ?? null,
+      applies_to_document_id: input.appliesToDocumentId ?? null,
+      status: "draft",
+      issue_date: "2026-04-01",
+      subtotal: total,
+      tax: 0,
+      total,
+    })
+    .select("id, number, total")
+    .single();
+
+  if (error || !doc) throw new Error(error?.message || "Could not create vendor credit");
+
+  await supabase.from("teller_document_lines").insert({
+    document_id: doc.id,
+    description: "Integration test vendor credit",
+    quantity: 1,
+    unit_price: total,
+    amount: total,
+    account_id: input.expenseAccountId,
+    item_type: "credit",
+  });
+
+  return doc as { id: string; number: string; total: number };
+}
+
+export const TELLER_INTEGRATION_FORCE_ROLLBACK = "__TELLER_INTEGRATION_FORCE_ROLLBACK__";
+
+export async function closeBooksThrough(
+  supabase: SupabaseClient,
+  organizationId: string,
+  periodEnd: string,
+) {
+  const { error } = await supabase.from("teller_period_closes").insert({
+    organization_id: organizationId,
+    period_end: periodEnd,
+    notes: "Integration test close",
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function countOrgRows(
+  supabase: SupabaseClient,
+  table: "teller_journal_entries" | "teller_payments" | "teller_payment_allocations" | "teller_write_offs",
+  organizationId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }

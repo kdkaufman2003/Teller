@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
 import {
@@ -38,8 +39,14 @@ export async function GET() {
     (jobs ?? []).map((row) => [row.id, `${row.job_number} · ${row.name}`]),
   );
 
+  const enriched = await enrichDocumentsWithAuthoritativePaid(
+    supabase,
+    organizationId,
+    data ?? [],
+  );
+
   return NextResponse.json({
-    invoices: (data ?? []).map((row) => ({
+    invoices: enriched.map((row) => ({
       ...row,
       party_name: row.party_id ? partyNames.get(row.party_id) || "" : "",
       job_name: row.job_id ? jobNames.get(row.job_id) || "" : "",

@@ -1,8 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
-import { checkDocumentBalanceConsistency, validateDocumentPayment } from "./balances";
+import {
+  authoritativeDocumentAmountPaid,
+  checkDocumentBalanceConsistency,
+  validateDocumentPayment,
+  type DocumentKind,
+} from "./balances";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
+import { documentHasActivePayments } from "./allocations";
+import { documentHasAppliedCredits } from "./document-allocations";
+import {
+  assertInvoiceStatusTransition,
+  assertExpenseStatusTransition,
+  invoiceStatusAfterPayment,
+  type InvoiceStatus,
+  type ExpenseStatus,
+} from "./document-transitions";
+import { recordDocumentJournalLink } from "./journal-links";
 import {
   buildInvoicePaymentLines,
   invoicePaymentProgress,
@@ -21,7 +36,7 @@ type JournalLineInput = {
   memo?: string;
 };
 
-async function assertOrgPeriodOpen(
+export async function assertOrgPeriodOpen(
   supabase: SupabaseClient,
   organizationId: string,
   entryDate: string,
@@ -42,7 +57,7 @@ async function assertDocumentCacheConsistent(
     documentId: string;
     documentTotal: number;
     cachedAmountPaid: number;
-    kind: "invoice" | "expense";
+    kind: DocumentKind;
   },
 ) {
   const result = await checkDocumentBalanceConsistency(supabase, {
@@ -191,9 +206,44 @@ export async function voidInvoice(
     number: string;
     voidDate: string;
     postedEntryId?: string | null;
+    currentStatus?: InvoiceStatus;
     actorId?: string | null;
   },
 ) {
+  const hasActivePayments = await documentHasActivePayments(
+    supabase,
+    input.organizationId,
+    input.documentId,
+  );
+  const hasAppliedCredits = await documentHasAppliedCredits(
+    supabase,
+    input.organizationId,
+    input.documentId,
+    false,
+  );
+
+  if (hasActivePayments || hasAppliedCredits) {
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "invoice.void_blocked",
+      resourceKind: "invoice",
+      resourceId: input.documentId,
+      metadata: {
+        number: input.number,
+        reason: hasActivePayments ? "active_payments" : "applied_credits",
+      },
+    });
+    throw new Error(
+      hasActivePayments
+        ? "Cannot void an invoice with payment activity. Reverse or refund payments before voiding."
+        : "Cannot void an invoice with applied credit memos. Reverse credit applications first.",
+    );
+  }
+
+  const fromStatus = input.currentStatus ?? "open";
+  assertInvoiceStatusTransition(fromStatus, "void", { hasActivePayments: false });
+
   const { data: linkedEntries, error: entriesError } = await supabase
     .from("teller_journal_entries")
     .select("id, source_kind, created_at")
@@ -221,13 +271,20 @@ export async function voidInvoice(
 
     if ((count ?? 0) > 0) continue;
 
-    await reverseJournalEntry(supabase, {
+    const reversalEntryId = await reverseJournalEntry(supabase, {
       organizationId: input.organizationId,
       entryId,
       entryDate: input.voidDate,
       memo: `Void invoice ${input.number}`,
       sourceId: input.documentId,
       actorId: input.actorId,
+    });
+
+    await recordDocumentJournalLink(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      journalEntryId: reversalEntryId,
+      linkKind: "reversal",
     });
   }
 
@@ -241,6 +298,15 @@ export async function voidInvoice(
     .eq("id", input.documentId);
 
   if (docError) throw new Error(docError.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: "document.status_changed",
+    resourceKind: "invoice",
+    resourceId: input.documentId,
+    metadata: { number: input.number, from: fromStatus, to: "void" },
+  });
 
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
@@ -293,6 +359,8 @@ export async function postInvoiceOpen(
 
   if (!ar) throw new Error("Accounts Receivable is missing from the chart of accounts");
 
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+
   const journal: JournalLineInput[] = [];
   const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
   const tax = asNumber(input.tax);
@@ -336,6 +404,8 @@ export async function postInvoiceOpen(
     lines: journal,
   });
 
+  assertInvoiceStatusTransition("draft", "open");
+
   const { error } = await supabase
     .from("teller_documents")
     .update({
@@ -349,6 +419,21 @@ export async function postInvoiceOpen(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await recordDocumentJournalLink(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    journalEntryId: entryId,
+    linkKind: "accrual",
+  });
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    action: "document.status_changed",
+    resourceKind: "invoice",
+    resourceId: input.documentId,
+    metadata: { number: input.number, from: "draft", to: "open", total, entryId },
+  });
 
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
@@ -383,6 +468,7 @@ export async function postInvoicePaid(
     actorId?: string | null;
     externalSource?: string | null;
     externalId?: string | null;
+    paymentMetadata?: Record<string, unknown>;
   },
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -458,10 +544,17 @@ export async function postInvoicePaid(
         }
       : null;
 
+  const nextStatus = invoiceStatusAfterPayment(invoiceTotal, amountPaid);
+  const priorStatus: InvoiceStatus =
+    priorPaid > 0.009 ? "partially_paid" : "open";
+  if (priorStatus !== nextStatus) {
+    assertInvoiceStatusTransition(priorStatus, nextStatus);
+  }
+
   const { error } = await supabase
     .from("teller_documents")
     .update({
-      status: fullyPaid ? "paid" : "open",
+      status: nextStatus,
       amount_paid: amountPaid,
       metadata: paymentMetadata
         ? { ...existingMetadata, payment: paymentMetadata }
@@ -472,9 +565,10 @@ export async function postInvoicePaid(
 
   if (error) throw new Error(error.message);
 
-  await recordTellerPayment(supabase, {
+  const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
     documentId: input.documentId,
+    documentKind: "invoice",
     partyId: input.partyId,
     jobId: input.jobId,
     amount: grossAmount,
@@ -485,6 +579,15 @@ export async function postInvoicePaid(
     externalSource: input.externalSource ?? null,
     externalId: input.externalId ?? null,
     journalEntryId: entryId,
+    metadata: input.paymentMetadata ?? {},
+  });
+
+  await recordDocumentJournalLink(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    journalEntryId: entryId,
+    linkKind: "payment",
+    paymentId,
   });
 
   await assertDocumentCacheConsistent(supabase, {
@@ -515,10 +618,42 @@ export async function postInvoicePaid(
       amountPaid,
       invoiceTotal,
       entryId,
+      paymentId,
+      status: nextStatus,
     },
   });
 
-  return { entryId, amountPaid, fullyPaid };
+  if (paymentId) {
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "payment.recorded",
+      resourceKind: "payment",
+      resourceId: paymentId,
+      metadata: { documentId: input.documentId, amount: grossAmount, entryId },
+    });
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "payment.allocated",
+      resourceKind: "payment",
+      resourceId: paymentId,
+      metadata: { documentId: input.documentId, amount: grossAmount },
+    });
+  }
+
+  if (priorStatus !== nextStatus) {
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "document.status_changed",
+      resourceKind: "invoice",
+      resourceId: input.documentId,
+      metadata: { number: input.number, from: priorStatus, to: nextStatus },
+    });
+  }
+
+  return { entryId, amountPaid, fullyPaid, paymentId };
 }
 
 /** Backfill processor fees when a payment was previously recorded without fee split. */
@@ -607,6 +742,14 @@ export async function reconcilePaymentProcessingFee(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await recordDocumentJournalLink(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    journalEntryId: entryId,
+    linkKind: "fee",
+  });
+
   return entryId;
 }
 
@@ -664,6 +807,22 @@ export async function postExpense(
 
   if (error) throw new Error(error.message);
 
+  await recordDocumentJournalLink(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    journalEntryId: entryId,
+    linkKind: "accrual",
+  });
+
+  const toStatus: ExpenseStatus = input.paid ? "paid" : "open";
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    action: "document.status_changed",
+    resourceKind: "expense",
+    resourceId: input.documentId,
+    metadata: { number: input.number, to: toStatus, paid: input.paid, entryId },
+  });
+
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
     action: "expense.posted",
@@ -684,16 +843,23 @@ export async function voidExpense(
     number: string;
     voidDate: string;
     postedEntryId?: string | null;
-    amountPaid?: number;
+    currentStatus?: ExpenseStatus;
     actorId?: string | null;
   },
 ) {
-  const amountPaid = asNumber(input.amountPaid);
-  if (amountPaid > 0.009) {
+  const hasActivePayments = await documentHasActivePayments(
+    supabase,
+    input.organizationId,
+    input.documentId,
+  );
+  if (hasActivePayments) {
     throw new Error(
       "Cannot void an expense with payments recorded. Reverse payments first.",
     );
   }
+
+  const fromStatus = input.currentStatus ?? "open";
+  assertExpenseStatusTransition(fromStatus, "void", { hasActivePayments: false });
 
   await assertOrgPeriodOpen(supabase, input.organizationId, input.voidDate);
 
@@ -722,13 +888,20 @@ export async function voidExpense(
 
     if ((count ?? 0) > 0) continue;
 
-    await reverseJournalEntry(supabase, {
+    const reversalEntryId = await reverseJournalEntry(supabase, {
       organizationId: input.organizationId,
       entryId,
       entryDate: input.voidDate,
       memo: `Void expense ${input.number}`,
       sourceId: input.documentId,
       actorId: input.actorId,
+    });
+
+    await recordDocumentJournalLink(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      journalEntryId: reversalEntryId,
+      linkKind: "reversal",
     });
   }
 
@@ -742,6 +915,15 @@ export async function voidExpense(
     .eq("id", input.documentId);
 
   if (docError) throw new Error(docError.message);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: "document.status_changed",
+    resourceKind: "expense",
+    resourceId: input.documentId,
+    metadata: { number: input.number, from: fromStatus, to: "void" },
+  });
 
   await recordAuditEvent(supabase, {
     organizationId: input.organizationId,
@@ -767,6 +949,9 @@ export async function postExpensePaid(
     expenseTotal?: number;
     priorPaid?: number;
     paymentMemo?: string;
+    paymentMethod?: string;
+    referenceNumber?: string;
+    documentKind?: "expense" | "bill";
     actorId?: string | null;
   },
 ) {
@@ -775,6 +960,7 @@ export async function postExpensePaid(
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
   if (!cash || !ap) throw new Error("Cash or AP account is missing");
 
+  const documentKind = input.documentKind ?? "expense";
   const expenseTotal = input.expenseTotal ?? input.paymentAmount;
   const priorPaid = input.priorPaid ?? 0;
   const { paymentAmount } = validateDocumentPayment({
@@ -799,7 +985,7 @@ export async function postExpensePaid(
     organizationId: input.organizationId,
     entryDate: input.issueDate,
     memo,
-    sourceKind: "expense-payment",
+    sourceKind: documentKind === "bill" ? "bill-payment" : "expense-payment",
     sourceId: input.documentId,
     lines: [
       {
@@ -820,10 +1006,11 @@ export async function postExpensePaid(
     actorId: input.actorId,
   });
 
+  const nextStatus = fullyPaid ? "paid" : "partially_paid";
   const { error } = await supabase
     .from("teller_documents")
     .update({
-      status: fullyPaid ? "paid" : "partially_paid",
+      status: nextStatus,
       amount_paid: amountPaid,
       updated_at: new Date().toISOString(),
     })
@@ -831,14 +1018,25 @@ export async function postExpensePaid(
 
   if (error) throw new Error(error.message);
 
-  await recordTellerPayment(supabase, {
+  const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
     documentId: input.documentId,
+    documentKind,
     partyId: input.partyId,
     jobId: input.jobId,
     amount: paymentAmount,
     paymentDate: input.issueDate,
+    paymentMethod: input.paymentMethod,
+    referenceNumber: input.referenceNumber,
     journalEntryId: entryId,
+  });
+
+  await recordDocumentJournalLink(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    journalEntryId: entryId,
+    linkKind: "payment",
+    paymentId,
   });
 
   await assertDocumentCacheConsistent(supabase, {
@@ -846,8 +1044,12 @@ export async function postExpensePaid(
     documentId: input.documentId,
     documentTotal: expenseTotal,
     cachedAmountPaid: amountPaid,
-    kind: "expense",
+    kind: documentKind === "bill" ? "bill" : "expense",
   });
+
+  if (documentKind === "bill") {
+    return { entryId, amountPaid, fullyPaid, paymentId };
+  }
 
   const auditAction = fullyPaid
     ? "expense.payment.completed"
@@ -865,8 +1067,28 @@ export async function postExpensePaid(
       amountPaid,
       expenseTotal,
       entryId,
+      paymentId,
     },
   });
 
-  return { entryId, amountPaid, fullyPaid };
+  if (paymentId) {
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "payment.recorded",
+      resourceKind: "payment",
+      resourceId: paymentId,
+      metadata: { documentId: input.documentId, amount: paymentAmount, entryId },
+    });
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "payment.allocated",
+      resourceKind: "payment",
+      resourceId: paymentId,
+      metadata: { documentId: input.documentId, amount: paymentAmount },
+    });
+  }
+
+  return { entryId, amountPaid, fullyPaid, paymentId };
 }

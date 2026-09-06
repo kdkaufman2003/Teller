@@ -101,6 +101,9 @@ describe("buildSalesSummary", () => {
     expect(
       isBilledInvoice({ status: "open", posted_entry_id: "je-1" }),
     ).toBe(true);
+    expect(
+      isBilledInvoice({ status: "partially_paid", posted_entry_id: "je-1" }),
+    ).toBe(true);
   });
 });
 

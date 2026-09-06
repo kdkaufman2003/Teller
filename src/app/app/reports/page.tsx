@@ -14,6 +14,7 @@ import {
   parseReportPeriod,
   reportPeriodRange,
 } from "@/lib/accounting/reports";
+import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
 import { parseFiscalYearStart } from "@/lib/org/config";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
@@ -66,12 +67,12 @@ export default async function ReportsPage({ searchParams }: PageProps) {
       .order("code"),
     supabase
       .from("teller_documents")
-      .select("status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
+      .select("id, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
       .eq("organization_id", organizationId)
       .eq("kind", "invoice"),
     supabase
       .from("teller_documents")
-      .select("status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
+      .select("id, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
       .eq("organization_id", organizationId)
       .eq("kind", "expense"),
     supabase.from("teller_parties").select("id, name").eq("organization_id", organizationId),
@@ -111,14 +112,20 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
   const basis = parseAccountingBasis(session.settings?.answers?.basis);
   const partyNames = new Map((parties ?? []).map((row) => [row.id, row.name]));
+
+  const [invoicesWithPaid, expensesWithPaid] = await Promise.all([
+    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, invoices ?? []),
+    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, expenses ?? []),
+  ]);
+
   const profitAndLoss = buildProfitAndLossForBasis(
     basis,
-    invoices ?? [],
+    invoicesWithPaid,
     journalLines ?? [],
     accounts ?? [],
     range,
   );
-  const sales = buildSalesSummary(invoices ?? [], partyNames, range, basis);
+  const sales = buildSalesSummary(invoicesWithPaid, partyNames, range, basis);
   const balanceSheet = buildBalanceSheet(datedJournalLines, accounts ?? [], asOf);
   const cashFlow = buildCashFlowStatement(
     datedJournalLines,
@@ -126,8 +133,8 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     range,
     profitAndLoss,
   );
-  const arAging = buildArAging(invoices ?? [], partyNames, asOf);
-  const apAging = buildApAging(expenses ?? [], partyNames, asOf);
+  const arAging = buildArAging(invoicesWithPaid, partyNames, asOf);
+  const apAging = buildApAging(expensesWithPaid, partyNames, asOf);
 
   return (
     <div className="space-y-6">

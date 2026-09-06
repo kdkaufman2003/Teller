@@ -192,7 +192,7 @@ describe.skipIf(!enabled)("financial integration", () => {
         documentId: expense.id,
         number: expense.number,
         voidDate: "2026-04-02",
-        amountPaid: 0,
+        currentStatus: "open",
       });
 
       const { count: afterCount } = await supabase

@@ -1,8 +1,10 @@
 import { CustomerForm } from "@/components/CustomerForm";
+import { RecordCustomerDepositPanel } from "@/components/RecordCustomerDepositPanel";
 import { label } from "@/lib/session";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
 import { routes } from "@/lib/routes";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function CustomersPage() {
@@ -24,6 +26,9 @@ export default async function CustomersPage() {
         <h1>{heading}</h1>
       </header>
       <CustomerForm singular={label(session.settings, "customerSingular", "Customer")} />
+      <RecordCustomerDepositPanel
+        customers={(data ?? []).map((row) => ({ id: row.id, name: row.name }))}
+      />
       <div className="card overflow-hidden">
         <table className="data-table">
           <thead>
@@ -43,7 +48,11 @@ export default async function CustomersPage() {
             ) : (
               (data ?? []).map((row) => (
                 <tr key={row.id}>
-                  <td className="font-medium">{row.name}</td>
+                  <td className="font-medium">
+                    <Link href={`${routes.customers}/${row.id}`} className="hover:underline">
+                      {row.name}
+                    </Link>
+                  </td>
                   <td>{row.email || "—"}</td>
                   <td className="text-muted">
                     {row.external_source === "hfac" || row.external_source === "quoter"

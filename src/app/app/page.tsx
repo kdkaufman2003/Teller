@@ -11,6 +11,10 @@ import { parseFiscalYearStart } from "@/lib/org/config";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { isBilledInvoice } from "@/lib/accounting/reports";
+import {
+  computeApOpenSubledgerTotal,
+  computeArOpenSubledgerTotal,
+} from "@/lib/accounting/subledger";
 import { dashboardMetricsForIndustry } from "@/lib/dashboard/metrics";
 import { label } from "@/lib/session";
 import { routes, jobPath } from "@/lib/routes";
@@ -25,7 +29,8 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const organizationId = session.organization.id;
 
-  const [invoices, expenses, jobs, parties, integration] = await Promise.all([
+  const [invoices, expenses, jobs, parties, integration, arSubledger, apSubledger] =
+    await Promise.all([
     supabase
       .from("teller_documents")
       .select("id, number, status, total, amount_paid, issue_date, party_id, posted_entry_id")
@@ -54,19 +59,17 @@ export default async function DashboardPage() {
       .eq("organization_id", organizationId)
       .eq("provider", "hfac")
       .maybeSingle(),
+    computeArOpenSubledgerTotal(supabase, organizationId),
+    computeApOpenSubledgerTotal(supabase, organizationId),
   ]);
 
   const invoiceRows = invoices.data ?? [];
   const partyNames = new Map((parties.data ?? []).map((row) => [row.id, row.name]));
-  const openAR = invoiceRows
-    .filter((row) => row.status === "open" && isBilledInvoice(row))
-    .reduce((sum, row) => sum + asNumber(row.total) - asNumber(row.amount_paid), 0);
+  const openAR = arSubledger.total;
   const collected = invoiceRows
     .filter((row) => row.status === "paid" && isBilledInvoice(row))
     .reduce((sum, row) => sum + asNumber(row.total), 0);
-  const openAP = (expenses.data ?? [])
-    .filter((row) => row.status === "open")
-    .reduce((sum, row) => sum + asNumber(row.total), 0);
+  const openAP = apSubledger.total;
   const activeJobs = (jobs.data ?? []).filter((job) =>
     ["estimate", "scheduled", "in_progress"].includes(job.status),
   ).length;

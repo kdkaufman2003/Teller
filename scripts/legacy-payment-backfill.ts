@@ -8,6 +8,7 @@
  * APPLY:
  *   ORGANIZATION_ID=<uuid> APPLY=1 npm run legacy:payment-backfill
  */
+import "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { backfillLegacyPayments } from "../src/lib/accounting/legacy-payments";
 

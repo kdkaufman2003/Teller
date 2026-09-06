@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 function configExternalId(config) {
@@ -66,7 +67,7 @@ async function main() {
       };
     });
 
-  const externalToOrgs = new Map<string, string[]>();
+  const externalToOrgs = new Map();
   for (const row of rows) {
     if (!row.externalAccountId || row.mapping !== "mapped") continue;
     const list = externalToOrgs.get(row.externalAccountId) ?? [];

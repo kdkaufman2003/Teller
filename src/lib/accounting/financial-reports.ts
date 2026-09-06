@@ -261,7 +261,9 @@ export function buildArAging(
 ): AgingReport {
   return buildDocumentAging(
     invoices.filter(
-      (row) => row.status === "open" && isBilledInvoice(row),
+      (row) =>
+        (row.status === "open" || row.status === "partially_paid") &&
+        isBilledInvoice(row),
     ),
     partyNames,
     asOf,

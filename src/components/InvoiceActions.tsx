@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { todayISO } from "@/lib/format";
+import { InvoiceSettlementActions } from "@/components/InvoiceSettlementActions";
 
 export function InvoiceActions({
   id,
@@ -72,7 +73,8 @@ export function InvoiceActions({
     }
   }
 
-  const canPay = status === "open" && remaining > 0.009;
+  const canPay =
+    (status === "open" || status === "partially_paid") && remaining > 0.009;
   const hasPartialPayment = amountPaid > 0.009 && remaining > 0.009;
 
   return (
@@ -183,6 +185,10 @@ export function InvoiceActions({
       ) : null}
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
+
+      {(status === "open" || status === "partially_paid" || status === "paid") && remaining > 0.009 ? (
+        <InvoiceSettlementActions invoiceId={id} remaining={remaining} />
+      ) : null}
     </div>
   );
 }
