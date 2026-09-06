@@ -328,13 +328,27 @@ async function main() {
   await run("9. PO→bill converts commitment to actual cost", async () => {
     const { data: po } = await supabase.from("teller_purchase_orders").select("id").eq("organization_id", orgId).limit(1).single();
     const poId = po!.id as string;
-    const { data: poLine } = await supabase.from("teller_purchase_order_lines").select("id").eq("purchase_order_id", poId).single();
+    const { data: poLine } = await supabase
+      .from("teller_purchase_order_lines")
+      .select("id, quantity, quantity_received")
+      .eq("purchase_order_id", poId)
+      .single();
+    const lineId = poLine!.id as string;
+    const unreceived = Math.max(asNumber(poLine!.quantity) - asNumber(poLine!.quantity_received), 0);
+    if (unreceived > 0) {
+      await receivePurchaseOrder(supabase, {
+        organizationId: orgId,
+        purchaseOrderId: poId,
+        receiptDate: TODAY,
+        lines: [{ purchaseOrderLineId: lineId, quantityReceived: unreceived }],
+      });
+    }
     const committedBefore = (await buildJobProfitabilitySummary(supabase, orgId, jobA)).remainingCommittedCost;
     const bill = await convertPurchaseOrderToBill(supabase, {
       organizationId: orgId,
       purchaseOrderId: poId,
       issueDate: TODAY,
-      lines: [{ purchaseOrderLineId: poLine!.id as string, quantityToBill: 10 }],
+      lines: [{ purchaseOrderLineId: lineId, quantityToBill: 5 }],
     });
     const { data: billDoc } = await supabase.from("teller_documents").select("number, total").eq("id", bill.billId).single();
     await postBillOpen(supabase, {
@@ -854,6 +868,46 @@ async function main() {
   });
 
   await run("43. Committed cost zero after full PO billing", async () => {
+    const { data: po } = await supabase.from("teller_purchase_orders").select("id").eq("organization_id", orgId).limit(1).single();
+    const poId = po!.id as string;
+    const { data: poLine } = await supabase
+      .from("teller_purchase_order_lines")
+      .select("id, quantity, quantity_received, quantity_billed, unit_cost")
+      .eq("purchase_order_id", poId)
+      .single();
+    const lineId = poLine!.id as string;
+    const qty = asNumber(poLine!.quantity);
+    const billed = asNumber(poLine!.quantity_billed);
+    const unbilled = Math.max(qty - billed, 0);
+
+    if (unbilled > 0) {
+      const bill = await convertPurchaseOrderToBill(supabase, {
+        organizationId: orgId,
+        purchaseOrderId: poId,
+        issueDate: TODAY,
+        lines: [{ purchaseOrderLineId: lineId, quantityToBill: unbilled }],
+      });
+      const { data: billDoc } = await supabase.from("teller_documents").select("number, total").eq("id", bill.billId).single();
+      await postBillOpen(supabase, {
+        organizationId: orgId,
+        documentId: bill.billId,
+        partyId: vendorId,
+        jobId: jobA,
+        issueDate: TODAY,
+        number: billDoc!.number as string,
+        tax: 0,
+        lines: [
+          {
+            amount: asNumber(billDoc?.total),
+            account_id: accounts["6150"],
+            description: "Materials remainder",
+            job_id: jobA,
+            cost_classification: "direct",
+          },
+        ],
+      });
+    }
+
     const summary = await buildJobProfitabilitySummary(supabase, orgId, jobA);
     if (summary.remainingCommittedCost > 1) throw new Error(`remaining commitment ${summary.remainingCommittedCost}`);
   });

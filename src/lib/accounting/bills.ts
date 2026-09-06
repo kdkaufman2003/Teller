@@ -103,7 +103,7 @@ export async function postBillOpen(
     account_id: ap.id,
     credit: total,
     party_id: input.partyId,
-    job_id: input.jobId,
+    job_id: null,
     memo: `Bill ${input.number}`,
   });
 
@@ -131,6 +131,25 @@ export async function postBillOpen(
     .eq("id", input.documentId);
 
   if (error) throw new Error(error.message);
+
+  await supabase.from("teller_document_lines").delete().eq("document_id", input.documentId);
+  const { error: linesError } = await supabase.from("teller_document_lines").insert(
+    input.lines.map((line, index) => ({
+      document_id: input.documentId,
+      description: line.description,
+      quantity: 1,
+      unit_price: asNumber(line.amount),
+      amount: asNumber(line.amount),
+      account_id: line.account_id,
+      job_id: line.job_id ?? input.jobId,
+      cost_category: line.cost_category ?? "",
+      cost_type: line.cost_type ?? "",
+      cost_classification: line.cost_classification ?? "direct",
+      item_type: "expense",
+      sort_order: index,
+    })),
+  );
+  if (linesError) throw new Error(linesError.message);
 
   await recordDocumentJournalLink(supabase, {
     organizationId: input.organizationId,

@@ -105,7 +105,7 @@ export function buildInvoicePaymentLines(input: {
       account_id: input.cashAccountId,
       debit: netAmount,
       party_id: input.partyId ?? null,
-      job_id: input.jobId ?? null,
+      job_id: null,
       memo: input.processorName ? `${input.processorName} deposit` : "Customer payment",
     },
   ];
@@ -127,7 +127,7 @@ export function buildInvoicePaymentLines(input: {
     account_id: input.arAccountId,
     credit: grossAmount,
     party_id: input.partyId ?? null,
-    job_id: input.jobId ?? null,
+    job_id: null,
     memo: "Clear accounts receivable",
   });
 

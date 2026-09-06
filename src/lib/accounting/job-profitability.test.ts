@@ -62,15 +62,16 @@ describe("job profitability formulas", () => {
       "job-1",
       [
         { account_id: "r1", debit: 0, credit: 5000, job_id: "job-1" },
+        { account_id: "r1", debit: 500, credit: 0, job_id: "job-1" },
         { account_id: "c1", debit: 1800, credit: 0, job_id: "job-1", cost_classification: "direct" },
         { account_id: "cash", debit: 0, credit: 1800, job_id: "job-1" },
         { account_id: "e1", debit: 200, credit: 0, job_id: "job-1", cost_classification: "indirect" },
       ],
       ACCOUNTS,
     );
-    expect(summary.recognizedRevenue).toBe(5000);
+    expect(summary.recognizedRevenue).toBe(4500);
     expect(summary.actualDirectCost).toBe(1800);
     expect(summary.indirectCost).toBe(200);
-    expect(marginPercent(3200, 5000)).toBe(64);
+    expect(marginPercent(2700, 4500)).toBe(60);
   });
 });

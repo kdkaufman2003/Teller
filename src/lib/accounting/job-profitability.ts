@@ -119,6 +119,11 @@ export function isEconomicRevenueLine(type: string, debit: number, credit: numbe
   return type === "revenue" && credit > debit + 0.009;
 }
 
+/** Revenue recognition and credit-memo reductions (debit-side revenue). */
+export function isEconomicRevenueActivity(type: string, debit: number, credit: number): boolean {
+  return type === "revenue" && Math.abs(credit - debit) > 0.009;
+}
+
 export function isEconomicDirectCostLine(
   type: string,
   debit: number,
@@ -162,7 +167,7 @@ export function summarizeJournalLinesForJob(
     const debit = asNumber(line.debit);
     const credit = asNumber(line.credit);
 
-    if (isEconomicRevenueLine(account.type, debit, credit)) {
+    if (isEconomicRevenueActivity(account.type, debit, credit)) {
       recognizedRevenue += plAmountForAccountType(account.type, debit, credit);
     } else if (
       isEconomicIndirectCostLine(account.type, debit, credit, line.cost_classification)
@@ -212,7 +217,7 @@ export function summarizeGlReconciliation(
   }
 
   return {
-    revenue: sliceFor(["revenue"], isEconomicRevenueLine),
+    revenue: sliceFor(["revenue"], isEconomicRevenueActivity),
     directCost: sliceFor(["cogs", "expense"], isEconomicDirectCostLine),
   };
 }

@@ -88,7 +88,7 @@ export async function postCreditMemoOpen(
     account_id: ar.id,
     credit: total,
     party_id: input.partyId,
-    job_id: input.jobId,
+    job_id: null,
     memo: input.reason ? `Credit ${input.number}: ${input.reason}` : `Credit memo ${input.number}`,
   });
 
