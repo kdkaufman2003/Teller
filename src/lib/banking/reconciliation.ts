@@ -6,6 +6,43 @@ import type { ReconciliationSummary } from "./types";
 
 const CURRENCY_TOLERANCE = 0.01;
 
+function relationOne<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function signedReconciliationItemAmount(item: {
+  cleared_amount: unknown;
+  bank_transaction_id: string | null;
+  journal_line_id: string | null;
+  teller_bank_transactions: unknown;
+  teller_journal_lines: unknown;
+}): number {
+  const bankTxn = relationOne(
+    item.teller_bank_transactions as
+      | { normalized_amount: unknown }
+      | { normalized_amount: unknown }[]
+      | null
+      | undefined,
+  );
+  if (item.bank_transaction_id && bankTxn) {
+    return asNumber(bankTxn.normalized_amount);
+  }
+
+  const journalLine = relationOne(
+    item.teller_journal_lines as
+      | { debit: unknown; credit: unknown }
+      | { debit: unknown; credit: unknown }[]
+      | null
+      | undefined,
+  );
+  if (item.journal_line_id && journalLine) {
+    return asNumber(journalLine.debit) - asNumber(journalLine.credit);
+  }
+
+  return asNumber(item.cleared_amount);
+}
+
 export type ReconciliationItemInput = {
   journalEntryId?: string | null;
   journalLineId?: string | null;
@@ -191,25 +228,8 @@ export async function loadReconciliationSummary(
     bankAccountSubtype: bankAccount?.account_subtype,
   });
 
-  type ReconciliationItemRow = {
-    cleared_amount: number | string | null;
-    bank_transaction_id: string | null;
-    journal_entry_id: string | null;
-    journal_line_id: string | null;
-    teller_bank_transactions: { normalized_amount: number | string | null } | null;
-    teller_journal_lines: { debit: number | string | null; credit: number | string | null } | null;
-  };
-
-  const itemRows = ((items ?? []) as ReconciliationItemRow[]).map((item) => {
-    let signed = 0;
-    if (item.bank_transaction_id && item.teller_bank_transactions) {
-      signed = asNumber(item.teller_bank_transactions.normalized_amount);
-    } else if (item.journal_line_id && item.teller_journal_lines) {
-      signed =
-        asNumber(item.teller_journal_lines.debit) - asNumber(item.teller_journal_lines.credit);
-    } else {
-      signed = asNumber(item.cleared_amount);
-    }
+  const itemRows = (items ?? []).map((item) => {
+    const signed = signedReconciliationItemAmount(item);
 
     if (signed >= 0) {
       return { clearedAmount: signed, direction: "increase" as const };
