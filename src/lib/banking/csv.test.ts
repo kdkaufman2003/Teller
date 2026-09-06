@@ -57,6 +57,17 @@ describe("mapCsvRowsToTransactions", () => {
     expect(result.rows[0].importFingerprint).toBeTruthy();
   });
 
+  it("parses sanitized formula-prefixed negative amounts", () => {
+    const result = mapCsvRowsToTransactions({
+      ...base,
+      rows: [["2026-05-01", "Interest", "'-25.00"]],
+      mapping: { date: "Date", description: "Description", amount: "Amount" },
+    });
+
+    expect(result.rows[0].rawAmount).toBe(-25);
+    expect(result.rows[0].normalizedAmount).toBe(25);
+  });
+
   it("maps debit/credit columns", () => {
     const result = mapCsvRowsToTransactions({
       ...base,

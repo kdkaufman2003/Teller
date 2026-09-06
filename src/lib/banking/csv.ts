@@ -109,7 +109,10 @@ function parseDate(value: string, rowNumber: number): string {
 }
 
 function parseAmount(value: string, rowNumber: number): number {
-  const cleaned = value.replace(/[$,\s]/g, "").replace(/^\((.*)\)$/, "-$1");
+  const cleaned = value
+    .replace(/^'/, "")
+    .replace(/[$,\s]/g, "")
+    .replace(/^\((.*)\)$/, "-$1");
   if (!cleaned) throw new Error(`Row ${rowNumber}: amount is required`);
   const amount = asNumber(cleaned);
   if (!Number.isFinite(amount)) {

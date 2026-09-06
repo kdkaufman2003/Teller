@@ -15,6 +15,7 @@ export function mapTransactionToRpcRow(txn: NormalizedBankTransaction): BankTran
     provider_pending_transaction_id: normalized.providerPendingTransactionId ?? null,
     posted_date: normalized.postedDate,
     authorized_date: normalized.authorizedDate ?? null,
+    amount: normalized.rawAmount,
     raw_amount: normalized.rawAmount,
     description: normalized.description,
     merchant_name: normalized.merchantName ?? null,

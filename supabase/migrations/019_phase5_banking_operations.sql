@@ -358,7 +358,14 @@ begin
         v_pending_id,
         coalesce((v_item->>'posted_date')::date, current_date),
         nullif(v_item->>'authorized_date', '')::date,
-        round(coalesce((v_item->>'amount')::numeric, 0)::numeric, 2),
+        round(
+          coalesce(
+            (v_item->>'raw_amount')::numeric,
+            (v_item->>'amount')::numeric,
+            0
+          )::numeric,
+          2
+        ),
         coalesce(v_item->>'name', v_item->>'description', ''),
         nullif(v_item->>'merchant_name', ''),
         v_is_pending,

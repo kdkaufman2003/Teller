@@ -80,6 +80,7 @@ export type BankTransactionRpcRow = {
   provider_pending_transaction_id?: string | null;
   posted_date: string;
   authorized_date?: string | null;
+  amount: number;
   raw_amount: number;
   description: string;
   merchant_name?: string | null;

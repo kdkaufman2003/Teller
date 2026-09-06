@@ -170,7 +170,9 @@ export async function loadReconciliationSummary(
       .maybeSingle(),
     supabase
       .from("teller_bank_reconciliation_items")
-      .select("cleared_amount, bank_transaction_id, journal_entry_id")
+      .select(
+        "cleared_amount, bank_transaction_id, journal_entry_id, journal_line_id, teller_bank_transactions(normalized_amount), teller_journal_lines(debit, credit)",
+      )
       .eq("organization_id", organizationId)
       .eq("reconciliation_id", reconciliationId),
   ]);
@@ -189,10 +191,31 @@ export async function loadReconciliationSummary(
     bankAccountSubtype: bankAccount?.account_subtype,
   });
 
-  const itemRows = (items ?? []).map((item) => ({
-    clearedAmount: asNumber(item.cleared_amount),
-    direction: "increase" as const,
-  }));
+  type ReconciliationItemRow = {
+    cleared_amount: number | string | null;
+    bank_transaction_id: string | null;
+    journal_entry_id: string | null;
+    journal_line_id: string | null;
+    teller_bank_transactions: { normalized_amount: number | string | null } | null;
+    teller_journal_lines: { debit: number | string | null; credit: number | string | null } | null;
+  };
+
+  const itemRows = ((items ?? []) as ReconciliationItemRow[]).map((item) => {
+    let signed = 0;
+    if (item.bank_transaction_id && item.teller_bank_transactions) {
+      signed = asNumber(item.teller_bank_transactions.normalized_amount);
+    } else if (item.journal_line_id && item.teller_journal_lines) {
+      signed =
+        asNumber(item.teller_journal_lines.debit) - asNumber(item.teller_journal_lines.credit);
+    } else {
+      signed = asNumber(item.cleared_amount);
+    }
+
+    if (signed >= 0) {
+      return { clearedAmount: signed, direction: "increase" as const };
+    }
+    return { clearedAmount: Math.abs(signed), direction: "decrease" as const };
+  });
 
   const summary = computeReconciliationBalances({
     beginningReconciledBalance: asNumber(reconciliation.beginning_reconciled_balance),
