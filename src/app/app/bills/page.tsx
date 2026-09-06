@@ -49,9 +49,14 @@ export default async function BillsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="page-header">
-        <h1>Bills</h1>
-        <p>Vendor amounts owed — post to AP, then pay when due.</p>
+      <header className="page-header flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1>Bills</h1>
+          <p>Vendor amounts owed — post to AP, then pay when due.</p>
+        </div>
+        <Link href={routes.billPay} className="btn btn-brass">
+          Pay bills
+        </Link>
       </header>
       <BillPanel accounts={accounts ?? []} vendors={parties ?? []} />
       <div className="card overflow-hidden">

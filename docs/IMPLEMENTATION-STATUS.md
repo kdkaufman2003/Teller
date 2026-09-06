@@ -2,6 +2,12 @@
 
 Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when closing gaps.
 
+## Phase completion flags
+
+| Flag | Value | Verified |
+|------|-------|----------|
+| `PHASE_6_COMPLETE` | **true** | Controlled prod: 32/32 Phase 6 demo scenarios (incl. 10 accounting/control cases), Phase 5 verify+demo green, HFAC baseline unchanged (8 docs, 3 payments, 16 journals) |
+
 ## Implemented
 
 | Area | Status | Location |
@@ -29,6 +35,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Partner webhook auth | ✓ | `hfac-auth.ts`, bearer secret |
 | Service role for inbound webhooks | ✓ | `createServiceClient()` on integration routes |
 | Basic roles | ✓ | `owner`, `admin`, `bookkeeper`, `viewer` |
+| Accounts payable & purchasing (Phase 6) | ✓ | Migrations 021–022, vendors, PO/receiving, multi-bill pay, vendor credits, recurring bills, AP dashboard; controlled prod demo covers multi-bill payment, over-allocation rejection, multi-bill credit apply, bank→bill_payment match (no extra journal), closed-period bill/payment rejection, tenant isolation, PO receipt/bill controls, approval rejection |
 
 ## Partial
 

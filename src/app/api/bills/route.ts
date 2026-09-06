@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { postBillOpen } from "@/lib/accounting/bills";
+import { submitBillForApproval } from "@/lib/accounting/bill-approval";
 import { nextNumber } from "@/lib/accounting/accounts";
 import {
   authoritativeDocumentRemaining,
   enrichDocumentsWithAuthoritativePaid,
 } from "@/lib/accounting/balances";
 import { recordAuditEvent } from "@/lib/accounting/audit";
+import { detectDuplicateBillWarnings } from "@/lib/accounting/duplicate-bills";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
@@ -69,7 +70,12 @@ export async function POST(request: Request) {
       quantity?: number;
       unit_price?: number;
       accountId?: string;
+      jobId?: string;
+      costCategory?: string;
+      costType?: string;
     }[];
+    acknowledgeDuplicateWarnings?: boolean;
+    duplicateWarningContext?: Record<string, unknown>;
   };
 
   const lines = (body.lines || []).filter(
@@ -103,6 +109,9 @@ export async function POST(request: Request) {
       unit_price: unitPrice,
       amount,
       account_id: line.accountId || null,
+      job_id: line.jobId || null,
+      cost_category: line.costCategory || "",
+      cost_type: line.costType || "",
       item_type: "expense",
       sort_order: index,
     };
@@ -112,6 +121,17 @@ export async function POST(request: Request) {
   const tax = asNumber(body.tax);
   const total = subtotal + tax;
   const issueDate = body.issueDate || todayISO();
+
+  const duplicateWarnings = await detectDuplicateBillWarnings(supabase, {
+    organizationId,
+    partyId,
+    referenceNumber: body.referenceNumber,
+    total,
+    issueDate,
+  });
+  if (duplicateWarnings.length && !body.acknowledgeDuplicateWarnings) {
+    return NextResponse.json({ duplicateWarnings }, { status: 409 });
+  }
 
   const { data: existing } = await supabase
     .from("teller_documents")
@@ -156,21 +176,29 @@ export async function POST(request: Request) {
     action: "bill.created",
     resourceKind: "bill",
     resourceId: doc.id,
-    metadata: { number, total },
+    metadata: {
+      number,
+      total,
+      ...(duplicateWarnings.length
+        ? {
+            duplicateWarningsAcknowledged: true,
+            duplicateWarningContext: body.duplicateWarningContext ?? {},
+            duplicateWarnings,
+          }
+        : {}),
+    },
   });
 
   if (body.post !== false) {
-    await postBillOpen(supabase, {
-      organizationId,
-      documentId: doc.id,
-      partyId,
-      jobId: body.jobId || null,
-      issueDate,
-      number,
-      tax,
-      lines: built,
-      actorId: session.userId,
-    });
+    try {
+      await submitBillForApproval(supabase, {
+        organizationId,
+        documentId: doc.id,
+        actorId: session.userId,
+      });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not submit bill", 400);
+    }
   }
 
   return NextResponse.json({ id: doc.id, number });

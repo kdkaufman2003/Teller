@@ -4,6 +4,7 @@ import { VendorCreditForm } from "@/components/VendorCreditForm";
 import { BillActions } from "@/components/BillActions";
 import { DocumentPaymentHistory } from "@/components/DocumentPaymentHistory";
 import { StatusBadge } from "@/components/StatusBadge";
+import { canApproveBills } from "@/lib/auth/roles";
 import { authoritativeDocumentSettled, authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { asNumber, formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
@@ -157,6 +158,8 @@ export default async function BillDetailPage({
         amountPaid={settled.payments}
         creditsApplied={settled.credits}
         remaining={remaining}
+        canApprove={canApproveBills(session.profile?.role)}
+        rejectionReason={(bill.rejection_reason as string) || undefined}
       />
 
       {bill.party_id && bill.status !== "draft" && bill.status !== "void" ? (

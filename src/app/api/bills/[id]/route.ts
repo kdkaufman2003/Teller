@@ -4,7 +4,9 @@ import {
   authoritativeDocumentSettled,
   resolveDocumentAmountPaid,
 } from "@/lib/accounting/balances";
-import { postBillPaid, voidBill, postBillOpen } from "@/lib/accounting/bills";
+import { approveBill, rejectBill, submitBillForApproval } from "@/lib/accounting/bill-approval";
+import { postBillPaid, voidBill } from "@/lib/accounting/bills";
+import { canApproveBills } from "@/lib/auth/roles";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
@@ -73,12 +75,13 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "post" | "pay" | "void";
+    action?: "post" | "pay" | "void" | "submit" | "approve" | "reject";
     amount?: number;
     paymentDate?: string;
     memo?: string;
     paymentMethod?: string;
     referenceNumber?: string;
+    reason?: string;
   };
 
   const { data: bill, error } = await supabase
@@ -90,30 +93,49 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
   if (error || !bill) return jsonError("Bill not found", 404);
 
-  if (body.action === "post") {
-    if (bill.status !== "draft") return jsonError("Only draft bills can be posted", 400);
-    const { data: lines } = await supabase
-      .from("teller_document_lines")
-      .select("amount, account_id, description")
-      .eq("document_id", id);
+  if (body.action === "post" || body.action === "submit") {
+    if (bill.status !== "draft") return jsonError("Only draft bills can be submitted", 400);
     try {
-      await postBillOpen(supabase, {
+      await submitBillForApproval(supabase, {
         organizationId,
         documentId: id,
-        partyId: bill.party_id,
-        jobId: bill.job_id,
-        issueDate: bill.issue_date,
-        number: bill.number,
-        tax: asNumber(bill.tax),
-        lines: (lines ?? []).map((line) => ({
-          amount: asNumber(line.amount),
-          account_id: line.account_id,
-          description: line.description,
-        })),
         actorId: session.userId,
       });
     } catch (err) {
-      return jsonError(err instanceof Error ? err.message : "Could not post bill", 400);
+      return jsonError(err instanceof Error ? err.message : "Could not submit bill", 400);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "approve") {
+    if (!canApproveBills(session.profile?.role)) {
+      return jsonError("Only owners and admins can approve bills", 403);
+    }
+    if (bill.status !== "pending_approval") {
+      return jsonError("Only bills pending approval can be approved", 400);
+    }
+    try {
+      await approveBill(supabase, { organizationId, documentId: id, actorId: session.userId });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not approve bill", 400);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "reject") {
+    if (!canApproveBills(session.profile?.role)) {
+      return jsonError("Only owners and admins can reject bills", 403);
+    }
+    if (!body.reason?.trim()) return jsonError("Rejection reason is required", 400);
+    try {
+      await rejectBill(supabase, {
+        organizationId,
+        documentId: id,
+        reason: body.reason,
+        actorId: session.userId,
+      });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not reject bill", 400);
     }
     return NextResponse.json({ ok: true });
   }

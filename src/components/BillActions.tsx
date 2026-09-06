@@ -11,6 +11,8 @@ export function BillActions({
   amountPaid,
   creditsApplied,
   remaining,
+  canApprove = false,
+  rejectionReason,
 }: {
   id: string;
   status: string;
@@ -18,6 +20,8 @@ export function BillActions({
   amountPaid: number;
   creditsApplied: number;
   remaining: number;
+  canApprove?: boolean;
+  rejectionReason?: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -28,19 +32,20 @@ export function BillActions({
   const [memo, setMemo] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
 
   const canPay =
     (status === "open" || status === "partially_paid") && remaining > 0.009;
   const isOpenBill = status === "open" || status === "partially_paid";
 
-  async function run(action: "void" | "post") {
+  async function run(action: "void" | "post" | "submit" | "approve" | "reject", extra?: Record<string, unknown>) {
     setError("");
     setPending(true);
     try {
       const response = await fetch(`/api/bills/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...extra }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Update failed");
@@ -106,9 +111,35 @@ export function BillActions({
 
       <div className="flex flex-wrap gap-2">
         {status === "draft" ? (
-          <button className="btn btn-brass" disabled={pending} onClick={() => void run("post")}>
-            Post bill
+          <button className="btn btn-brass" disabled={pending} onClick={() => void run("submit")}>
+            Submit / post
           </button>
+        ) : null}
+        {status === "pending_approval" && canApprove ? (
+          <>
+            <button className="btn btn-brass" disabled={pending} onClick={() => void run("approve")}>
+              Approve & post
+            </button>
+            <input
+              className="max-w-xs"
+              placeholder="Rejection reason"
+              value={rejectReason}
+              onChange={(event) => setRejectReason(event.target.value)}
+            />
+            <button
+              className="btn btn-ghost"
+              disabled={pending || !rejectReason.trim()}
+              onClick={() => void run("reject", { reason: rejectReason })}
+            >
+              Reject
+            </button>
+          </>
+        ) : null}
+        {status === "pending_approval" && !canApprove ? (
+          <p className="text-sm text-muted">Awaiting owner/admin approval.</p>
+        ) : null}
+        {rejectionReason ? (
+          <p className="text-sm text-muted w-full">Last rejection: {rejectionReason}</p>
         ) : null}
         {canPay ? (
           <>

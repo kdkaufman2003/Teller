@@ -13,6 +13,7 @@ export const routes = {
   billNew: "/app/bills/new",
   creditMemos: "/app/credit-memos",
   vendorCredits: "/app/vendor-credits",
+  billPay: "/app/bills/pay",
   jobs: "/app/jobs",
   accounts: "/app/accounts",
   ledger: "/app/ledger",
@@ -21,6 +22,10 @@ export const routes = {
   banking: "/app/banking",
   bankingReconcile: "/app/banking/reconcile",
   bankingReconciliations: "/app/banking/reconciliations",
+  vendors: "/app/vendors",
+  purchasing: "/app/purchasing",
+  purchaseOrders: "/app/purchasing/purchase-orders",
+  apDashboard: "/app/accounting/ap",
   settings: "/app/settings",
 } as const;
 
@@ -58,4 +63,12 @@ export function bankingReconcilePath(id?: string) {
 
 export function bankingReconciliationPath(id: string) {
   return `${routes.bankingReconciliations}/${id}`;
+}
+
+export function vendorPath(id: string) {
+  return `${routes.vendors}/${id}`;
+}
+
+export function purchaseOrderPath(id: string) {
+  return `${routes.purchaseOrders}/${id}`;
 }

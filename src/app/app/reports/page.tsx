@@ -51,7 +51,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     { data: cumulativeEntries },
     { data: accounts },
     { data: invoices },
-    { data: expenses },
+    { data: bills },
     { data: parties },
   ] = await Promise.all([
     entriesQuery,
@@ -74,7 +74,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
       .from("teller_documents")
       .select("id, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
       .eq("organization_id", organizationId)
-      .eq("kind", "expense"),
+      .eq("kind", "bill"),
     supabase.from("teller_parties").select("id, name").eq("organization_id", organizationId),
   ]);
 
@@ -113,9 +113,9 @@ export default async function ReportsPage({ searchParams }: PageProps) {
   const basis = parseAccountingBasis(session.settings?.answers?.basis);
   const partyNames = new Map((parties ?? []).map((row) => [row.id, row.name]));
 
-  const [invoicesWithPaid, expensesWithPaid] = await Promise.all([
+  const [invoicesWithPaid, billsWithPaid] = await Promise.all([
     enrichDocumentsWithAuthoritativePaid(supabase, organizationId, invoices ?? []),
-    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, expenses ?? []),
+    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, bills ?? []),
   ]);
 
   const profitAndLoss = buildProfitAndLossForBasis(
@@ -134,7 +134,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     profitAndLoss,
   );
   const arAging = buildArAging(invoicesWithPaid, partyNames, asOf);
-  const apAging = buildApAging(expensesWithPaid, partyNames, asOf);
+  const apAging = buildApAging(billsWithPaid, partyNames, asOf);
 
   return (
     <div className="space-y-6">

@@ -39,11 +39,27 @@ export async function postBillOpen(
     issueDate: string;
     number: string;
     tax: number;
-    lines: { amount: number; account_id: string | null; description: string }[];
+    lines: {
+      amount: number;
+      account_id: string | null;
+      description: string;
+      job_id?: string | null;
+      cost_category?: string;
+      cost_type?: string;
+    }[];
     actorId?: string | null;
   },
 ) {
-  assertBillStatusTransition("draft", "open");
+  const { data: currentDoc } = await supabase
+    .from("teller_documents")
+    .select("status, posted_entry_id")
+    .eq("id", input.documentId)
+    .maybeSingle();
+  if (currentDoc?.posted_entry_id) {
+    throw new Error("Bill is already posted");
+  }
+  const fromStatus = (currentDoc?.status as BillStatus) || "draft";
+  assertBillStatusTransition(fromStatus, "open");
   await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
 
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
@@ -65,7 +81,7 @@ export async function postBillOpen(
       account_id: debitId,
       debit: asNumber(line.amount),
       party_id: input.partyId,
-      job_id: input.jobId,
+      job_id: line.job_id ?? input.jobId,
       memo: line.description,
     });
   }

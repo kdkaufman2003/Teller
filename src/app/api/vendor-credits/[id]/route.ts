@@ -52,9 +52,12 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "post" | "apply" | "void";
+    action?: "post" | "apply" | "void" | "reverse_application";
     targetDocumentId?: string;
     amount?: number;
+    allocationId?: string;
+    reason?: string;
+    reversalEventId?: string;
   };
 
   const { data: vendorCredit, error } = await supabase
@@ -111,6 +114,28 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ ok: true, ...result });
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Could not apply vendor credit", 400);
+    }
+  }
+
+  if (body.action === "reverse_application") {
+    if (!body.allocationId || !body.reason?.trim()) {
+      return jsonError("allocationId and reason are required", 400);
+    }
+    const { reverseDocumentAllocation } = await import("@/lib/accounting/settlements");
+    try {
+      const result = await reverseDocumentAllocation(supabase, {
+        organizationId,
+        allocationId: body.allocationId,
+        reversalEventId: body.reversalEventId,
+        reason: body.reason.trim(),
+        actorId: session.userId,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      return jsonError(
+        err instanceof Error ? err.message : "Could not reverse credit application",
+        400,
+      );
     }
   }
 

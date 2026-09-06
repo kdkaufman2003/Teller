@@ -2,7 +2,7 @@ import { documentRemainingBalance } from "./balances";
 
 export type InvoiceStatus = "draft" | "open" | "partially_paid" | "paid" | "void";
 export type ExpenseStatus = "draft" | "open" | "partially_paid" | "paid" | "void";
-export type BillStatus = "draft" | "open" | "partially_paid" | "paid" | "void";
+export type BillStatus = "draft" | "pending_approval" | "open" | "partially_paid" | "paid" | "void";
 export type CreditDocumentStatus =
   | "draft"
   | "open"
@@ -79,7 +79,8 @@ export function canVoidInvoiceWithoutPayments(hasActivePayments: boolean): boole
 }
 
 const BILL_TRANSITIONS: Record<BillStatus, BillStatus[]> = {
-  draft: ["open", "void"],
+  draft: ["pending_approval", "open", "void"],
+  pending_approval: ["open", "draft", "void"],
   open: ["partially_paid", "paid", "void"],
   partially_paid: ["paid", "void"],
   paid: [],
