@@ -23,6 +23,11 @@ export const routes = {
   accountingClose: "/app/accounting/close",
   accountingAdjustments: "/app/accounting/adjustments",
   accountingTrialBalance: "/app/accounting/trial-balance",
+  accountingIntegrity: "/app/accounting/integrity",
+  accounting1099Review: "/app/accounting/tax/1099-review",
+  accountingSalesTax: "/app/accounting/tax/sales-tax",
+  reportsCustomerBalances: "/app/reports/customer-balances",
+  reportsVendorBalances: "/app/reports/vendor-balances",
   accountingRecurringJournals: "/app/accounting/recurring-journals",
   reports: "/app/reports",
   banking: "/app/banking",
@@ -95,4 +100,22 @@ export function accountingClosePeriodPath(period: string) {
 
 export function accountingAdjustmentPath(id: string) {
   return `${routes.accountingAdjustments}/${id}`;
+}
+
+export function ledgerEntryPath(entryId: string) {
+  return `${routes.ledger}/entry/${entryId}`;
+}
+
+export function accountActivityPath(
+  accountId: string,
+  params?: Record<string, string | undefined>,
+) {
+  const qs = new URLSearchParams();
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value) qs.set(key, value);
+    }
+  }
+  const query = qs.toString();
+  return `${routes.reports}/account/${accountId}${query ? `?${query}` : ""}`;
 }

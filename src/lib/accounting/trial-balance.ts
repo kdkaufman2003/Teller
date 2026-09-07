@@ -2,6 +2,92 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import type { AccountRow } from "./reports";
 import { roundMoney } from "./payment-fees";
+import { computeComparativeAmounts, type ComparativeAmounts } from "./report-context";
+
+export type ComparativeTrialBalanceRow = TrialBalanceRow & {
+  comparisonAdjustedDebit: number;
+  comparisonAdjustedCredit: number;
+  endingComparison: ComparativeAmounts;
+};
+
+export type ComparativeTrialBalanceReport = TrialBalanceReport & {
+  comparisonPeriodEnd: string | null;
+  rows: ComparativeTrialBalanceRow[];
+};
+
+export function buildComparativeTrialBalance(
+  current: TrialBalanceReport,
+  comparison: TrialBalanceReport | null,
+): ComparativeTrialBalanceReport {
+  if (!comparison) {
+    return {
+      ...current,
+      comparisonPeriodEnd: null,
+      rows: current.rows.map((row) => ({
+        ...row,
+        comparisonAdjustedDebit: 0,
+        comparisonAdjustedCredit: 0,
+        endingComparison: computeComparativeAmounts(
+          row.adjustedDebit - row.adjustedCredit,
+          0,
+        ),
+      })),
+    };
+  }
+
+  const comparisonByAccount = new Map(comparison.rows.map((r) => [r.accountId, r]));
+  const accountIds = new Set([
+    ...current.rows.map((r) => r.accountId),
+    ...comparison.rows.map((r) => r.accountId),
+  ]);
+
+  const rows: ComparativeTrialBalanceRow[] = [...accountIds]
+    .map((accountId) => {
+      const cur =
+        current.rows.find((r) => r.accountId === accountId) ??
+        ({
+          accountId,
+          code: comparisonByAccount.get(accountId)?.code ?? "",
+          name: comparisonByAccount.get(accountId)?.name ?? "",
+          type: comparisonByAccount.get(accountId)?.type ?? "",
+          openingDebit: 0,
+          openingCredit: 0,
+          periodDebit: 0,
+          periodCredit: 0,
+          unadjustedDebit: 0,
+          unadjustedCredit: 0,
+          adjustmentDebit: 0,
+          adjustmentCredit: 0,
+          adjustedDebit: 0,
+          adjustedCredit: 0,
+        } satisfies TrialBalanceRow);
+      const cmp = comparisonByAccount.get(accountId);
+      const currentEnding = roundMoney(cur.adjustedDebit - cur.adjustedCredit);
+      const comparisonEnding = cmp
+        ? roundMoney(cmp.adjustedDebit - cmp.adjustedCredit)
+        : 0;
+      return {
+        ...cur,
+        comparisonAdjustedDebit: cmp?.adjustedDebit ?? 0,
+        comparisonAdjustedCredit: cmp?.adjustedCredit ?? 0,
+        endingComparison: computeComparativeAmounts(currentEnding, comparisonEnding),
+      };
+    })
+    .filter(
+      (row) =>
+        row.adjustedDebit !== 0 ||
+        row.adjustedCredit !== 0 ||
+        row.comparisonAdjustedDebit !== 0 ||
+        row.comparisonAdjustedCredit !== 0,
+    )
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  return {
+    ...current,
+    comparisonPeriodEnd: comparison.periodEnd,
+    rows,
+  };
+}
 
 const ADJUSTMENT_SOURCE_KINDS = new Set(["adjustment"]);
 

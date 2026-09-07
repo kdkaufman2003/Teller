@@ -40,12 +40,15 @@ import {
 import { buildTrialBalance } from "../src/lib/accounting/trial-balance";
 import { fiscalYearStartLabel } from "../src/lib/org/config";
 import {
+  assertMutationScope,
+  assertDemoOrgName,
+  assertPeerFingerprintsUnchanged,
+  capturePeerFingerprints,
+  expectedControlledDemoOrgName,
+  loadControlledDemoOrgId,
+} from "../src/lib/integration/controlled-phase-isolation";
+import {
   assertNotHfacOrganization,
-  CONTROLLED_PHASE5_DEMO_ORG_NAME,
-  CONTROLLED_PHASE6_DEMO_ORG_NAME,
-  CONTROLLED_PHASE7_DEMO_ORG_NAME,
-  CONTROLLED_PHASE8_DEMO_ORG_NAME,
-  CONTROLLED_PHASE9_DEMO_ORG_NAME,
   CONTROLLED_PHASE9_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
@@ -66,9 +69,8 @@ function loadEnv() {
   if (process.env.TELLER_CONTROLLED_PROD_TEST !== "1") {
     throw new Error("TELLER_CONTROLLED_PROD_TEST must equal 1");
   }
-  const orgId = process.env.TELLER_PHASE9_DEMO_ORG_ID?.trim();
+  const orgId = loadControlledDemoOrgId(9);
   const foreignOrgId = process.env.TELLER_PHASE9_FOREIGN_ORG_ID?.trim();
-  if (!orgId) throw new Error("TELLER_PHASE9_DEMO_ORG_ID missing");
   assertNotHfacOrganization(orgId);
   if (foreignOrgId) assertNotHfacOrganization(foreignOrgId);
   return {
@@ -81,14 +83,7 @@ function loadEnv() {
 }
 
 async function assertDemoOrg(supabase: SupabaseClient, orgId: string) {
-  const { data } = await supabase
-    .from("teller_organizations")
-    .select("id, name")
-    .eq("id", orgId)
-    .maybeSingle();
-  if (!data || data.name !== CONTROLLED_PHASE9_DEMO_ORG_NAME) {
-    throw new Error(`Expected org "${CONTROLLED_PHASE9_DEMO_ORG_NAME}"`);
-  }
+  await assertDemoOrgName(supabase, orgId, expectedControlledDemoOrgName(9));
 }
 
 async function journalCount(supabase: SupabaseClient, orgId: string) {
@@ -124,19 +119,6 @@ async function hfacBaseline(supabase: SupabaseClient) {
   };
 }
 
-async function orgEconomicSnapshot(supabase: SupabaseClient, orgId: string) {
-  return {
-    documents: await tableCount(supabase, "teller_documents", orgId),
-    journals: await journalCount(supabase, orgId),
-    jobs: await tableCount(supabase, "teller_jobs", orgId),
-  };
-}
-
-async function resolveOrgIdByName(supabase: SupabaseClient, name: string) {
-  const { data } = await supabase.from("teller_organizations").select("id").eq("name", name).maybeSingle();
-  return data?.id as string | undefined;
-}
-
 async function loadPeriodCloses(supabase: SupabaseClient, orgId: string) {
   const { data } = await supabase
     .from("teller_period_closes")
@@ -169,7 +151,12 @@ async function seedCloseAnchor(supabase: SupabaseClient, orgId: string, through:
   if (error) throw new Error(error.message);
 }
 
-async function clearDemoTransactions(supabase: SupabaseClient, orgId: string) {
+async function clearDemoTransactions(
+  supabase: SupabaseClient,
+  orgId: string,
+  allowedOrgId: string,
+) {
+  assertMutationScope(orgId, allowedOrgId, "clearDemoTransactions");
   for (const table of [
     "teller_recurring_journal_runs",
     "teller_adjusting_journal_entries",
@@ -195,7 +182,8 @@ async function clearDemoTransactions(supabase: SupabaseClient, orgId: string) {
   await supabase.from("teller_audit_events").delete().eq("organization_id", orgId);
 }
 
-async function resetBooks(supabase: SupabaseClient, orgId: string) {
+async function resetBooks(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
+  assertMutationScope(orgId, allowedOrgId, "resetBooks");
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const closed = await booksClosedThroughRpc(supabase, orgId);
     if (!closed) break;
@@ -205,7 +193,7 @@ async function resetBooks(supabase: SupabaseClient, orgId: string) {
       reason: "Phase 9 demo reset",
     });
   }
-  await clearDemoTransactions(supabase, orgId);
+  await clearDemoTransactions(supabase, orgId, allowedOrgId);
   await supabase
     .from("teller_accounting_state_versions")
     .upsert({ organization_id: orgId, accounting_version: 0, close_state_version: 0 });
@@ -225,7 +213,8 @@ async function accountMap(supabase: SupabaseClient, orgId: string) {
   return Object.fromEntries((data ?? []).map((row) => [row.code, row.id as string]));
 }
 
-async function cleanup(supabase: SupabaseClient, orgId: string) {
+async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
+  assertMutationScope(orgId, allowedOrgId, "cleanup");
   for (const table of [
     "teller_recurring_journal_runs",
     "teller_adjusting_journal_entries",
@@ -355,20 +344,13 @@ export async function runPhase9ControlledDemo(): Promise<{
   await assertDemoOrg(supabase, orgId);
 
   const hfacBefore = await hfacBaseline(supabase);
-  const phase5OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE5_DEMO_ORG_NAME);
-  const phase6OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE6_DEMO_ORG_NAME);
-  const phase7OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE7_DEMO_ORG_NAME);
-  const phase8OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE8_DEMO_ORG_NAME);
-  const phase5Before = phase5OrgId ? await orgEconomicSnapshot(supabase, phase5OrgId) : null;
-  const phase6Before = phase6OrgId ? await orgEconomicSnapshot(supabase, phase6OrgId) : null;
-  const phase7Before = phase7OrgId ? await orgEconomicSnapshot(supabase, phase7OrgId) : null;
-  const phase8Before = phase8OrgId ? await orgEconomicSnapshot(supabase, phase8OrgId) : null;
+  const peerFingerprintsBefore = await capturePeerFingerprints(supabase, 9);
 
   const results: ScenarioResult[] = [];
 
   async function run(name: string, fn: () => Promise<void>, options?: { skipReset?: boolean }) {
     try {
-      if (!options?.skipReset) await resetBooks(supabase, orgId);
+      if (!options?.skipReset) await resetBooks(supabase, orgId, orgId);
       await fn();
       results.push({ name, pass: true });
       console.log(`✓ ${name}`);
@@ -384,7 +366,7 @@ export async function runPhase9ControlledDemo(): Promise<{
     console.log(`↷ ${name} — ${note}`);
   }
 
-  await cleanup(supabase, orgId);
+  await cleanup(supabase, orgId, orgId);
   let accounts = await accountMap(supabase, orgId);
 
   // PERIOD FOUNDATION (1-12)
@@ -1699,30 +1681,7 @@ export async function runPhase9ControlledDemo(): Promise<{
   });
 
   await run("91. phase 5-8 demo orgs unchanged", async () => {
-    if (phase5OrgId && phase5Before) {
-      const after = await orgEconomicSnapshot(supabase, phase5OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase5Before)) {
-        throw new Error("Phase 5 demo org mutated");
-      }
-    }
-    if (phase6OrgId && phase6Before) {
-      const after = await orgEconomicSnapshot(supabase, phase6OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase6Before)) {
-        throw new Error("Phase 6 demo org mutated");
-      }
-    }
-    if (phase7OrgId && phase7Before) {
-      const after = await orgEconomicSnapshot(supabase, phase7OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase7Before)) {
-        throw new Error("Phase 7 demo org mutated");
-      }
-    }
-    if (phase8OrgId && phase8Before) {
-      const after = await orgEconomicSnapshot(supabase, phase8OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase8Before)) {
-        throw new Error("Phase 8 demo org mutated");
-      }
-    }
+    await assertPeerFingerprintsUnchanged(supabase, peerFingerprintsBefore, 9);
   });
 
   await run("92. HFAC baseline unchanged", async () => {
@@ -1850,14 +1809,7 @@ export async function runPhase9ControlledDemo(): Promise<{
   );
 
   await run("99. all prior phase org snapshots unchanged at end", async () => {
-    if (phase5OrgId && phase5Before) {
-      const after = await orgEconomicSnapshot(supabase, phase5OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase5Before)) throw new Error("Phase 5 mutated");
-    }
-    if (phase8OrgId && phase8Before) {
-      const after = await orgEconomicSnapshot(supabase, phase8OrgId);
-      if (JSON.stringify(after) !== JSON.stringify(phase8Before)) throw new Error("Phase 8 mutated");
-    }
+    await assertPeerFingerprintsUnchanged(supabase, peerFingerprintsBefore, 9);
   }, { skipReset: true });
 
   await run("100. matrix completeness check", async () => {

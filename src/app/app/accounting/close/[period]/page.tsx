@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { accountingClosePeriodPath, routes } from "@/lib/routes";
 import { redirect, notFound } from "next/navigation";
 import { ClosePeriodActions } from "@/components/ClosePeriodActions";
+import { CloseChecklistPanel } from "@/components/CloseChecklistPanel";
 
 type PageProps = { params: Promise<{ period: string }> };
 
@@ -99,6 +100,12 @@ export default async function ClosePeriodDetailPage({ params }: PageProps) {
       {canManageClose && !isClosed ? (
         <ClosePeriodActions periodEnd={periodEnd} readiness={readiness} />
       ) : null}
+
+      <CloseChecklistPanel
+        periodEnd={periodEnd}
+        items={(readiness.checklist ?? []) as import("@/components/CloseChecklistPanel").CloseChecklistItem[]}
+        canManage={canManageClose}
+      />
 
       <div className="card overflow-hidden">
         <div className="border-b px-4 py-3 font-medium">Findings</div>

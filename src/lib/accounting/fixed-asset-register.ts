@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { isFullyDepreciated, netBookValue } from "./fixed-asset-depreciation-calc";
-import { sumPostedDepreciationForAsset } from "./fixed-assets";
+import { batchSumPostedDepreciationForAssets } from "./fixed-assets";
 import type { FixedAssetRecord } from "./fixed-asset-types";
 
 export type FixedAssetRegisterRow = FixedAssetRecord & {
@@ -21,19 +21,23 @@ export async function buildFixedAssetRegister(
     .order("asset_number");
   if (error) throw new Error(error.message);
 
-  const rows: FixedAssetRegisterRow[] = [];
-  for (const asset of assets ?? []) {
-    const accum = await sumPostedDepreciationForAsset(supabase, asset.id as string);
+  const assetList = assets ?? [];
+  const accumByAsset = await batchSumPostedDepreciationForAssets(
+    supabase,
+    assetList.map((asset) => asset.id as string),
+  );
+
+  return assetList.map((asset) => {
+    const accum = accumByAsset.get(asset.id as string) ?? 0;
     const cost = asNumber(asset.original_cost);
     const salvage = asNumber(asset.salvage_value);
-    rows.push({
+    return {
       ...(asset as FixedAssetRecord),
       accumulatedDepreciation: accum,
       netBookValue: netBookValue(cost, accum),
       isFullyDepreciated: isFullyDepreciated(cost, salvage, accum),
-    });
-  }
-  return rows;
+    };
+  });
 }
 
 export type AssetRollforward = {
@@ -99,12 +103,18 @@ export async function buildAssetRollforward(
     }
   }
 
-  let accumDeprRemovedOnDisposal = 0;
-  for (const asset of assets ?? []) {
-    if (asset.status !== "disposed") continue;
+  const disposedInPeriod = (assets ?? []).filter((asset) => {
+    if (asset.status !== "disposed") return false;
     const disposalDate = asset.disposal_date as string | null;
-    if (!disposalDate || disposalDate < startDate || disposalDate > endDate) continue;
-    accumDeprRemovedOnDisposal += await sumPostedDepreciationForAsset(supabase, asset.id as string);
+    return Boolean(disposalDate && disposalDate >= startDate && disposalDate <= endDate);
+  });
+  const disposedAccum = await batchSumPostedDepreciationForAssets(
+    supabase,
+    disposedInPeriod.map((asset) => asset.id as string),
+  );
+  let accumDeprRemovedOnDisposal = 0;
+  for (const asset of disposedInPeriod) {
+    accumDeprRemovedOnDisposal += disposedAccum.get(asset.id as string) ?? 0;
   }
 
   const beginningAccumDepr = 0; // demo-level; full implementation would opening-balance by date

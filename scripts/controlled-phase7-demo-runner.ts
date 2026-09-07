@@ -40,6 +40,7 @@ import {
   CONTROLLED_PHASE7_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
 import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 
 const HFAC_ORG_ID = TELLER_HFAC_ORG_ID;
@@ -49,8 +50,7 @@ const CLOSED_PERIOD_DATE = "2026-08-15";
 
 function loadEnv() {
   if (process.env.TELLER_CONTROLLED_PROD_TEST !== "1") throw new Error("TELLER_CONTROLLED_PROD_TEST must equal 1");
-  const orgId = process.env.TELLER_PHASE7_DEMO_ORG_ID?.trim();
-  if (!orgId) throw new Error("TELLER_PHASE7_DEMO_ORG_ID missing");
+  const orgId = loadControlledDemoOrgId(7);
   assertNotHfacOrganization(orgId);
   return {
     orgId,
@@ -114,7 +114,8 @@ async function assertOrgJournalsBalanced(supabase: SupabaseClient, orgId: string
   }
 }
 
-async function cleanup(supabase: SupabaseClient, orgId: string) {
+async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
+  assertMutationScope(orgId, allowedOrgId, "cleanup");
   for (const table of [
     "teller_job_budget_lines",
     "teller_document_allocations",
@@ -218,7 +219,7 @@ async function main() {
     }
   }
 
-  await cleanup(supabase, orgId);
+  await cleanup(supabase, orgId, orgId);
   const accounts = await accountMap(supabase, orgId);
   const vendorId = await ensureVendor(supabase, orgId);
   const customerId = await ensureCustomer(supabase, orgId);

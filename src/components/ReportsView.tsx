@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { money } from "@/lib/format";
+import { presentLabel, presentSectionLabel, presentAccountName } from "@/lib/accounting/presentation-mode";
+import { accountActivityPath, routes } from "@/lib/routes";
 import type {
   AgingReport,
   BalanceSheet,
@@ -15,6 +17,7 @@ import type {
   ReportPeriod,
   SalesSummary,
 } from "@/lib/accounting/reports";
+import type { ComparativeProfitAndLoss } from "@/lib/accounting/comparative-reports";
 
 const PERIODS: { id: ReportPeriod; label: string }[] = [
   { id: "month", label: "This month" },
@@ -34,6 +37,8 @@ const TABS: { id: ReportTab; label: string }[] = [
 export function ReportsView({
   period,
   periodLabel,
+  periodStart,
+  periodEnd,
   asOf,
   tab,
   basis,
@@ -43,9 +48,16 @@ export function ReportsView({
   cashFlow,
   arAging,
   apAging,
+  comparison = "none",
+  presentationMode = "accountant",
+  accountByCode = {},
+  comparativeProfitAndLoss = null,
+  comparativeBalanceSheet = null,
 }: {
   period: ReportPeriod;
   periodLabel: string;
+  periodStart: string | null;
+  periodEnd: string;
   asOf: string;
   tab: ReportTab;
   basis: AccountingBasis;
@@ -55,6 +67,11 @@ export function ReportsView({
   cashFlow: CashFlowStatement;
   arAging: AgingReport;
   apAging: AgingReport;
+  comparison?: string;
+  presentationMode?: "accountant" | "owner";
+  accountByCode?: Record<string, { id: string; subtype?: string | null }>;
+  comparativeProfitAndLoss?: ComparativeProfitAndLoss | null;
+  comparativeBalanceSheet?: import("@/lib/accounting/comparative-reports").ComparativeBalanceSheet | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -72,8 +89,34 @@ export function ReportsView({
     ...sales.byMonth.map((row) => Math.max(row.invoiced, row.collected)),
   );
 
+  const drilldownQuery = {
+    startDate: periodStart ?? undefined,
+    endDate: periodEnd,
+    basis,
+    comparison,
+    period,
+    mode: presentationMode === "owner" ? "owner" : undefined,
+  };
+
+  function accountHref(code: string): string | null {
+    const account = accountByCode[code];
+    if (!account) return null;
+    return accountActivityPath(account.id, drilldownQuery);
+  }
+
   return (
     <div className="space-y-8">
+      <div className="flex flex-wrap gap-3 text-sm">
+        <Link href={routes.reportsCustomerBalances} className="text-sky hover:underline">
+          Customer balances
+        </Link>
+        <Link href={routes.reportsVendorBalances} className="text-sky hover:underline">
+          Vendor balances
+        </Link>
+        <Link href={routes.accountingSalesTax} className="text-sky hover:underline">
+          Sales tax summary
+        </Link>
+      </div>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm text-muted">Period</p>
@@ -95,6 +138,30 @@ export function ReportsView({
               {item.label}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="rounded-md border border-rule bg-paper-strong px-2 py-1.5 text-sm"
+            value={comparison}
+            onChange={(e) => pushParams({ comparison: e.target.value })}
+          >
+            <option value="none">No comparison</option>
+            <option value="prior_period">Prior period</option>
+            <option value="prior_year">Prior year</option>
+            <option value="prior_ytd">Prior YTD</option>
+          </select>
+          <button
+            type="button"
+            className="rounded-md border border-rule px-3 py-1.5 text-sm"
+            onClick={() =>
+              pushParams({ mode: presentationMode === "owner" ? "accountant" : "owner" })
+            }
+          >
+            {presentationMode === "owner" ? "Accountant terms" : "Owner terms"}
+          </button>
+          <Link href="/api/reports/accountant-package" className="rounded-md border border-rule px-3 py-1.5 text-sm">
+            Export package
+          </Link>
         </div>
       </div>
 
@@ -118,17 +185,33 @@ export function ReportsView({
           basis={basis}
           sales={sales}
           profitAndLoss={profitAndLoss}
+          comparativeProfitAndLoss={comparativeProfitAndLoss}
           periodLabel={periodLabel}
           maxMonthTotal={maxMonthTotal}
+          presentationMode={presentationMode}
+          accountByCode={accountByCode}
+          accountHref={accountHref}
         />
       ) : null}
 
-      {tab === "balance_sheet" ? <BalanceSheetTab report={balanceSheet} /> : null}
+      {tab === "balance_sheet" ? (
+        <BalanceSheetTab
+          report={balanceSheet}
+          comparativeBalanceSheet={comparativeBalanceSheet}
+          presentationMode={presentationMode}
+          accountByCode={accountByCode}
+          accountHref={accountHref}
+        />
+      ) : null}
       {tab === "cash_flow" ? (
-        <CashFlowTab report={cashFlow} periodLabel={periodLabel} />
+        <CashFlowTab report={cashFlow} periodLabel={periodLabel} presentationMode={presentationMode} />
       ) : null}
       {tab === "ar_aging" ? (
-        <AgingTab title="Accounts receivable aging" report={arAging} entityLabel="Customer" />
+        <AgingTab
+          title={presentLabel(presentationMode, "Accounts Receivable") + " aging"}
+          report={arAging}
+          entityLabel="Customer"
+        />
       ) : null}
       {tab === "ap_aging" ? (
         <AgingTab title="Accounts payable aging" report={apAging} entityLabel="Vendor" />
@@ -141,14 +224,22 @@ function OverviewTab({
   basis,
   sales,
   profitAndLoss,
+  comparativeProfitAndLoss,
   periodLabel,
   maxMonthTotal,
+  presentationMode,
+  accountByCode,
+  accountHref,
 }: {
   basis: AccountingBasis;
   sales: SalesSummary;
   profitAndLoss: ProfitAndLoss;
+  comparativeProfitAndLoss: ComparativeProfitAndLoss | null;
   periodLabel: string;
   maxMonthTotal: number;
+  presentationMode: "accountant" | "owner";
+  accountByCode: Record<string, { id: string; subtype?: string | null }>;
+  accountHref: (code: string) => string | null;
 }) {
   return (
     <>
@@ -184,7 +275,7 @@ function OverviewTab({
               ]
             : []),
           {
-            label: basis === "cash" ? "Net income (cash)" : "Net income",
+            label: basis === "cash" ? presentLabel(presentationMode, "Net Income") + " (cash)" : presentLabel(presentationMode, "Net Income"),
             value: money(profitAndLoss.netIncome),
             hint:
               basis === "cash"
@@ -287,13 +378,31 @@ function OverviewTab({
           </Link>
         </div>
 
-        <ProfitLossTable report={profitAndLoss} />
+        <ProfitLossTable
+          report={profitAndLoss}
+          comparative={comparativeProfitAndLoss}
+          presentationMode={presentationMode}
+          accountByCode={accountByCode}
+          accountHref={accountHref}
+        />
       </article>
     </>
   );
 }
 
-function BalanceSheetTab({ report }: { report: BalanceSheet }) {
+function BalanceSheetTab({
+  report,
+  comparativeBalanceSheet,
+  presentationMode,
+  accountByCode,
+  accountHref,
+}: {
+  report: BalanceSheet;
+  comparativeBalanceSheet: import("@/lib/accounting/comparative-reports").ComparativeBalanceSheet | null;
+  presentationMode: "accountant" | "owner";
+  accountByCode: Record<string, { id: string; subtype?: string | null }>;
+  accountHref: (code: string) => string | null;
+}) {
   const empty =
     report.totalAssets === 0 && report.totalLiabilities === 0 && report.totalEquity === 0;
 
@@ -316,32 +425,62 @@ function BalanceSheetTab({ report }: { report: BalanceSheet }) {
       ) : (
         <table className="report-table mt-5">
           <tbody>
-            <SectionHeader title="Assets" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Assets")} />
             {report.assets.length === 0 ? (
               <EmptyRow />
             ) : (
               report.assets.map((row) => (
-                <FinancialRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+                <FinancialRow
+                  key={row.code}
+                  code={row.code}
+                  name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+                  amount={row.amount}
+                  href={accountHref(row.code)}
+                  comparisonAmount={
+                    comparativeBalanceSheet?.assets.find((r) => r.code === row.code)
+                      ?.comparisonAmount
+                  }
+                />
               ))
             )}
             <TotalRow label="Total assets" amount={report.totalAssets} emphasis />
 
-            <SectionHeader title="Liabilities" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Liabilities")} />
             {report.liabilities.length === 0 ? (
               <EmptyRow />
             ) : (
               report.liabilities.map((row) => (
-                <FinancialRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+                <FinancialRow
+                  key={row.code}
+                  code={row.code}
+                  name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+                  amount={row.amount}
+                  href={accountHref(row.code)}
+                  comparisonAmount={
+                    comparativeBalanceSheet?.liabilities.find((r) => r.code === row.code)
+                      ?.comparisonAmount
+                  }
+                />
               ))
             )}
             <TotalRow label="Total liabilities" amount={report.totalLiabilities} />
 
-            <SectionHeader title="Equity" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Equity")} />
             {report.equity.length === 0 ? (
               <EmptyRow />
             ) : (
               report.equity.map((row) => (
-                <FinancialRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+                <FinancialRow
+                  key={row.code}
+                  code={row.code}
+                  name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+                  amount={row.amount}
+                  href={accountHref(row.code)}
+                  comparisonAmount={
+                    comparativeBalanceSheet?.equity.find((r) => r.code === row.code)
+                      ?.comparisonAmount
+                  }
+                />
               ))
             )}
             <TotalRow label="Total equity" amount={report.totalEquity} emphasis />
@@ -355,9 +494,11 @@ function BalanceSheetTab({ report }: { report: BalanceSheet }) {
 function CashFlowTab({
   report,
   periodLabel,
+  presentationMode,
 }: {
   report: CashFlowStatement;
   periodLabel: string;
+  presentationMode: "accountant" | "owner";
 }) {
   const empty =
     report.beginningCash === 0 &&
@@ -379,16 +520,16 @@ function CashFlowTab({
       ) : (
         <table className="report-table mt-5">
           <tbody>
-            <SectionHeader title="Operating activities" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Operating")} />
             {report.operating.map((row) => (
               <tr key={row.label}>
-                <td colSpan={2}>{row.label}</td>
+                <td colSpan={2}>{presentLabel(presentationMode, row.label)}</td>
                 <td className="text-right font-tabular">{money(row.amount)}</td>
               </tr>
             ))}
             <TotalRow label="Net cash from operating" amount={report.netOperating} />
 
-            <SectionHeader title="Investing activities" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Investing")} />
             <tr>
               <td colSpan={2} className="text-muted">
                 —
@@ -396,7 +537,7 @@ function CashFlowTab({
               <td className="text-right font-tabular">{money(report.netInvesting)}</td>
             </tr>
 
-            <SectionHeader title="Financing activities" />
+            <SectionHeader title={presentSectionLabel(presentationMode, "Financing")} />
             <tr>
               <td colSpan={2} className="text-muted">
                 Other cash changes
@@ -497,7 +638,19 @@ function AgingTab({
   );
 }
 
-function ProfitLossTable({ report }: { report: ProfitAndLoss }) {
+function ProfitLossTable({
+  report,
+  comparative = null,
+  presentationMode = "accountant",
+  accountByCode = {},
+  accountHref,
+}: {
+  report: ProfitAndLoss;
+  comparative?: ComparativeProfitAndLoss | null;
+  presentationMode?: "accountant" | "owner";
+  accountByCode?: Record<string, { id: string; subtype?: string | null }>;
+  accountHref?: (code: string) => string | null;
+}) {
   const empty =
     report.totalRevenue === 0 && report.totalCogs === 0 && report.totalExpenses === 0;
 
@@ -509,32 +662,81 @@ function ProfitLossTable({ report }: { report: ProfitAndLoss }) {
     );
   }
 
+  const showComparison = Boolean(comparative);
+
   return (
     <table className="report-table mt-5">
       <tbody>
-        <SectionHeader title="Revenue" />
+        <SectionHeader title={presentSectionLabel(presentationMode, "Revenue")} />
         {report.revenue.map((row) => (
-          <PLRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+          <PLRow
+            key={row.code}
+            code={row.code}
+            name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+            amount={row.amount}
+            href={accountHref?.(row.code) ?? null}
+            comparisonAmount={
+              comparative?.revenue.find((r) => r.code === row.code)?.comparisonAmount
+            }
+            showComparison={showComparison}
+          />
         ))}
-        <TotalRow label="Total revenue" amount={report.totalRevenue} />
+        <TotalRow
+          label="Total revenue"
+          amount={report.totalRevenue}
+          comparisonAmount={comparative?.totals.totalRevenue.comparisonAmount}
+          showComparison={showComparison}
+        />
 
-        <SectionHeader title="Cost of goods sold" />
+        <SectionHeader title={presentSectionLabel(presentationMode, "Cost of goods sold")} />
         {report.cogs.length === 0 ? (
           <EmptyRow />
         ) : (
           report.cogs.map((row) => (
-            <PLRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+            <PLRow
+              key={row.code}
+              code={row.code}
+              name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+              amount={row.amount}
+              href={accountHref?.(row.code) ?? null}
+              comparisonAmount={
+                comparative?.cogs.find((r) => r.code === row.code)?.comparisonAmount
+              }
+              showComparison={showComparison}
+            />
           ))
         )}
         <TotalRow label="Total COGS" amount={report.totalCogs} />
-        <TotalRow label="Gross profit" amount={report.grossProfit} emphasis />
+        <TotalRow
+          label={presentLabel(presentationMode, "Gross Profit")}
+          amount={report.grossProfit}
+          emphasis
+          comparisonAmount={comparative?.totals.grossProfit.comparisonAmount}
+          showComparison={showComparison}
+        />
 
-        <SectionHeader title="Operating expenses" />
+        <SectionHeader title={presentSectionLabel(presentationMode, "Expenses")} />
         {report.expenses.map((row) => (
-          <PLRow key={row.code} code={row.code} name={row.name} amount={row.amount} />
+          <PLRow
+            key={row.code}
+            code={row.code}
+            name={presentAccountName(presentationMode, row.name, accountByCode[row.code]?.subtype)}
+            amount={row.amount}
+            href={accountHref?.(row.code) ?? null}
+            comparisonAmount={
+              comparative?.expenses.find((r) => r.code === row.code)?.comparisonAmount
+            }
+            showComparison={showComparison}
+          />
         ))}
         <TotalRow label="Total expenses" amount={report.totalExpenses} />
-        <TotalRow label="Net income" amount={report.netIncome} emphasis />
+        <TotalRow
+          label={presentLabel(presentationMode, "Net Income")}
+          amount={report.netIncome}
+          emphasis
+          comparisonAmount={comparative?.totals.netIncome.comparisonAmount}
+          showComparison={showComparison}
+        />
       </tbody>
     </table>
   );
@@ -548,21 +750,69 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
-function PLRow({ code, name, amount }: { code: string; name: string; amount: number }) {
+function PLRow({
+  code,
+  name,
+  amount,
+  href = null,
+  comparisonAmount,
+  showComparison = false,
+}: {
+  code: string;
+  name: string;
+  amount: number;
+  href?: string | null;
+  comparisonAmount?: number;
+  showComparison?: boolean;
+}) {
   return (
     <tr>
       <td className="w-16 font-tabular text-muted">{code}</td>
-      <td>{name}</td>
+      <td>
+        {href ? (
+          <Link href={href} className="text-sky hover:underline">
+            {name}
+          </Link>
+        ) : (
+          name
+        )}
+      </td>
+      {showComparison ? (
+        <td className="text-right font-tabular text-muted">{money(comparisonAmount ?? 0)}</td>
+      ) : null}
       <td className="text-right font-tabular">{money(amount)}</td>
     </tr>
   );
 }
 
-function FinancialRow({ code, name, amount }: { code: string; name: string; amount: number }) {
+function FinancialRow({
+  code,
+  name,
+  amount,
+  href = null,
+  comparisonAmount,
+}: {
+  code: string;
+  name: string;
+  amount: number;
+  href?: string | null;
+  comparisonAmount?: number;
+}) {
   return (
     <tr>
       <td className="w-16 font-tabular text-muted">{code}</td>
-      <td>{name}</td>
+      <td>
+        {href ? (
+          <Link href={href} className="text-sky hover:underline">
+            {name}
+          </Link>
+        ) : (
+          name
+        )}
+      </td>
+      {comparisonAmount !== undefined ? (
+        <td className="text-right font-tabular text-muted">{money(comparisonAmount)}</td>
+      ) : null}
       <td className="text-right font-tabular">{money(amount)}</td>
     </tr>
   );
@@ -583,14 +833,23 @@ function TotalRow({
   label,
   amount,
   emphasis = false,
+  comparisonAmount,
+  showComparison = false,
 }: {
   label: string;
   amount: number;
   emphasis?: boolean;
+  comparisonAmount?: number;
+  showComparison?: boolean;
 }) {
   return (
     <tr className={emphasis ? "report-total-row" : "report-subtotal-row"}>
       <td colSpan={2}>{label}</td>
+      {showComparison ? (
+        <td className="text-right font-tabular text-muted">{money(comparisonAmount ?? 0)}</td>
+      ) : comparisonAmount !== undefined ? (
+        <td className="text-right font-tabular text-muted">{money(comparisonAmount)}</td>
+      ) : null}
       <td className="text-right font-tabular">{money(amount)}</td>
     </tr>
   );

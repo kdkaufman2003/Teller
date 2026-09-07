@@ -10,6 +10,7 @@ import {
   CONTROLLED_PHASE5_DEMO_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
 import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 import { parseBankCsv } from "../src/lib/banking/csv";
 import { importBankTransactionsBatch } from "../src/lib/banking/ingest";
@@ -42,10 +43,7 @@ function loadEnv() {
   ) {
     throw new Error("Demo refuses RUN_INTEGRATION_TESTS / TELLER_ALLOW_INTEGRATION_DB");
   }
-  const orgId = process.env.TELLER_PHASE5_DEMO_ORG_ID?.trim();
-  if (!orgId) {
-    throw new Error("TELLER_PHASE5_DEMO_ORG_ID missing — run npm run setup:phase5-demo-org");
-  }
+  const orgId = loadControlledDemoOrgId(5);
   assertNotHfacOrganization(orgId);
   return {
     orgId,
@@ -215,6 +213,7 @@ async function main() {
   }
 
   await run("reset: clear prior demo bank activity", async () => {
+    assertMutationScope(orgId, orgId, "reset");
     await supabase.from("teller_bank_reconciliation_items").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_reconciliations").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_matches").delete().eq("organization_id", orgId);

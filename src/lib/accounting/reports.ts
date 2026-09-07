@@ -215,40 +215,42 @@ function toPLLine(row: { code: string; name: string; amount: number }): PLAccoun
   };
 }
 
-/** Cash basis: revenue when paid; expenses/COGS still from posted journal lines. */
-export function buildCashBasisProfitAndLoss(
+export {
+  buildCashBasisProfitAndLoss,
+  buildCashBasisSettlements,
+  allocateProportionalAmounts,
+} from "./cash-basis-pl";
+
+import {
+  buildCashBasisProfitAndLoss as buildCashBasisPlFromSettlements,
+  buildCashBasisSettlements,
+  type CashBasisAllocation,
+  type CashBasisDocument,
+  type CashBasisPayment,
+} from "./cash-basis-pl";
+
+/** @deprecated Use buildCashBasisSettlements + buildCashBasisProfitAndLoss — legacy invoice-only shim. */
+export function buildLegacyHybridCashBasisProfitAndLoss(
   invoices: InvoiceRow[],
   lines: JournalLineRow[],
   accounts: AccountRow[],
   range: DateRange,
 ): ProfitAndLoss {
-  const collectedRevenue = invoices
-    .filter(
-      (row) =>
-        row.status === "paid" &&
-        isBilledInvoice(row) &&
-        inRange(row.issue_date, range),
-    )
-    .reduce((sum, row) => sum + asNumber(row.total), 0);
-
-  const accrual = buildProfitAndLoss(lines, accounts);
-  const totalRevenue = roundMoney(collectedRevenue);
-  const grossProfit = roundMoney(totalRevenue - accrual.totalCogs);
-  const netIncome = roundMoney(grossProfit - accrual.totalExpenses);
-
-  return {
-    revenue:
-      totalRevenue > 0
-        ? [{ code: "4000", name: "Cash collected (sales)", amount: totalRevenue }]
-        : [],
-    cogs: accrual.cogs,
-    expenses: accrual.expenses,
-    totalRevenue,
-    totalCogs: accrual.totalCogs,
-    grossProfit,
-    totalExpenses: accrual.totalExpenses,
-    netIncome,
-  };
+  const settlements = buildCashBasisSettlements({
+    documents: invoices.map((inv) => ({
+      id: inv.party_id ?? "legacy",
+      kind: "invoice",
+      status: inv.status,
+      total: inv.total,
+      issue_date: inv.issue_date,
+      posted_entry_id: inv.posted_entry_id,
+      lines: [{ account_id: accounts.find((a) => a.type === "revenue")?.id ?? null, amount: inv.total }],
+    })),
+    payments: [],
+    allocations: [],
+    accounts,
+  });
+  return buildCashBasisPlFromSettlements(settlements, accounts, range.start, range.end);
 }
 
 export function buildProfitAndLossForBasis(
@@ -257,9 +259,28 @@ export function buildProfitAndLossForBasis(
   lines: JournalLineRow[],
   accounts: AccountRow[],
   range: DateRange,
+  cashBasisInput?: {
+    documents?: CashBasisDocument[];
+    payments?: CashBasisPayment[];
+    allocations?: CashBasisAllocation[];
+  },
 ): ProfitAndLoss {
   if (basis === "cash") {
-    return buildCashBasisProfitAndLoss(invoices, lines, accounts, range);
+    if (cashBasisInput?.documents?.length) {
+      const settlements = buildCashBasisSettlements({
+        documents: cashBasisInput.documents,
+        payments: cashBasisInput.payments ?? [],
+        allocations: cashBasisInput.allocations ?? [],
+        accounts,
+      });
+      return buildCashBasisPlFromSettlements(
+        settlements,
+        accounts,
+        range.start,
+        range.end,
+      );
+    }
+    return buildLegacyHybridCashBasisProfitAndLoss(invoices, lines, accounts, range);
   }
   return buildProfitAndLoss(lines, accounts);
 }

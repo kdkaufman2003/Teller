@@ -33,6 +33,7 @@ import {
   CONTROLLED_PHASE6_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
 import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 
 type ScenarioResult = { name: string; pass: boolean; detail?: string };
@@ -53,8 +54,7 @@ function loadEnv() {
   if (process.env.TELLER_CONTROLLED_PROD_TEST !== "1") {
     throw new Error("TELLER_CONTROLLED_PROD_TEST must equal 1");
   }
-  const orgId = process.env.TELLER_PHASE6_DEMO_ORG_ID?.trim();
-  if (!orgId) throw new Error("TELLER_PHASE6_DEMO_ORG_ID missing");
+  const orgId = loadControlledDemoOrgId(6);
   assertNotHfacOrganization(orgId);
   return {
     orgId,
@@ -288,7 +288,8 @@ async function createDraftBill(
   return { billId: doc.id as string, number: doc.number as string };
 }
 
-async function cleanupDemoOrg(supabase: SupabaseClient, orgId: string) {
+async function cleanupDemoOrg(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
+  assertMutationScope(orgId, allowedOrgId, "cleanupDemoOrg");
   await supabase.from("teller_bank_reconciliation_items").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_reconciliations").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_matches").delete().eq("organization_id", orgId);
@@ -342,7 +343,7 @@ async function expectRejection(fn: () => Promise<unknown>, pattern: RegExp) {
 async function main() {
   const { orgId, supabase } = loadEnv();
   await assertDemoOrg(supabase, orgId);
-  await cleanupDemoOrg(supabase, orgId);
+  await cleanupDemoOrg(supabase, orgId, orgId);
   const accounts = await accountMap(supabase, orgId);
   const checkingBankId = await resolveCheckingBankId(supabase, orgId);
   const hfacBefore = await hfacBaseline(supabase);

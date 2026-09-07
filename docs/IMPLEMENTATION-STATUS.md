@@ -6,6 +6,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_10_COMPLETE` | **true** | Migration 026 manually applied; deploy `dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1` → `https://teller-indol.vercel.app`; controlled prod 110/110 Phase 10, Phase 5–9 regressions green; HFAC unchanged; 192/192 journals balanced |
 | `PHASE_9_COMPLETE` | **true** | Migration 025 applied; deploy `fc54b96`; controlled prod 102/102 Phase 9 demo, 67/67 Phase 8, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; HFAC baseline unchanged; production journals balanced (192 entries) |
 | `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo (post-025 regression), 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
 | `PHASE_7_COMPLETE` | **true** | Migration 023 applied; deploy `faa6bb9`; controlled prod 45/45 Phase 7 demo, 32/32 Phase 6, 18/18 Phase 5; GL revenue/cost reconciliation difference $0.00; HFAC baseline unchanged |
@@ -87,6 +88,27 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 **Controlled production acceptance (2026-09-07):** migration `025_phase9_month_end_close.sql` applied; `demo:phase9:controlled` **102/102**; Phase 5–8 regressions green; HFAC baseline unchanged (8 docs, 3 payments, 16 journals, AR $1,500.00, AP $0.00).
 
 **Deferred Phase 9.1:** dedicated prepaid/accrual schedules, auto-post recurring journals, comparative TB columns, AJE attachments.
+
+### Phase 10 — financial reporting (production complete)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Cash flow classification | ✓ prod | `026_phase10_financial_reporting.sql`, `cash-flow-report.ts` |
+| Report line groups + mappings | ✓ prod | `teller_report_line_groups`, `teller_account_report_mappings` |
+| GL aggregation RPC | ✓ prod | `teller_gl_account_totals`, `gl-account-totals.ts` |
+| P&L / balance sheet / cash flow | ✓ prod | `report-engine.ts`, `/app/reports`, `/api/reports/*` |
+| Comparative reporting | ✓ prod | `comparative-reports.ts` |
+| GL pagination + drilldown | ✓ prod | `/app/ledger`, `/app/reports/account/[accountId]` |
+| Customer/vendor balances | ✓ prod | `/app/reports/customer-balances`, `/app/reports/vendor-balances` |
+| 1099 review + sales tax summary | ✓ prod | `/app/accounting/tax/*` |
+| Accountant package | ✓ prod | `/api/reports/accountant-package` |
+| Accounting integrity + close checklist | ✓ prod | `/app/accounting/integrity`, `CloseChecklistPanel.tsx` |
+| Presentation mode (owner/accountant) | ✓ prod | `presentation-mode.ts` |
+| Controlled harness | ✓ prod | `demo:phase10:controlled` (110 scenarios), `audit:phase10:deployment-compat` |
+
+**Controlled production acceptance (2026-09-07):** migration `026_phase10_financial_reporting.sql` manually applied; `demo:phase10:controlled` **110/110**; Phase 5–9 regressions green; cross-phase isolation hardened; HFAC baseline unchanged; production journals **192/192** balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1`). Details: [PHASE-10-COMPLETION.md](./PHASE-10-COMPLETION.md).
+
+**Deferred Phase 10.1:** custom report line editor UI, cash-basis P&L on live settlements in prod UI, report PDF/email delivery.
 
 ### Phase 8 invariants (fixed assets)
 

@@ -3,6 +3,11 @@ import { buildProfitAndLoss } from "./reports";
 import { fiscalYearStartDate, parseFiscalYearStart } from "@/lib/org/config";
 import { roundMoney } from "./payment-fees";
 import { asNumber } from "@/lib/format";
+import type { GlAccountTotalRow } from "./gl-account-totals";
+import {
+  cumulativeBalanceFromTotals,
+  netIncomeFromTotals,
+} from "./gl-account-totals";
 
 type DatedJournalLine = JournalLineRow & { entry_date: string; account_id: string };
 
@@ -27,15 +32,54 @@ function netIncomeThrough(
   return buildProfitAndLoss(scoped, accounts).netIncome;
 }
 
+export function computeDerivedRetainedEarningsFromTotals(input: {
+  cumulativeTotals: GlAccountTotalRow[];
+  priorTotals: GlAccountTotalRow[];
+  accounts: AccountRow[];
+  asOfDate: string;
+  fiscalYearStartMonth: number;
+}): DerivedRetainedEarningsPresentation {
+  const asOfDate = input.asOfDate.slice(0, 10);
+  const fiscalYearStartMonth = parseFiscalYearStart(input.fiscalYearStartMonth);
+  const fyStart = fiscalYearStartDate(new Date(asOfDate + "T12:00:00"), fiscalYearStartMonth);
+  const fiscalYearStart = fyStart.toISOString().slice(0, 10);
+
+  const retainedAccount = input.accounts.find(
+    (row) => row.type === "equity" && (row.code === "3100" || row.subtype === "retained_earnings"),
+  );
+  let retainedEarningsGlBalance = 0;
+  if (retainedAccount) {
+    const row = input.cumulativeTotals.find((item) => item.account_id === retainedAccount.id);
+    if (row) {
+      retainedEarningsGlBalance = cumulativeBalanceFromTotals(row, retainedAccount.type);
+    }
+  }
+
+  const lifetimeThroughPrior = netIncomeFromTotals(input.priorTotals, input.accounts);
+  const lifetimeThroughAsOf = netIncomeFromTotals(input.cumulativeTotals, input.accounts);
+  const priorPeriodDerivedEarnings = roundMoney(lifetimeThroughPrior);
+  const currentFiscalYearEarnings = roundMoney(lifetimeThroughAsOf - lifetimeThroughPrior);
+  const totalRetainedEarningsPresentation = roundMoney(
+    retainedEarningsGlBalance + priorPeriodDerivedEarnings + currentFiscalYearEarnings,
+  );
+
+  return {
+    asOfDate,
+    fiscalYearStartMonth,
+    fiscalYearStart,
+    retainedEarningsGlBalance,
+    priorPeriodDerivedEarnings,
+    currentFiscalYearEarnings,
+    totalRetainedEarningsPresentation,
+    totalEquityFromEarnings: totalRetainedEarningsPresentation,
+  };
+}
+
 /**
  * Derived retained earnings presentation.
  *
  * Teller native model: no year-end closing journals. Components are additive:
  *   explicit RE GL balance + derived prior FY P&L + current FY P&L
- *
- * Explicit RE (e.g. opening migration balance) is never subtracted from derived
- * prior-year P&L. Imported closing journals into RE with retained revenue/expense
- * detail are a separate import-normalization concern — not guessed here.
  */
 export function computeDerivedRetainedEarnings(input: {
   lines: DatedJournalLine[];

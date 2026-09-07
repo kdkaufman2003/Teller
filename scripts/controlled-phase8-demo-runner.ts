@@ -42,11 +42,18 @@ import { listUnassignedFixedAssetActivity } from "../src/lib/accounting/unassign
 import { assertOrgPeriodOpen, loadOrgAccounts, postJournal } from "../src/lib/accounting/post";
 import { asNumber } from "../src/lib/format";
 import {
+  assertMutationScope,
+  assertDemoOrgName,
+  captureOrgEconomicFingerprint,
+  capturePeerFingerprints,
+  expectedControlledDemoOrgName,
+  loadControlledDemoOrgId,
+  loadPriorPhasePeerOrgIds,
+  type ControlledPhase,
+  type OrgEconomicFingerprint,
+} from "../src/lib/integration/controlled-phase-isolation";
+import {
   assertNotHfacOrganization,
-  CONTROLLED_PHASE5_DEMO_ORG_NAME,
-  CONTROLLED_PHASE6_DEMO_ORG_NAME,
-  CONTROLLED_PHASE7_DEMO_ORG_NAME,
-  CONTROLLED_PHASE8_DEMO_ORG_NAME,
   CONTROLLED_PHASE8_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
@@ -62,8 +69,7 @@ function loadEnv() {
   if (process.env.TELLER_CONTROLLED_PROD_TEST !== "1") {
     throw new Error("TELLER_CONTROLLED_PROD_TEST must equal 1");
   }
-  const orgId = process.env.TELLER_PHASE8_DEMO_ORG_ID?.trim();
-  if (!orgId) throw new Error("TELLER_PHASE8_DEMO_ORG_ID missing");
+  const orgId = loadControlledDemoOrgId(8);
   assertNotHfacOrganization(orgId);
   return {
     orgId,
@@ -74,14 +80,7 @@ function loadEnv() {
 }
 
 async function assertDemoOrg(supabase: SupabaseClient, orgId: string) {
-  const { data } = await supabase
-    .from("teller_organizations")
-    .select("id, name")
-    .eq("id", orgId)
-    .maybeSingle();
-  if (!data || data.name !== CONTROLLED_PHASE8_DEMO_ORG_NAME) {
-    throw new Error(`Expected org "${CONTROLLED_PHASE8_DEMO_ORG_NAME}"`);
-  }
+  await assertDemoOrgName(supabase, orgId, expectedControlledDemoOrgName(8));
 }
 
 async function journalCount(supabase: SupabaseClient, orgId: string) {
@@ -117,17 +116,19 @@ async function hfacBaseline(supabase: SupabaseClient) {
   };
 }
 
-async function orgEconomicSnapshot(supabase: SupabaseClient, orgId: string) {
-  return {
-    documents: await tableCount(supabase, "teller_documents", orgId),
-    journals: await journalCount(supabase, orgId),
-    jobs: await tableCount(supabase, "teller_jobs", orgId),
-  };
-}
-
-async function resolveOrgIdByName(supabase: SupabaseClient, name: string) {
-  const { data } = await supabase.from("teller_organizations").select("id").eq("name", name).maybeSingle();
-  return data?.id as string | undefined;
+async function assertPeerPhaseUnchanged(
+  supabase: SupabaseClient,
+  phase: ControlledPhase,
+  before: Map<ControlledPhase, OrgEconomicFingerprint>,
+) {
+  const orgId = loadPriorPhasePeerOrgIds(8)[phase];
+  const expected = before.get(phase);
+  if (!orgId || !expected) throw new Error(`Phase ${phase} demo org not configured`);
+  assertNotHfacOrganization(orgId);
+  const after = await captureOrgEconomicFingerprint(supabase, orgId);
+  if (JSON.stringify(after) !== JSON.stringify(expected)) {
+    throw new Error(JSON.stringify({ phase, before: expected, after }));
+  }
 }
 
 async function assertOrgJournalsBalanced(supabase: SupabaseClient, orgId: string) {
@@ -148,7 +149,8 @@ async function assertOrgJournalsBalanced(supabase: SupabaseClient, orgId: string
   }
 }
 
-async function cleanup(supabase: SupabaseClient, orgId: string) {
+async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
+  assertMutationScope(orgId, allowedOrgId, "cleanup");
   for (const table of [
     "teller_fixed_asset_disposal_idempotency",
     "teller_fixed_asset_journal_links",
@@ -316,12 +318,7 @@ async function main() {
   await assertDemoOrg(supabase, orgId);
 
   const hfacBefore = await hfacBaseline(supabase);
-  const phase5OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE5_DEMO_ORG_NAME);
-  const phase6OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE6_DEMO_ORG_NAME);
-  const phase7OrgId = await resolveOrgIdByName(supabase, CONTROLLED_PHASE7_DEMO_ORG_NAME);
-  const phase5Before = phase5OrgId ? await orgEconomicSnapshot(supabase, phase5OrgId) : null;
-  const phase6Before = phase6OrgId ? await orgEconomicSnapshot(supabase, phase6OrgId) : null;
-  const phase7Before = phase7OrgId ? await orgEconomicSnapshot(supabase, phase7OrgId) : null;
+  const peerFingerprintsBefore = await capturePeerFingerprints(supabase, 8);
 
   const results: Array<{ name: string; pass: boolean; detail?: string }> = [];
 
@@ -342,7 +339,7 @@ async function main() {
     }
   }
 
-  await cleanup(supabase, orgId);
+  await cleanup(supabase, orgId, orgId);
   const accounts = await accountMap(supabase, orgId);
   const orgAccounts = await loadOrgAccounts(supabase, orgId);
   await seedDefaultFixedAssetCategories(supabase, orgId, orgAccounts);
@@ -1029,30 +1026,15 @@ async function main() {
   });
 
   await run("41. Phase 7 regression", async () => {
-    if (!phase7OrgId || !phase7Before) throw new Error("Phase 7 demo org not configured");
-    assertNotHfacOrganization(phase7OrgId);
-    const after = await orgEconomicSnapshot(supabase, phase7OrgId);
-    if (JSON.stringify(after) !== JSON.stringify(phase7Before)) {
-      throw new Error(JSON.stringify({ before: phase7Before, after }));
-    }
+    await assertPeerPhaseUnchanged(supabase, 7, peerFingerprintsBefore);
   });
 
   await run("42. Phase 6 regression", async () => {
-    if (!phase6OrgId || !phase6Before) throw new Error("Phase 6 demo org not configured");
-    assertNotHfacOrganization(phase6OrgId);
-    const after = await orgEconomicSnapshot(supabase, phase6OrgId);
-    if (JSON.stringify(after) !== JSON.stringify(phase6Before)) {
-      throw new Error(JSON.stringify({ before: phase6Before, after }));
-    }
+    await assertPeerPhaseUnchanged(supabase, 6, peerFingerprintsBefore);
   });
 
   await run("43. Phase 5 regression", async () => {
-    if (!phase5OrgId || !phase5Before) throw new Error("Phase 5 demo org not configured");
-    assertNotHfacOrganization(phase5OrgId);
-    const after = await orgEconomicSnapshot(supabase, phase5OrgId);
-    if (JSON.stringify(after) !== JSON.stringify(phase5Before)) {
-      throw new Error(JSON.stringify({ before: phase5Before, after }));
-    }
+    await assertPeerPhaseUnchanged(supabase, 5, peerFingerprintsBefore);
   });
 
   await run("44. Opening balance asset with opening accumulated depreciation", async () => {

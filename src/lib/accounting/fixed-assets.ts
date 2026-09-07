@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
+import { roundMoney } from "./payment-fees";
 import { recordAuditEvent } from "./audit";
 import { accountBySubtype } from "./accounts";
 import { FIXED_ASSET_SUBTYPES } from "./fixed-asset-accounts";
@@ -249,10 +250,30 @@ export async function sumPostedDepreciationForAsset(
   supabase: SupabaseClient,
   assetId: string,
 ): Promise<number> {
-  const { data } = await supabase
+  const map = await batchSumPostedDepreciationForAssets(supabase, [assetId]);
+  return map.get(assetId) ?? 0;
+}
+
+/** Batch-load posted depreciation totals per asset (eliminates N+1 in register). */
+export async function batchSumPostedDepreciationForAssets(
+  supabase: SupabaseClient,
+  assetIds: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!assetIds.length) return result;
+
+  const { data, error } = await supabase
     .from("teller_fixed_asset_depreciation_entries")
-    .select("amount, status")
-    .eq("asset_id", assetId)
+    .select("asset_id, amount, status")
+    .in("asset_id", assetIds)
     .eq("status", "posted");
-  return (data ?? []).reduce((sum, row) => sum + asNumber(row.amount), 0);
+
+  if (error) throw new Error(error.message);
+
+  for (const id of assetIds) result.set(id, 0);
+  for (const row of data ?? []) {
+    const assetId = row.asset_id as string;
+    result.set(assetId, roundMoney((result.get(assetId) ?? 0) + asNumber(row.amount)));
+  }
+  return result;
 }

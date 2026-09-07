@@ -408,7 +408,8 @@ export async function buildJobProfitabilitySummary(
     const { data: journalLines } = await supabase
       .from("teller_journal_lines")
       .select("account_id, debit, credit, job_id, cost_classification, entry_id")
-      .in("entry_id", entryIds.slice(0, 5000));
+      .in("entry_id", entryIds)
+      .not("job_id", "is", null);
     orgJournalLines = journalLines ?? [];
   }
 

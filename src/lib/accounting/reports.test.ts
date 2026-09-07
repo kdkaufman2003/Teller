@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCashBasisProfitAndLoss,
+  buildCashBasisSettlements,
+} from "./cash-basis-pl";
+import {
   buildProfitAndLoss,
   buildSalesSummary,
   isBilledInvoice,
@@ -123,28 +126,51 @@ describe("reportPeriodRange", () => {
 });
 
 describe("buildCashBasisProfitAndLoss", () => {
-  it("uses only paid invoices for revenue", () => {
-    const range = reportPeriodRange("ytd", new Date("2026-09-04"));
-    const report = buildCashBasisProfitAndLoss(
-      [
+  it("uses payment allocations for revenue", () => {
+    const settlements = buildCashBasisSettlements({
+      documents: [
         {
+          id: "inv1",
+          kind: "invoice",
           status: "paid",
           total: 1000,
           issue_date: "2026-03-01",
-          party_id: "p1",
           posted_entry_id: "je-1",
+          lines: [{ account_id: "r1", amount: 1000 }],
         },
         {
+          id: "inv2",
+          kind: "invoice",
           status: "open",
           total: 1500,
           issue_date: "2026-04-01",
-          party_id: "p2",
           posted_entry_id: "je-2",
+          lines: [{ account_id: "r1", amount: 1500 }],
         },
       ],
-      [],
+      payments: [
+        {
+          id: "p1",
+          payment_date: "2026-03-05",
+          payment_type: "customer_payment",
+          amount: 1000,
+        },
+      ],
+      allocations: [
+        {
+          payment_id: "p1",
+          document_id: "inv1",
+          amount: 1000,
+          allocation_kind: "invoice_payment",
+        },
+      ],
+      accounts: ACCOUNTS,
+    });
+    const report = buildCashBasisProfitAndLoss(
+      settlements,
       ACCOUNTS,
-      range,
+      "2026-01-01",
+      "2026-09-04",
     );
     expect(report.totalRevenue).toBe(1000);
   });
