@@ -24,6 +24,15 @@ describe("booksClosedThrough", () => {
       booksClosedThrough([{ period_end: "2026-03-31", closed_at: "2026-04-01T00:00:00Z" }]),
     ).toBe("2026-03-31");
   });
+
+  it("treats reopen events with null effective as open", () => {
+    expect(
+      booksClosedThrough([
+        { period_end: "2026-08-31", effective_closed_through: "2026-08-31", closed_at: "2026-09-01T00:00:00Z", event_type: "close" },
+        { period_end: "2026-08-31", effective_closed_through: null, closed_at: "2026-09-02T00:00:00Z", event_type: "reopen" },
+      ]),
+    ).toBeNull();
+  });
 });
 
 describe("assertEntryDateOpen", () => {

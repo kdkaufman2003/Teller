@@ -33,7 +33,10 @@ export class PeriodClosedError extends Error {
 }
 
 export function booksClosedThrough(
-  closes: Pick<PeriodCloseRow, "period_end" | "effective_closed_through" | "closed_at">[],
+  closes: Pick<
+    PeriodCloseRow,
+    "period_end" | "effective_closed_through" | "closed_at" | "event_type"
+  >[],
 ): string | null {
   if (!closes.length) return null;
   const latest = [...closes].sort((a, b) => {
@@ -42,6 +45,9 @@ export function booksClosedThrough(
     return bt.localeCompare(at);
   })[0];
   if (!latest) return null;
+  if (latest.event_type === "reopen") {
+    return latest.effective_closed_through?.slice(0, 10) ?? null;
+  }
   return (latest.effective_closed_through ?? latest.period_end)?.slice(0, 10) ?? null;
 }
 
