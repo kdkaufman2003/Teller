@@ -118,14 +118,14 @@ export async function postAdjustingJournal(
   if (error || !row) throw new Error(error?.message || "Adjustment not found");
 
   const status = row.status as string;
+  if (status === "posted" || status === "reversed") {
+    throw new Error("Adjustment already posted");
+  }
   if (input.approvalRequired && status !== "approved") {
     throw new Error("Adjustment must be approved before posting");
   }
   if (!input.approvalRequired && !["draft", "approved", "submitted"].includes(status)) {
     throw new Error(`Cannot post adjustment in status ${status}`);
-  }
-  if (status === "posted" || status === "reversed") {
-    throw new Error("Adjustment already posted");
   }
 
   const entryDate = row.entry_date as string;
