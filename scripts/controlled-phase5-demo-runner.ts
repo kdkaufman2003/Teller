@@ -10,6 +10,7 @@ import {
   CONTROLLED_PHASE5_DEMO_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 import { parseBankCsv } from "../src/lib/banking/csv";
 import { importBankTransactionsBatch } from "../src/lib/banking/ingest";
 import {
@@ -220,7 +221,7 @@ async function main() {
     await supabase.from("teller_bank_transfers").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_transaction_splits").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_transactions").delete().eq("organization_id", orgId);
-    await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+    await reopenAllPeriodCloses(supabase, orgId);
     await supabase.from("teller_payment_allocations").delete().eq("organization_id", orgId);
     await supabase.from("teller_payments").delete().eq("organization_id", orgId);
     await supabase.from("teller_document_journal_links").delete().eq("organization_id", orgId);

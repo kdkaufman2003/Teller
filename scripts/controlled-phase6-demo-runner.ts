@@ -33,6 +33,7 @@ import {
   CONTROLLED_PHASE6_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 
 type ScenarioResult = { name: string; pass: boolean; detail?: string };
 
@@ -294,7 +295,7 @@ async function cleanupDemoOrg(supabase: SupabaseClient, orgId: string) {
   await supabase.from("teller_bank_transfers").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_transaction_splits").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_transactions").delete().eq("organization_id", orgId);
-  await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+  await reopenAllPeriodCloses(supabase, orgId);
   await supabase.from("teller_document_allocations").delete().eq("organization_id", orgId);
   await supabase.from("teller_payment_allocations").delete().eq("organization_id", orgId);
   await supabase.from("teller_payments").delete().eq("organization_id", orgId);
@@ -869,7 +870,7 @@ async function main() {
     if (bill?.status !== "draft" || bill?.posted_entry_id) {
       throw new Error("Bill status changed after rejected post");
     }
-    await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+    await reopenAllPeriodCloses(supabase, orgId);
   });
 
   await run("C7. Closed-period payment rejection", async () => {
@@ -900,7 +901,7 @@ async function main() {
     if (JSON.stringify(snap) !== JSON.stringify(after)) {
       throw new Error("Closed-period payment caused side effects");
     }
-    await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+    await reopenAllPeriodCloses(supabase, orgId);
   });
 
   await run("C8. Tenant isolation", async () => {

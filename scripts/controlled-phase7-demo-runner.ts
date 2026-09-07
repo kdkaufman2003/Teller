@@ -40,6 +40,7 @@ import {
   CONTROLLED_PHASE7_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
+import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
 
 const HFAC_ORG_ID = TELLER_HFAC_ORG_ID;
 const TODAY = "2026-10-01";
@@ -138,7 +139,7 @@ async function cleanup(supabase: SupabaseClient, orgId: string) {
   await supabase.from("teller_journal_entries").delete().eq("organization_id", orgId);
   await supabase.from("teller_jobs").delete().eq("organization_id", orgId);
   await supabase.from("teller_parties").delete().eq("organization_id", orgId);
-  await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+  await reopenAllPeriodCloses(supabase, orgId);
 }
 
 async function ensureVendor(supabase: SupabaseClient, orgId: string) {
@@ -775,7 +776,7 @@ async function main() {
       blocked = err instanceof Error && err.message.toLowerCase().includes("closed");
     }
     if (!blocked) throw new Error("closed period should block posting");
-    await supabase.from("teller_period_closes").delete().eq("organization_id", orgId);
+    await reopenAllPeriodCloses(supabase, orgId);
   });
 
   await run("36. Lifecycle events create audit trail", async () => {
