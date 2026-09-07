@@ -6,6 +6,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_11_COMPLETE` | **true** | Migration 027 manually applied; deploy `dpl_8ueLU88MWAW2nJbLzqd8YAcUQ7tC` → `https://teller-indol.vercel.app`; controlled prod 105/105 logic + 19/19 DB acceptance; Phase 5–10 regressions green; HFAC unchanged; production journals balanced; scheduler intentionally disabled |
 | `PHASE_10_COMPLETE` | **true** | Migration 026 manually applied; deploy `dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1` → `https://teller-indol.vercel.app`; controlled prod 110/110 Phase 10, Phase 5–9 regressions green; HFAC unchanged; 192/192 journals balanced |
 | `PHASE_9_COMPLETE` | **true** | Migration 025 applied; deploy `fc54b96`; controlled prod 102/102 Phase 9 demo, 67/67 Phase 8, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; HFAC baseline unchanged; production journals balanced (192 entries) |
 | `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo (post-025 regression), 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
@@ -109,6 +110,24 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 **Controlled production acceptance (2026-09-07):** migration `026_phase10_financial_reporting.sql` manually applied; `demo:phase10:controlled` **110/110**; Phase 5–9 regressions green; cross-phase isolation hardened; HFAC baseline unchanged; production journals **192/192** balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1`). Details: [PHASE-10-COMPLETION.md](./PHASE-10-COMPLETION.md).
 
 **Deferred Phase 10.1:** custom report line editor UI, cash-basis P&L on live settlements in prod UI, report PDF/email delivery.
+
+### Phase 11 — subledger automation (production complete)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Prepaid expense schedules | ✓ prod | `027_phase11_subledger_automation.sql`, `schedules/prepaid.ts`, composer UI |
+| Accrued expense schedules | ✓ prod | `schedules/accrual.ts`, optional auto-reversal flag |
+| Deferred revenue (V1 deposit liability) | ✓ prod | `schedules/deferred-revenue.ts`, deposit source validation |
+| Occurrence workflow | ✓ prod | approve/post/skip/retry/reverse via `occurrence-workflow.ts` |
+| Close readiness integration | ✓ prod | `close-readiness.ts` + occurrence deep links |
+| Recurring journal auto-post modes | ✓ prod | `recurring-journals.ts`, `post_mode` column |
+| Recurring bill generation runs | ✓ prod | `teller_recurring_bill_runs`, idempotency |
+| Schedules UI | ✓ prod | `/app/accounting/schedules/*`, `ScheduleComposer.tsx` |
+| Controlled harness | ✓ prod | `demo:phase11:controlled` (105), `accept:phase11:controlled` (19 DB) |
+
+**Controlled production acceptance (2026-09-07):** migration `027_phase11_subledger_automation.sql` manually applied; `demo:phase11:controlled` **105/105**; `accept:phase11:controlled` **19/19**; Phase 5–10 regressions green; HFAC baseline unchanged (8 docs, 3 payments, 16 journals, AR $1,500.00). Deploy: `https://teller-indol.vercel.app` (`dpl_8ueLU88MWAW2nJbLzqd8YAcUQ7tC`, commit `c91a9cf`). Details: [PHASE-11-COMPLETION.md](./PHASE-11-COMPLETION.md).
+
+**Deferred Phase 11.1:** accrual-to-bill automatic settlement, production scheduler/cron, separate deferred revenue liability account.
 
 ### Phase 8 invariants (fixed assets)
 
