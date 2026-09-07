@@ -6,12 +6,14 @@ import {
   TRADES_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
 import { accountingBasisQuestion } from "./accounting-basis";
+import { DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS } from "@/lib/accounting/fixed-asset-accounts";
 
 export const TRADES_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
   { code: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
   { code: "1200", name: "Inventory — Equipment", type: "asset", subtype: "inventory", industry_tag: "inventory" },
   { code: "1210", name: "Inventory — Parts", type: "asset", subtype: "inventory", industry_tag: "inventory" },
+  ...DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS,
   { code: "2000", name: "Accounts Payable", type: "liability", subtype: "payable" },
   { code: "2100", name: "Sales Tax Payable", type: "liability", subtype: "tax", industry_tag: "tax" },
   { code: "2200", name: "Warranty Reserve", type: "liability", subtype: "reserve", industry_tag: "warranty" },
@@ -166,6 +168,13 @@ function buildTradesQuestions(
       default: defaults.trackInventory ?? false,
     },
     {
+      id: "trackFixedAssets",
+      prompt: "Track fixed assets and depreciation?",
+      type: "boolean",
+      section: "operations",
+      default: defaults.trackFixedAssets ?? false,
+    },
+    {
       id: "collectTax",
       prompt: "Collect sales tax?",
       type: "boolean",
@@ -203,6 +212,7 @@ export function resolveTradesPack(answers: IndustryAnswers) {
   const modules: string[] = [...CORE_MODULES];
   if (isOn(answers.trackJobs)) modules.push("jobs");
   if (isOn(answers.trackInventory)) modules.push("inventory");
+  if (isOn(answers.trackFixedAssets)) modules.push("fixed_assets");
   if (isOn(answers.connectHfac) || isOn(answers.connectQuoter)) modules.push("hfac");
 
   const { customer: customerLabel, customerSingular } = formatCustomerLabels(

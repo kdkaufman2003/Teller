@@ -6,11 +6,13 @@ import {
   GENERAL_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
 import { accountingBasisQuestion } from "./accounting-basis";
+import { DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS } from "@/lib/accounting/fixed-asset-accounts";
 
 const GENERAL_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
   { code: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
   { code: "1200", name: "Inventory", type: "asset", subtype: "inventory", industry_tag: "inventory" },
+  ...DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS,
   { code: "2000", name: "Accounts Payable", type: "liability", subtype: "payable" },
   { code: "2100", name: "Sales Tax Payable", type: "liability", subtype: "tax", industry_tag: "tax" },
   { code: "3000", name: "Owner's Equity", type: "equity" },
@@ -55,6 +57,13 @@ export const generalPack: IndustryPack = {
       default: false,
     },
     {
+      id: "trackFixedAssets",
+      prompt: "Track fixed assets and depreciation?",
+      type: "boolean",
+      section: "operations",
+      default: false,
+    },
+    {
       id: "trackInventory",
       prompt: "Track inventory?",
       type: "boolean",
@@ -92,6 +101,7 @@ export const generalPack: IndustryPack = {
   resolve(answers: IndustryAnswers) {
     const modules: string[] = [...CORE_MODULES];
     if (isOn(answers.trackJobs)) modules.push("jobs");
+    if (isOn(answers.trackFixedAssets)) modules.push("fixed_assets");
     if (isOn(answers.trackInventory)) modules.push("inventory");
 
     const { customer: customerLabel, customerSingular } = formatCustomerLabels(

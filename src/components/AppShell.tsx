@@ -13,6 +13,7 @@ const NAV: NavItem[] = [
   { href: routes.invoices, label: "Invoices" },
   { href: routes.customers, label: "Customers" },
   { href: routes.jobs, label: "Jobs", module: "jobs" },
+  { href: routes.assets, label: "Fixed assets", module: "fixed_assets" },
   { href: routes.expenses, label: "Expenses" },
   { href: routes.bills, label: "Bills" },
   { href: routes.vendors, label: "Vendors" },

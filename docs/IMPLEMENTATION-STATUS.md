@@ -6,6 +6,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
 | `PHASE_7_COMPLETE` | **true** | Migration 023 applied; deploy `faa6bb9`; controlled prod 45/45 Phase 7 demo, 32/32 Phase 6, 18/18 Phase 5; GL revenue/cost reconciliation difference $0.00; HFAC baseline unchanged |
 | `PHASE_6_COMPLETE` | **true** | Controlled prod: 32/32 Phase 6 demo scenarios (incl. 10 accounting/control cases), Phase 5 verify+demo green, HFAC baseline unchanged (8 docs, 3 payments, 16 journals) |
 
@@ -57,6 +58,23 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Basic roles | ✓ | `owner`, `admin`, `bookkeeper`, `viewer` |
 | Accounts payable & purchasing (Phase 6) | ✓ | Migrations 021–022, vendors, PO/receiving, multi-bill pay, vendor credits, recurring bills, AP dashboard; controlled prod demo covers multi-bill payment, over-allocation rejection, multi-bill credit apply, bank→bill_payment match (no extra journal), closed-period bill/payment rejection, tenant isolation, PO receipt/bill controls, approval rejection |
 | Job costing & profitability (Phase 7) | ✓ | Migration 023, atomic job numbering, line-level job attribution on invoices/expenses/bills, cost categories/budgets, lifecycle APIs, jobs UI, canonical profitability + GL bridge; `postBillOpen` persists document lines; settlement lines exclude `job_id` |
+| Fixed assets & depreciation (Phase 8) | ✓ | Migration 024, FA subledger + GL bridge, straight-line schedules, batch/single depreciation, atomic disposal RPC with UUID idempotency, assets UI, controlled prod 67/67 |
+
+### Phase 8 invariants (fixed assets)
+
+- Fixed assets are a **subledger** over the GL — journal lines remain the accounting source of truth.
+- **Acquisition** posts to GL once (cash/AP, linked bill, capitalization, or opening balance); linking backfills `fixed_asset_id` on existing FA debit lines.
+- **Depreciation** posts Dr expense / Cr accumulated depreciation with `fixed_asset_id`; disposal catch-up depreciation is separate from the disposal journal.
+- **Disposal** is atomic via `teller_dispose_fixed_asset`; client-supplied `operationId` (UUID) is required and reused on retry; undo reverses disposal journal only (not depreciation).
+- GL reconciliation bridge: `GL_FIXED_ASSET_COST_DIFFERENCE`, `GL_ACCUMULATED_DEPRECIATION_DIFFERENCE`, `GL_DEPRECIATION_EXPENSE_DIFFERENCE` = $0.00 in controlled demo.
+- HFAC org (`812be00d-3084-4227-ac71-ccbd22e4172c`) is read-only in all controlled demos.
+
+### Phase 8 deferred polish
+
+| Item | Notes |
+|------|-------|
+| Bill line → create asset flow | UI convenience; non-blocking |
+| `verify:phase8:post-migration` pg grant checks | Requires `SUPABASE_DB_URL` in controlled prod env |
 
 ## Partial
 

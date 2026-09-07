@@ -28,6 +28,12 @@ export const routes = {
   purchasing: "/app/purchasing",
   purchaseOrders: "/app/purchasing/purchase-orders",
   apDashboard: "/app/accounting/ap",
+  assets: "/app/assets",
+  assetNew: "/app/assets/new",
+  assetsDepreciation: "/app/assets/depreciation",
+  assetsReconciliation: "/app/assets/reconciliation",
+  assetCategories: "/app/assets/categories",
+  fixedAssetSettings: "/app/settings/fixed-assets",
   settings: "/app/settings",
 } as const;
 
@@ -57,6 +63,10 @@ export function vendorCreditPath(id: string) {
 
 export function jobPath(id: string) {
   return `${routes.jobs}/${id}`;
+}
+
+export function assetPath(id: string) {
+  return `${routes.assets}/${id}`;
 }
 
 export function bankingReconcilePath(id?: string) {

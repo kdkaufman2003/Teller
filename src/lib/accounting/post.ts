@@ -35,6 +35,7 @@ type JournalLineInput = {
   job_id?: string | null;
   job_cost_category_id?: string | null;
   cost_classification?: string | null;
+  fixed_asset_id?: string | null;
   memo?: string;
 };
 
@@ -95,6 +96,7 @@ function journalLinesPayload(lines: JournalLineInput[]) {
     job_id: line.job_id ?? null,
     job_cost_category_id: line.job_cost_category_id ?? null,
     cost_classification: line.cost_classification ?? "",
+    fixed_asset_id: line.fixed_asset_id ?? null,
     memo: line.memo ?? "",
   }));
 }
@@ -153,6 +155,7 @@ type JournalLineRow = {
   credit: number;
   party_id: string | null;
   job_id: string | null;
+  fixed_asset_id?: string | null;
   memo: string;
 };
 
@@ -163,6 +166,7 @@ export function buildReversalLines(lines: JournalLineRow[]): JournalLineInput[] 
     credit: asNumber(line.debit),
     party_id: line.party_id,
     job_id: line.job_id,
+    fixed_asset_id: line.fixed_asset_id ?? null,
     memo: line.memo ? `Reversal: ${line.memo}` : "Reversal",
   }));
 }
@@ -180,7 +184,7 @@ export async function reverseJournalEntry(
 ) {
   const { data: lines, error: linesError } = await supabase
     .from("teller_journal_lines")
-    .select("account_id, debit, credit, party_id, job_id, memo")
+    .select("account_id, debit, credit, party_id, job_id, fixed_asset_id, memo")
     .eq("entry_id", input.entryId);
 
   if (linesError) throw new Error(linesError.message);

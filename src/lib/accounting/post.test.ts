@@ -51,6 +51,7 @@ describe("buildReversalLines", () => {
         credit: 100,
         party_id: "party-1",
         job_id: null,
+        fixed_asset_id: null,
         memo: "Reversal: Payment INV-001",
       },
       {
@@ -59,6 +60,7 @@ describe("buildReversalLines", () => {
         credit: 0,
         party_id: "party-1",
         job_id: null,
+        fixed_asset_id: null,
         memo: "Reversal: Payment INV-001",
       },
     ]);

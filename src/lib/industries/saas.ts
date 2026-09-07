@@ -6,10 +6,12 @@ import {
   SAAS_CUSTOMER_NOUN_OPTIONS,
 } from "./customer-labels";
 import { accountingBasisQuestion } from "./accounting-basis";
+import { DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS } from "@/lib/accounting/fixed-asset-accounts";
 
 const SAAS_ACCOUNTS: AccountSeed[] = [
   { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
   { code: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
+  ...DEFAULT_FIXED_ASSET_ACCOUNT_SEEDS,
   { code: "2000", name: "Accounts Payable", type: "liability", subtype: "payable" },
   { code: "2100", name: "Deferred Revenue", type: "liability", subtype: "deferred", industry_tag: "deferred" },
   { code: "2200", name: "Sales Tax Payable", type: "liability", subtype: "tax", industry_tag: "tax" },
@@ -140,6 +142,7 @@ export const saasPack: IndustryPack = {
     const streams = asList(answers.revenueStreams);
     const modules: string[] = [...CORE_MODULES];
     if (isOn(answers.trackMrr)) modules.push("mrr");
+    if (isOn(answers.trackFixedAssets)) modules.push("fixed_assets");
     if (answers.recognition === "deferred") modules.push("deferred-revenue");
 
     const { customer: customerLabel, customerSingular } = formatCustomerLabels(

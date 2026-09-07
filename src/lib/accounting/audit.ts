@@ -70,7 +70,20 @@ export type AuditAction =
   | "job.closed"
   | "job.reopened"
   | "job.cancelled"
-  | "job.budget_updated";
+  | "job.budget_updated"
+  | "fixed_asset.created"
+  | "fixed_asset.updated"
+  | "fixed_asset.linked"
+  | "fixed_asset.activated"
+  | "fixed_asset.capitalized"
+  | "fixed_asset.opening_recorded"
+  | "fixed_asset.depreciation_posted"
+  | "fixed_asset.depreciation_reversed"
+  | "fixed_asset.disposed"
+  | "fixed_asset.sold"
+  | "fixed_asset.written_off"
+  | "fixed_asset.disposal_reversed"
+  | "fixed_asset.category_created";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,
