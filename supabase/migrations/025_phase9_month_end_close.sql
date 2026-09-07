@@ -21,8 +21,8 @@ where effective_closed_through is null and event_type = 'close';
 alter table public.teller_period_closes
   drop constraint if exists teller_period_closes_organization_id_period_end_key;
 
-create index if not exists teller_period_closes_org_created_idx
-  on public.teller_period_closes (organization_id, created_at desc);
+create index if not exists teller_period_closes_org_closed_idx
+  on public.teller_period_closes (organization_id, closed_at desc);
 
 create index if not exists teller_period_closes_org_period_idx
   on public.teller_period_closes (organization_id, period_end desc);
@@ -41,7 +41,7 @@ as $$
   select effective_closed_through
   from public.teller_period_closes
   where organization_id = p_org
-  order by closed_at desc, created_at desc
+  order by closed_at desc, id desc
   limit 1;
 $$;
 
@@ -201,11 +201,6 @@ begin
 end;
 $$;
 
-drop trigger if exists teller_close_checklist_close_state_bump on public.teller_close_checklist_items;
-create trigger teller_close_checklist_close_state_bump
-  after insert or update on public.teller_close_checklist_items
-  for each row execute function public.teller_close_state_bump_from_checklist();
-
 -- ---------------------------------------------------------------------------
 -- Journal period guard (defense-in-depth — no generic session bypass)
 -- ---------------------------------------------------------------------------
@@ -356,6 +351,11 @@ create policy "teller writers manage close checklist"
     public.teller_is_org_member(organization_id)
     and public.teller_can_write_books(organization_id)
   );
+
+drop trigger if exists teller_close_checklist_close_state_bump on public.teller_close_checklist_items;
+create trigger teller_close_checklist_close_state_bump
+  after insert or update on public.teller_close_checklist_items
+  for each row execute function public.teller_close_state_bump_from_checklist();
 
 -- ---------------------------------------------------------------------------
 -- Adjusting journal workflow (metadata — canonical GL via teller_post_journal)
