@@ -268,6 +268,12 @@ export function AccountingView({
             >
               Recurring journals
             </Link>
+            <Link
+              href={routes.accountingSchedules}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              Schedules
+            </Link>
           </div>
         </article>
       ) : null}

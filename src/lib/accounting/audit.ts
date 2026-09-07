@@ -96,7 +96,19 @@ export type AuditAction =
   | "fixed_asset.sold"
   | "fixed_asset.written_off"
   | "fixed_asset.disposal_reversed"
-  | "fixed_asset.category_created";
+  | "fixed_asset.category_created"
+  | "schedule.created"
+  | "schedule.updated"
+  | "schedule.paused"
+  | "schedule.resumed"
+  | "schedule.cancelled"
+  | "schedule.occurrence_generated"
+  | "schedule.occurrence_posted"
+  | "schedule.occurrence_failed"
+  | "schedule.occurrence_reversed"
+  | "automation.setting_changed"
+  | "recurring_journal.auto_posted"
+  | "recurring_bill.generated";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

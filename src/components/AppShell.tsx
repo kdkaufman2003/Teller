@@ -23,6 +23,7 @@ const NAV: NavItem[] = [
   { href: routes.accounts, label: "Accounts" },
   { href: routes.ledger, label: "Ledger" },
   { href: routes.accounting, label: "Accounting" },
+  { href: routes.accountingSchedules, label: "Schedules" },
   { href: routes.accountingClose, label: "Month-end close" },
   { href: routes.banking, label: "Banking" },
   { href: routes.settings, label: "Settings" },

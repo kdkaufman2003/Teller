@@ -124,3 +124,88 @@ export async function generateRecurringJournalDraft(
 
   return { run, adjustment, duplicate: false };
 }
+
+export async function postRecurringJournalRun(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    runId: string;
+    actorId?: string | null;
+    accountingVersion?: number;
+  },
+) {
+  const { data: run, error } = await supabase
+    .from("teller_recurring_journal_runs")
+    .select("*, teller_recurring_journal_templates(*), teller_adjusting_journal_entries(*)")
+    .eq("organization_id", input.organizationId)
+    .eq("id", input.runId)
+    .single();
+  if (error || !run) throw new Error(error?.message || "Run not found");
+  if (run.status === "posted") return { adjustment: run.teller_adjusting_journal_entries, duplicate: true };
+
+  const template = run.teller_recurring_journal_templates as Record<string, unknown>;
+  if (!template.auto_post_enabled || template.post_mode !== "auto_post") {
+    throw new Error("Template is not configured for auto-post");
+  }
+
+  const adjustment = run.teller_adjusting_journal_entries as Record<string, unknown>;
+  if (!adjustment) throw new Error("Missing adjustment for run");
+
+  const { postAdjustingJournal } = await import("./adjusting-journals");
+  const posted = await postAdjustingJournal(supabase, {
+    organizationId: input.organizationId,
+    adjustmentId: adjustment.id as string,
+    actorId: input.actorId,
+  });
+
+  await supabase
+    .from("teller_recurring_journal_runs")
+    .update({ status: "posted" })
+    .eq("id", run.id);
+
+  await recordAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    action: "recurring_journal.auto_posted",
+    resourceKind: "recurring_journal_run",
+    resourceId: run.id as string,
+    metadata: { templateId: template.id, accountingVersion: input.accountingVersion },
+  });
+
+  return { adjustment: posted, duplicate: false };
+}
+
+export async function generateAndMaybeAutoPostRecurringJournal(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    templateId: string;
+    targetDate: string;
+    actorId?: string | null;
+    orgAutoPostEnabled?: boolean;
+    accountingVersion?: number;
+  },
+) {
+  const draft = await generateRecurringJournalDraft(supabase, input);
+  const { data: template } = await supabase
+    .from("teller_recurring_journal_templates")
+    .select("post_mode, auto_post_enabled")
+    .eq("id", input.templateId)
+    .single();
+
+  if (
+    input.orgAutoPostEnabled &&
+    template?.auto_post_enabled &&
+    template.post_mode === "auto_post" &&
+    !draft.duplicate
+  ) {
+    await postRecurringJournalRun(supabase, {
+      organizationId: input.organizationId,
+      runId: draft.run.id as string,
+      actorId: input.actorId,
+      accountingVersion: input.accountingVersion,
+    });
+  }
+
+  return draft;
+}

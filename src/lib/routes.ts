@@ -29,6 +29,11 @@ export const routes = {
   reportsCustomerBalances: "/app/reports/customer-balances",
   reportsVendorBalances: "/app/reports/vendor-balances",
   accountingRecurringJournals: "/app/accounting/recurring-journals",
+  accountingSchedules: "/app/accounting/schedules",
+  accountingSchedulesPrepaids: "/app/accounting/schedules/prepaids",
+  accountingSchedulesAccruals: "/app/accounting/schedules/accruals",
+  accountingSchedulesRevenue: "/app/accounting/schedules/revenue",
+  accountingSchedulesNew: "/app/accounting/schedules/new",
   reports: "/app/reports",
   banking: "/app/banking",
   bankingReconcile: "/app/banking/reconcile",
@@ -104,6 +109,18 @@ export function accountingAdjustmentPath(id: string) {
 
 export function ledgerEntryPath(entryId: string) {
   return `${routes.ledger}/entry/${entryId}`;
+}
+
+export function scheduleDetailPath(scheduleId: string) {
+  return `${routes.accountingSchedules}/${scheduleId}`;
+}
+
+export function scheduleNewPath(type?: string) {
+  return type ? `${routes.accountingSchedulesNew}?type=${encodeURIComponent(type)}` : routes.accountingSchedulesNew;
+}
+
+export function scheduleOccurrencePath(scheduleId: string, occurrenceId: string) {
+  return `${routes.accountingSchedules}/${scheduleId}/occurrences/${occurrenceId}`;
 }
 
 export function accountActivityPath(
