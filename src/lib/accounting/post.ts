@@ -25,7 +25,7 @@ import {
   resolvePaymentAmounts,
 } from "./payment-fees";
 import { recordTellerPayment } from "./payments";
-import { assertEntryDateOpen, booksClosedThrough } from "./periods";
+import { assertEntryDateOpen } from "./periods";
 
 export type JournalLineInput = {
   account_id: string;
@@ -44,13 +44,11 @@ export async function assertOrgPeriodOpen(
   organizationId: string,
   entryDate: string,
 ) {
-  const { data: closes, error } = await supabase
-    .from("teller_period_closes")
-    .select("period_end, closed_at, effective_closed_through")
-    .eq("organization_id", organizationId);
-
+  const { data: closedThrough, error } = await supabase.rpc("teller_books_closed_through", {
+    p_org: organizationId,
+  });
   if (error) throw new Error(error.message);
-  assertEntryDateOpen(booksClosedThrough(closes ?? []), entryDate);
+  assertEntryDateOpen((closedThrough as string | null) ?? null, entryDate);
 }
 
 async function assertDocumentCacheConsistent(
