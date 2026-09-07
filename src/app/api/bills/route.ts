@@ -77,6 +77,8 @@ export async function POST(request: Request) {
     }[];
     acknowledgeDuplicateWarnings?: boolean;
     duplicateWarningContext?: Record<string, unknown>;
+    accrualAllocations?: Array<{ occurrenceId: string; appliedAmount: number }>;
+    settlementIdempotencyKey?: string;
   };
 
   const lines = (body.lines || []).filter(
@@ -197,6 +199,8 @@ export async function POST(request: Request) {
         organizationId,
         documentId: doc.id,
         actorId: session.userId,
+        accrualAllocations: body.accrualAllocations,
+        settlementIdempotencyKey: body.settlementIdempotencyKey,
       });
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Could not submit bill", 400);

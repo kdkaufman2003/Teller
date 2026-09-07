@@ -30,7 +30,15 @@ export function monthlyAccrualAmount(fixedAmount: number): number {
   return roundMoney(fixedAmount);
 }
 
-/** Accrued liability and AP remain distinct — accrual schedules never create AP bills. */
+/**
+ * Accrual recognition journals do not create AP. Actual vendor bills use accrual settlement
+ * (Phase 11.1) to clear accrued liability without duplicating expense.
+ */
 export function accrualMustNotCreateApBill(): true {
+  return true;
+}
+
+/** Settlement via bill posting is the supported path to recognize AP against accrued liability. */
+export function accrualSettlementViaBillAllowed(): true {
   return true;
 }

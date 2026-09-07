@@ -7,7 +7,13 @@ import { assertBillStatusTransition } from "./document-transitions";
 
 export async function submitBillForApproval(
   supabase: SupabaseClient,
-  input: { organizationId: string; documentId: string; actorId?: string | null },
+  input: {
+    organizationId: string;
+    documentId: string;
+    actorId?: string | null;
+    accrualAllocations?: Array<{ occurrenceId: string; appliedAmount: number }>;
+    settlementIdempotencyKey?: string | null;
+  },
 ) {
   const bill = await loadBill(supabase, input.organizationId, input.documentId);
   if (bill.status !== "draft") throw new Error("Only draft bills can be submitted for approval");
@@ -44,13 +50,21 @@ export async function submitBillForApproval(
     documentId: input.documentId,
     bill,
     actorId: input.actorId,
+    accrualAllocations: input.accrualAllocations,
+    settlementIdempotencyKey: input.settlementIdempotencyKey,
   });
   return { status: "open" as const };
 }
 
 export async function approveBill(
   supabase: SupabaseClient,
-  input: { organizationId: string; documentId: string; actorId?: string | null },
+  input: {
+    organizationId: string;
+    documentId: string;
+    actorId?: string | null;
+    accrualAllocations?: Array<{ occurrenceId: string; appliedAmount: number }>;
+    settlementIdempotencyKey?: string | null;
+  },
 ) {
   const bill = await loadBill(supabase, input.organizationId, input.documentId);
   if (bill.status !== "pending_approval") {
@@ -66,6 +80,8 @@ export async function approveBill(
     bill,
     actorId: input.actorId,
     fromPending: true,
+    accrualAllocations: input.accrualAllocations,
+    settlementIdempotencyKey: input.settlementIdempotencyKey,
   });
 }
 
@@ -111,6 +127,8 @@ async function approveAndPostBill(
     bill: Record<string, unknown>;
     actorId?: string | null;
     fromPending?: boolean;
+    accrualAllocations?: Array<{ occurrenceId: string; appliedAmount: number }>;
+    settlementIdempotencyKey?: string | null;
   },
 ) {
   if (input.fromPending) {
@@ -149,6 +167,8 @@ async function approveAndPostBill(
       cost_classification: (line.cost_classification as string) || "direct",
     })),
     actorId: input.actorId,
+    accrualAllocations: input.accrualAllocations,
+    settlementIdempotencyKey: input.settlementIdempotencyKey,
   });
 }
 

@@ -11,6 +11,11 @@ import {
   filterFutureOccurrences,
   type ScheduleCloseItem,
 } from "./schedules/close-integration";
+import {
+  classifyAccrualSettlementCloseFinding,
+  type AccrualSettlementCloseItem,
+} from "./accrual-settlement/close-integration";
+import { computeOccurrenceSettlementStatus } from "./accrual-settlement/status";
 
 export type CloseFinding = {
   key: string;
@@ -162,6 +167,11 @@ export async function evaluateCloseReadiness(
     findings.push(classifyScheduleCloseFinding(item, asOfDate));
   }
 
+  const accrualSettlementItems = await loadAccrualSettlementCloseItems(supabase, organizationId, asOfDate);
+  for (const item of accrualSettlementItems) {
+    findings.push(classifyAccrualSettlementCloseFinding(item));
+  }
+
   const blockerCount = findings.filter((f) => f.severity === "blocker").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;
   const informationalCount = findings.filter((f) => f.severity === "informational").length;
@@ -223,6 +233,89 @@ async function loadScheduleCloseItems(
       amount: Number(joined.amount ?? 0),
       status: joined.status,
       severity: joined.status === "failed" ? "blocker" : "blocker",
+    };
+  });
+}
+
+async function loadAccrualSettlementCloseItems(
+  supabase: SupabaseClient,
+  organizationId: string,
+  periodEnd: string,
+): Promise<AccrualSettlementCloseItem[]> {
+  const { data: occurrences, error } = await supabase
+    .from("teller_schedule_occurrences")
+    .select(
+      "id, schedule_id, occurrence_date, amount, status, teller_accounting_schedules!inner(name, schedule_type)",
+    )
+    .eq("organization_id", organizationId)
+    .eq("status", "posted")
+    .lte("occurrence_date", periodEnd)
+    .eq("teller_accounting_schedules.schedule_type", "accrued_expense");
+
+  if (error) {
+    if (/does not exist|schema cache/i.test(error.message)) return [];
+    throw new Error(error.message);
+  }
+
+  const occurrenceIds = (occurrences ?? []).map((row) => row.id as string);
+  const settledByOccurrence = new Map<string, number>();
+  if (occurrenceIds.length > 0) {
+    const { data: allocations, error: allocError } = await supabase
+      .from("teller_accrual_settlement_allocations")
+      .select("occurrence_id, applied_amount, teller_accrual_settlements!inner(status)")
+      .eq("organization_id", organizationId)
+      .eq("status", "posted")
+      .in("occurrence_id", occurrenceIds);
+
+    if (allocError && !/does not exist|schema cache/i.test(allocError.message)) {
+      throw new Error(allocError.message);
+    }
+
+    for (const row of allocations ?? []) {
+      const settlement = row.teller_accrual_settlements as unknown as { status: string };
+      if (settlement.status === "reversed") continue;
+      const id = row.occurrence_id as string;
+      settledByOccurrence.set(
+        id,
+        (settledByOccurrence.get(id) ?? 0) + Number(row.applied_amount ?? 0),
+      );
+    }
+  }
+
+  const { data: failedSettlements } = await supabase
+    .from("teller_accrual_settlements")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("status", "failed")
+    .limit(1);
+
+  return (occurrences ?? []).map((row) => {
+    const joined = row as unknown as {
+      id: string;
+      schedule_id: string;
+      occurrence_date: string;
+      amount: number;
+      status: string;
+      teller_accounting_schedules?: { name: string; schedule_type: string } | null;
+    };
+    const accruedAmount = Number(joined.amount ?? 0);
+    const settledAmount = settledByOccurrence.get(joined.id) ?? 0;
+    const schedule = joined.teller_accounting_schedules;
+    return {
+      occurrenceId: joined.id,
+      scheduleId: joined.schedule_id,
+      scheduleName: schedule?.name ?? "Accrual",
+      occurrenceDate: joined.occurrence_date,
+      accruedAmount,
+      settledAmount,
+      remainingAmount: accruedAmount - settledAmount,
+      settlementStatus: computeOccurrenceSettlementStatus({
+        occurrenceAmount: accruedAmount,
+        settledAmount,
+        occurrenceStatus: joined.status,
+      }),
+      expectedSettlementDate: periodEnd,
+      failedSettlement: (failedSettlements ?? []).length > 0,
     };
   });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AccrualSettlementPicker, type AccrualAllocationSelection } from "@/components/AccrualSettlementPicker";
 import { todayISO } from "@/lib/format";
 
 type Account = { id: string; code: string; name: string; type: string };
@@ -35,6 +36,7 @@ export function BillPanel({
   const [costType, setCostType] = useState("");
   const [costClassification, setCostClassification] = useState("direct");
   const [categories, setCategories] = useState<CostCategory[]>([]);
+  const [accrualAllocations, setAccrualAllocations] = useState<AccrualAllocationSelection[]>([]);
 
   useEffect(() => {
     fetch("/api/lookups")
@@ -78,6 +80,7 @@ export function BillPanel({
               costClassification,
             },
           ],
+          accrualAllocations: accrualAllocations.length ? accrualAllocations : undefined,
         }),
       });
       const payload = (await response.json()) as { error?: string; id?: string };
@@ -205,6 +208,12 @@ export function BillPanel({
           <input value={memo} onChange={(event) => setMemo(event.target.value)} />
         </label>
       </div>
+      <AccrualSettlementPicker
+        partyId={partyId || undefined}
+        billAmount={Number(amount) || 0}
+        value={accrualAllocations}
+        onChange={setAccrualAllocations}
+      />
       <div className="flex flex-wrap gap-2">
         <button className="btn btn-primary" disabled={pending} type="submit">
           Create & post bill

@@ -180,15 +180,27 @@ export async function processDueScheduleOccurrences(
     asOfDate: string;
     actorId?: string | null;
     autoPost?: boolean;
+    batchSize?: number;
+    eligibleTypes?: string[];
   },
 ): Promise<ProcessDueResult> {
   const asOf = input.asOfDate.slice(0, 10);
+  const batchSize = Math.max(1, input.batchSize ?? 50);
+  const eligibleTypes = input.eligibleTypes ?? [
+    "prepaid_expense",
+    "accrued_expense",
+    "deferred_revenue",
+  ];
+
   const { data: schedules } = await supabase
     .from("teller_accounting_schedules")
     .select("*")
     .eq("organization_id", input.organizationId)
     .eq("status", "active")
-    .lte("next_occurrence_date", asOf);
+    .lte("next_occurrence_date", asOf)
+    .in("schedule_type", eligibleTypes)
+    .order("next_occurrence_date", { ascending: true })
+    .limit(batchSize);
 
   const result: ProcessDueResult = { processed: 0, skipped: 0, failed: 0, results: [] };
 

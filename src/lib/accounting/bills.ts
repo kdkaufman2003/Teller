@@ -12,6 +12,10 @@ import {
 } from "./document-transitions";
 import { recordDocumentJournalLink } from "./journal-links";
 import { roundMoney } from "./payment-fees";
+import type { AccrualAllocationInput } from "./accrual-settlement/types";
+import { postAccrualSettlementWithBill } from "./accrual-settlement/settlement-service";
+import { assertBillVoidAllowedWithoutActiveSettlement } from "./accrual-settlement/bill-settlement-guard";
+import { allocateVendorPurchaseTax } from "./accrual-settlement/purchase-tax";
 import {
   postExpensePaid,
   postJournal,
@@ -49,8 +53,15 @@ export async function postBillOpen(
       cost_category?: string;
       cost_type?: string;
       cost_classification?: string | null;
+      taxAmount?: number;
+      taxable?: boolean;
+      recoverableInputTax?: boolean;
+      occurrenceId?: string | null;
+      settlesAccrual?: boolean;
     }[];
     actorId?: string | null;
+    accrualAllocations?: AccrualAllocationInput[];
+    settlementIdempotencyKey?: string | null;
   },
 ) {
   const { data: currentDoc } = await supabase
@@ -65,38 +76,147 @@ export async function postBillOpen(
   assertBillStatusTransition(fromStatus, "open");
   await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
 
+  const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
+  const tax = asNumber(input.tax);
+  const total = subtotal + tax;
+
+  if (input.accrualAllocations && input.accrualAllocations.length > 0) {
+    const settlement = await postAccrualSettlementWithBill(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      partyId: input.partyId,
+      jobId: input.jobId,
+      issueDate: input.issueDate,
+      number: input.number,
+      tax,
+      lines: input.lines,
+      allocations: input.accrualAllocations,
+      actorId: input.actorId,
+      idempotencyKey: input.settlementIdempotencyKey,
+    });
+
+    const { error } = await supabase
+      .from("teller_documents")
+      .update({
+        status: "open",
+        posted_entry_id: settlement.journalEntryId,
+        subtotal,
+        tax,
+        total,
+        amount_paid: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", input.documentId);
+
+    if (error) throw new Error(error.message);
+
+    await supabase.from("teller_document_lines").delete().eq("document_id", input.documentId);
+    const { error: linesError } = await supabase.from("teller_document_lines").insert(
+      input.lines.map((line, index) => ({
+        document_id: input.documentId,
+        description: line.description,
+        quantity: 1,
+        unit_price: asNumber(line.amount),
+        amount: asNumber(line.amount),
+        account_id: line.account_id,
+        job_id: line.job_id ?? input.jobId,
+        cost_category: line.cost_category ?? "",
+        cost_type: line.cost_type ?? "",
+        cost_classification: line.cost_classification ?? "direct",
+        item_type: "expense",
+        sort_order: index,
+      })),
+    );
+    if (linesError) throw new Error(linesError.message);
+
+    await recordDocumentJournalLink(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      journalEntryId: settlement.journalEntryId,
+      linkKind: "accrual",
+    });
+
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "bill.posted",
+      resourceKind: "bill",
+      resourceId: input.documentId,
+      metadata: {
+        number: input.number,
+        total,
+        entryId: settlement.journalEntryId,
+        settlementId: settlement.settlementId,
+        accrualSettlement: true,
+      },
+    });
+
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: "document.status_changed",
+      resourceKind: "bill",
+      resourceId: input.documentId,
+      metadata: { number: input.number, from: fromStatus, to: "open" },
+    });
+
+    return settlement.journalEntryId;
+  }
+
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
-  const taxPayable = accountBySubtype(accounts, "tax") || accountByCode(accounts, "2100");
   const fallbackDebit = accounts.find((a) => a.type === "expense" || a.type === "cogs");
 
   if (!ap) throw new Error("Accounts Payable is missing from the chart of accounts");
 
   const journal: JournalLineInput[] = [];
-  const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
-  const tax = asNumber(input.tax);
-  const total = subtotal + tax;
 
-  for (const line of input.lines) {
+  const lineTargets = input.lines.map((line) => {
     const debitId = line.account_id || fallbackDebit?.id;
     if (!debitId) throw new Error("Each bill line needs a debit account");
+    const account = accounts.find((row) => row.id === debitId);
+    return {
+      accountId: debitId,
+      amount: asNumber(line.amount),
+      accountType: account?.type ?? null,
+      line,
+    };
+  });
+
+  for (const target of lineTargets) {
     journal.push({
-      account_id: debitId,
-      debit: asNumber(line.amount),
+      account_id: target.accountId,
+      debit: target.amount,
       party_id: input.partyId,
-      job_id: line.job_id ?? input.jobId,
-      cost_classification: line.cost_classification ?? "direct",
-      memo: line.description,
+      job_id: target.line.job_id ?? input.jobId,
+      cost_classification: target.line.cost_classification ?? "direct",
+      memo: target.line.description,
     });
   }
 
   if (tax > 0) {
-    if (!taxPayable) throw new Error("Tax on bill but no tax payable account exists");
-    journal.push({
-      account_id: taxPayable.id,
-      debit: tax,
-      memo: `Tax on ${input.number}`,
+    const recoverableInputTaxAccountId =
+      accountBySubtype(accounts, "input_tax")?.id ??
+      accountBySubtype(accounts, "tax_receivable")?.id ??
+      accountByCode(accounts, "1350")?.id ??
+      null;
+    const taxAllocations = allocateVendorPurchaseTax({
+      taxAmount: tax,
+      targets: lineTargets.map((target) => ({
+        accountId: target.accountId,
+        amount: target.amount,
+        accountType: target.accountType,
+      })),
+      recoverableInputTaxAccountId,
     });
+    for (const taxLine of taxAllocations) {
+      journal.push({
+        account_id: taxLine.accountId,
+        debit: taxLine.amount,
+        party_id: input.partyId,
+        memo: taxLine.memo ?? `Tax on ${input.number}`,
+      });
+    }
   }
 
   journal.push({
@@ -306,6 +426,12 @@ export async function voidBill(
       "Cannot void a bill with payment or vendor credit activity. Reverse those first.",
     );
   }
+
+  await assertBillVoidAllowedWithoutActiveSettlement(
+    supabase,
+    input.organizationId,
+    input.documentId,
+  );
 
   const fromStatus = input.currentStatus ?? "open";
   assertBillStatusTransition(fromStatus, "void");

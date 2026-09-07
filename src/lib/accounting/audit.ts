@@ -108,7 +108,12 @@ export type AuditAction =
   | "schedule.occurrence_reversed"
   | "automation.setting_changed"
   | "recurring_journal.auto_posted"
-  | "recurring_bill.generated";
+  | "recurring_bill.generated"
+  | "accrual.settlement.created"
+  | "accrual.settlement.posted"
+  | "accrual.settlement.reversed"
+  | "accrual.settlement.failed"
+  | "accrual.settlement.linked_to_bill";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,
