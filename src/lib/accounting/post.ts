@@ -27,7 +27,7 @@ import {
 import { recordTellerPayment } from "./payments";
 import { assertEntryDateOpen, booksClosedThrough } from "./periods";
 
-type JournalLineInput = {
+export type JournalLineInput = {
   account_id: string;
   debit?: number;
   credit?: number;
@@ -46,7 +46,7 @@ export async function assertOrgPeriodOpen(
 ) {
   const { data: closes, error } = await supabase
     .from("teller_period_closes")
-    .select("period_end")
+    .select("period_end, closed_at, effective_closed_through")
     .eq("organization_id", organizationId);
 
   if (error) throw new Error(error.message);
@@ -182,6 +182,7 @@ export async function reverseJournalEntry(
     actorId?: string | null;
   },
 ) {
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.entryDate);
   const { data: lines, error: linesError } = await supabase
     .from("teller_journal_lines")
     .select("account_id, debit, credit, party_id, job_id, fixed_asset_id, memo")
@@ -688,6 +689,7 @@ export async function reconcilePaymentProcessingFee(
     jobId: string | null;
   },
 ) {
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
   const { grossAmount, feeAmount, netAmount } = resolvePaymentAmounts({
     grossAmount: input.grossAmount,
     feeAmount: input.feeAmount,
@@ -785,6 +787,7 @@ export async function postExpense(
     jobCostCategoryId?: string | null;
   },
 ) {
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");

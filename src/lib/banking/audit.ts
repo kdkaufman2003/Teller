@@ -40,8 +40,8 @@ const BANKING_AUDIT_MAP: Record<BankingAuditAction, AuditAction> = {
   "banking.transfer.created": "journal.posted",
   "banking.transaction.excluded": "document.status_changed",
   "banking.reconciliation.started": "settings.updated",
-  "banking.reconciliation.finalized": "period.closed",
-  "banking.reconciliation.reopened": "period.reopened",
+  "banking.reconciliation.finalized": "bank_reconciliation.finalized",
+  "banking.reconciliation.reopened": "bank_reconciliation.reopened",
 };
 
 export async function recordBankingAuditEvent(

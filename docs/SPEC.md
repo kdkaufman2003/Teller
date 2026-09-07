@@ -156,7 +156,7 @@ Do not replace the ledger with a flat income/expense table.
 
 Posted entries should not be silently overwritten. Corrections use reversals, adjustments, or void workflows — each leaving an audit trail.
 
-**Current gap:** Journal entries can be updated via RLS policy; period locking and reversal workflow not yet implemented.
+**Implemented (Phase 1 + Phase 9 local):** Journal UPDATE/DELETE blocked by RLS; posting flows through `teller_post_journal` and domain RPCs. Closed periods reject new journals dated on or before `teller_books_closed_through(org)` via RPC check and a `BEFORE INSERT` trigger on `teller_journal_entries`. Close/reopen events are append-only (`teller_period_closes`); reopening the latest closed month requires owner/admin + reason. Adjusting entries use workflow metadata (`teller_adjusting_journal_entries`) and post through canonical `teller_post_journal` with `source_kind: adjustment`.
 
 ---
 

@@ -6,6 +6,12 @@ export type PeriodCloseRow = {
   notes: string;
   closed_at: string;
   closed_by: string | null;
+  event_type?: "close" | "reopen";
+  effective_closed_through?: string | null;
+  reopen_reason?: string;
+  readiness_snapshot?: Record<string, unknown>;
+  warnings_acknowledged?: unknown[];
+  metadata?: Record<string, unknown>;
 };
 
 export type MonthPeriod = {
@@ -26,9 +32,17 @@ export class PeriodClosedError extends Error {
   }
 }
 
-export function booksClosedThrough(closes: Pick<PeriodCloseRow, "period_end">[]): string | null {
+export function booksClosedThrough(
+  closes: Pick<PeriodCloseRow, "period_end" | "effective_closed_through" | "closed_at">[],
+): string | null {
   if (!closes.length) return null;
-  return closes.map((row) => row.period_end).sort().at(-1) ?? null;
+  const latest = [...closes].sort((a, b) => {
+    const at = a.closed_at ?? "";
+    const bt = b.closed_at ?? "";
+    return bt.localeCompare(at);
+  })[0];
+  if (!latest) return null;
+  return (latest.effective_closed_through ?? latest.period_end)?.slice(0, 10) ?? null;
 }
 
 export function assertEntryDateOpen(closedThrough: string | null, entryDate: string) {

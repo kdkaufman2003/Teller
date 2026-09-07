@@ -1,22 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { money } from "@/lib/format";
 import type { MonthPeriod, PeriodCloseRow } from "@/lib/accounting/periods";
-
-type AccountOption = {
-  id: string;
-  code: string;
-  name: string;
-};
+import { routes } from "@/lib/routes";
 
 export function AccountingView({
   closedThrough,
   nextClose,
   periods,
   closes,
-  accounts,
   canManageClose,
   canAdjust,
   canExport,
@@ -27,7 +21,6 @@ export function AccountingView({
   nextClose: string | null;
   periods: MonthPeriod[];
   closes: PeriodCloseRow[];
-  accounts: AccountOption[];
   canManageClose: boolean;
   canAdjust: boolean;
   canExport: boolean;
@@ -38,13 +31,7 @@ export function AccountingView({
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const [notes, setNotes] = useState("");
-  const [adjustment, setAdjustment] = useState({
-    entryDate: new Date().toISOString().slice(0, 10),
-    memo: "",
-    debitAccountId: accounts[0]?.id ?? "",
-    creditAccountId: accounts[1]?.id ?? accounts[0]?.id ?? "",
-    amount: "",
-  });
+  const [reopenReason, setReopenReason] = useState("");
 
   async function closePeriod() {
     if (!nextClose) return;
@@ -66,53 +53,25 @@ export function AccountingView({
     }
   }
 
-  async function reopenPeriod(id: string) {
-    setPending(`reopen-${id}`);
+  async function reopenPeriod(periodEnd: string) {
+    if (!reopenReason.trim()) {
+      setError("Enter a reason to reopen the period.");
+      return;
+    }
+    setPending(`reopen-${periodEnd}`);
     setError("");
     try {
-      const response = await fetch(`/api/accounting/periods?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
+      const response = await fetch("/api/accounting/periods/reopen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodEnd, reason: reopenReason.trim() }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not reopen period");
+      setReopenReason("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reopen period");
-    } finally {
-      setPending("");
-    }
-  }
-
-  async function postAdjustment(event: React.FormEvent) {
-    event.preventDefault();
-    setPending("adjustment");
-    setError("");
-    const amount = Number(adjustment.amount);
-    if (!amount || amount <= 0) {
-      setError("Enter a positive adjustment amount.");
-      setPending("");
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/ledger/adjustments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entryDate: adjustment.entryDate,
-          memo: adjustment.memo,
-          lines: [
-            { account_id: adjustment.debitAccountId, debit: amount, credit: 0 },
-            { account_id: adjustment.creditAccountId, debit: 0, credit: amount },
-          ],
-        }),
-      });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Could not post adjustment");
-      setAdjustment((current) => ({ ...current, memo: "", amount: "" }));
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not post adjustment");
     } finally {
       setPending("");
     }
@@ -162,10 +121,20 @@ export function AccountingView({
 
       <section className="grid gap-4 xl:grid-cols-2">
         <article className="card p-5">
-          <h2 className="font-ledger text-2xl text-navy">Period close</h2>
-          <p className="mt-1 text-sm text-muted">
-            Close completed months in order to lock posted history.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-ledger text-2xl text-navy">Period close</h2>
+              <p className="mt-1 text-sm text-muted">
+                Close completed months in order to lock posted history.
+              </p>
+            </div>
+            <Link
+              href={routes.accountingClose}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              Month-end close →
+            </Link>
+          </div>
 
           {canManageClose && nextClose ? (
             <div className="mt-5 space-y-3 rounded-lg border border-rule bg-paper-strong p-4">
@@ -214,14 +183,22 @@ export function AccountingView({
                     {canManageClose &&
                     period.status === "closed" &&
                     closes[0]?.period_end === period.end ? (
-                      <button
-                        type="button"
-                        className="text-sm text-sky"
-                        disabled={Boolean(pending)}
-                        onClick={() => reopenPeriod(closes[0]!.id)}
-                      >
-                        Reopen
-                      </button>
+                      <div className="flex flex-col items-end gap-2">
+                        <input
+                          className="w-full max-w-xs rounded-md border border-rule bg-white px-2 py-1 text-sm"
+                          placeholder="Reopen reason"
+                          value={reopenReason}
+                          onChange={(event) => setReopenReason(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="text-sm text-sky"
+                          disabled={Boolean(pending)}
+                          onClick={() => reopenPeriod(period.end)}
+                        >
+                          Reopen
+                        </button>
+                      </div>
                     ) : null}
                   </td>
                 </tr>
@@ -262,89 +239,36 @@ export function AccountingView({
 
       {canAdjust ? (
         <article className="card p-5">
-          <h2 className="font-ledger text-2xl text-navy">Manual adjustment</h2>
+          <h2 className="font-ledger text-2xl text-navy">Adjusting entries</h2>
           <p className="mt-1 text-sm text-muted">
-            Post a balanced two-line journal entry for year-end or correcting entries.
+            Create multi-line adjusting journal entries for year-end or correcting entries.
           </p>
-
-          <form onSubmit={postAdjustment} className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-muted">Entry date</span>
-              <input
-                type="date"
-                className="mt-1 w-full rounded-md border border-rule bg-white px-3 py-2"
-                value={adjustment.entryDate}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, entryDate: event.target.value }))
-                }
-              />
-            </label>
-            <label className="block text-sm md:col-span-2">
-              <span className="text-muted">Memo</span>
-              <input
-                className="mt-1 w-full rounded-md border border-rule bg-white px-3 py-2"
-                value={adjustment.memo}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, memo: event.target.value }))
-                }
-                placeholder="Describe the adjustment"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-muted">Debit account</span>
-              <select
-                className="mt-1 w-full rounded-md border border-rule bg-white px-3 py-2"
-                value={adjustment.debitAccountId}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, debitAccountId: event.target.value }))
-                }
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} · {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="text-muted">Credit account</span>
-              <select
-                className="mt-1 w-full rounded-md border border-rule bg-white px-3 py-2"
-                value={adjustment.creditAccountId}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, creditAccountId: event.target.value }))
-                }
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} · {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="text-muted">Amount</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="mt-1 w-full rounded-md border border-rule bg-white px-3 py-2 font-tabular"
-                value={adjustment.amount}
-                onChange={(event) =>
-                  setAdjustment((current) => ({ ...current, amount: event.target.value }))
-                }
-              />
-            </label>
-            <div className="flex items-end">
-              <button
-                type="submit"
-                disabled={pending === "adjustment" || accounts.length < 2}
-                className="rounded-md bg-navy px-4 py-2 text-sm text-white disabled:opacity-60"
-              >
-                {pending === "adjustment" ? "Posting…" : `Post ${money(Number(adjustment.amount) || 0)}`}
-              </button>
-            </div>
-          </form>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link
+              href={routes.accountingAdjustments}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              View adjustments
+            </Link>
+            <Link
+              href={`${routes.accountingAdjustments}/new`}
+              className="rounded-md bg-navy px-4 py-2 text-sm text-white"
+            >
+              New adjustment
+            </Link>
+            <Link
+              href={routes.accountingTrialBalance}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              Trial balance
+            </Link>
+            <Link
+              href={routes.accountingRecurringJournals}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              Recurring journals
+            </Link>
+          </div>
         </article>
       ) : null}
     </div>

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assertNotHfacOrganization,
   CONTROLLED_FOREIGN_TEST_ORG_NAME,
+  CONTROLLED_PHASE9_DEMO_ORG_NAME,
+  CONTROLLED_PHASE9_FOREIGN_ORG_NAME,
   CONTROLLED_TEST_ORG_NAME,
   evaluateControlledProdTestSafety,
   isControlledTestOrgName,
@@ -49,6 +51,8 @@ describe("controlled production test guards", () => {
   it("recognizes approved test org names", () => {
     expect(isControlledTestOrgName(CONTROLLED_TEST_ORG_NAME)).toBe(true);
     expect(isControlledTestOrgName(CONTROLLED_FOREIGN_TEST_ORG_NAME)).toBe(true);
+    expect(isControlledTestOrgName(CONTROLLED_PHASE9_DEMO_ORG_NAME)).toBe(true);
+    expect(isControlledTestOrgName(CONTROLLED_PHASE9_FOREIGN_ORG_NAME)).toBe(true);
     expect(isControlledTestOrgName("Hassle Free AC")).toBe(false);
   });
 

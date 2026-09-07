@@ -20,6 +20,10 @@ export const routes = {
   accounts: "/app/accounts",
   ledger: "/app/ledger",
   accounting: "/app/accounting",
+  accountingClose: "/app/accounting/close",
+  accountingAdjustments: "/app/accounting/adjustments",
+  accountingTrialBalance: "/app/accounting/trial-balance",
+  accountingRecurringJournals: "/app/accounting/recurring-journals",
   reports: "/app/reports",
   banking: "/app/banking",
   bankingReconcile: "/app/banking/reconcile",
@@ -83,4 +87,12 @@ export function vendorPath(id: string) {
 
 export function purchaseOrderPath(id: string) {
   return `${routes.purchaseOrders}/${id}`;
+}
+
+export function accountingClosePeriodPath(period: string) {
+  return `${routes.accountingClose}/${period}`;
+}
+
+export function accountingAdjustmentPath(id: string) {
+  return `${routes.accountingAdjustments}/${id}`;
 }

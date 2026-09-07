@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
   const { data: closes, error: closeError } = await supabase
     .from("teller_period_closes")
-    .select("period_end")
+    .select("period_end, closed_at, effective_closed_through")
     .eq("organization_id", organizationId);
 
   if (closeError) return jsonError(closeError.message, 500);

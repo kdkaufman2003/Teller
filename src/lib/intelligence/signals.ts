@@ -65,7 +65,7 @@ export async function gatherIntelligenceContext(
       .limit(40),
     supabase
       .from("teller_period_closes")
-      .select("period_end")
+      .select("period_end, closed_at, effective_closed_through")
       .eq("organization_id", input.organizationId),
   ]);
 

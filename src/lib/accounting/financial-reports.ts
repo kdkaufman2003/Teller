@@ -1,6 +1,8 @@
 import { asNumber } from "@/lib/format";
 import type { AccountRow, DateRange, JournalLineRow, ProfitAndLoss } from "./reports";
 import { buildProfitAndLoss, isBilledInvoice } from "./reports";
+import { computeDerivedRetainedEarnings } from "./derived-retained-earnings";
+import { parseFiscalYearStart } from "@/lib/org/config";
 
 export type FinancialReportLine = {
   code: string;
@@ -109,30 +111,47 @@ export function buildBalanceSheet(
   lines: DatedJournalLine[],
   accounts: AccountRow[],
   asOf: string,
+  fiscalYearStartMonth = 1,
 ): BalanceSheet {
   const balances = accumulateAccountBalances(lines, accounts, asOf);
 
   const assets = linesForAccounts(balances, accounts, "asset");
   const liabilities = linesForAccounts(balances, accounts, "liability");
-  const equityAccounts = linesForAccounts(balances, accounts, "equity");
+  const equityAccounts = linesForAccounts(balances, accounts, "equity").filter(
+    (row) => row.code !== "3999",
+  );
 
-  const plLines = lines.filter((line) => line.entry_date <= asOf);
-  const pl = buildProfitAndLoss(plLines, accounts);
-  const currentEarnings = pl.netIncome;
+  const derived = computeDerivedRetainedEarnings({
+    lines,
+    accounts,
+    asOfDate: asOf,
+    fiscalYearStartMonth: parseFiscalYearStart(fiscalYearStartMonth),
+  });
 
   const totalAssets = roundMoney(assets.reduce((sum, row) => sum + row.amount, 0));
   const totalLiabilities = roundMoney(liabilities.reduce((sum, row) => sum + row.amount, 0));
   const equityFromAccounts = roundMoney(
     equityAccounts.reduce((sum, row) => sum + row.amount, 0),
   );
-  const totalEquity = roundMoney(equityFromAccounts + currentEarnings);
+  const totalEquity = roundMoney(
+    equityFromAccounts + derived.priorPeriodDerivedEarnings + derived.currentFiscalYearEarnings,
+  );
 
-  const equity = [
-    ...equityAccounts,
-    ...(currentEarnings !== 0
-      ? [{ code: "3999", name: "Current earnings (open period)", amount: currentEarnings }]
-      : []),
-  ];
+  const equity: FinancialReportLine[] = [...equityAccounts];
+  if (derived.priorPeriodDerivedEarnings !== 0) {
+    equity.push({
+      code: "3198",
+      name: "Prior years' earnings (derived)",
+      amount: derived.priorPeriodDerivedEarnings,
+    });
+  }
+  if (derived.currentFiscalYearEarnings !== 0) {
+    equity.push({
+      code: "3999",
+      name: "Current fiscal year earnings",
+      amount: derived.currentFiscalYearEarnings,
+    });
+  }
 
   const balanced = Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.05;
 
@@ -144,7 +163,7 @@ export function buildBalanceSheet(
     totalAssets,
     totalLiabilities,
     totalEquity,
-    currentEarnings,
+    currentEarnings: derived.currentFiscalYearEarnings,
     balanced,
   };
 }

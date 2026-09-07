@@ -26,18 +26,13 @@ export default async function AccountingPage() {
   const answers = session.settings?.answers ?? {};
   const cpaMode = parseCpaMode(answers.cpaMode);
 
-  const [{ data: closes }, { data: accounts }] = await Promise.all([
+  const [{ data: closes }] = await Promise.all([
     supabase
       .from("teller_period_closes")
       .select("id, period_end, notes, closed_at, closed_by")
       .eq("organization_id", organizationId)
       .order("period_end", { ascending: false })
       .limit(24),
-    supabase
-      .from("teller_accounts")
-      .select("id, code, name")
-      .eq("organization_id", organizationId)
-      .order("code"),
   ]);
 
   const closeRows = (closes ?? []) as PeriodCloseRow[];
@@ -54,7 +49,6 @@ export default async function AccountingPage() {
         nextClose={nextCloseablePeriodEnd(closedThrough)}
         periods={recentMonthPeriods(12, new Date(), closedThrough)}
         closes={closeRows}
-        accounts={accounts ?? []}
         canManageClose={canManagePeriodClose(role)}
         canAdjust={canPostAdjustments(role)}
         canExport={canExportBooks(role, cpaMode)}

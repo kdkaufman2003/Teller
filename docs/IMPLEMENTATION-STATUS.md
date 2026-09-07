@@ -7,6 +7,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Flag | Value | Verified |
 |------|-------|----------|
 | `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
+| `PHASE_9_COMPLETE` | **false** | Local only — migration `025_phase9_month_end_close.sql` ready; not applied to production; not deployed |
 | `PHASE_7_COMPLETE` | **true** | Migration 023 applied; deploy `faa6bb9`; controlled prod 45/45 Phase 7 demo, 32/32 Phase 6, 18/18 Phase 5; GL revenue/cost reconciliation difference $0.00; HFAC baseline unchanged |
 | `PHASE_6_COMPLETE` | **true** | Controlled prod: 32/32 Phase 6 demo scenarios (incl. 10 accounting/control cases), Phase 5 verify+demo green, HFAC baseline unchanged (8 docs, 3 payments, 16 journals) |
 
@@ -44,8 +45,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Jurisdiction tax engine | ✓ (Phase 6) | `008_tax_engine.sql`, `src/lib/tax/`, `tax-rules/` spec + loader; no MO/KS rules shipped |
 | Banking adapter (read-only) | ✓ (Phase 7) | `009_banking.sql`, `src/lib/banking/`, Plaid Link, transaction import + match suggestions |
 | Accounting health engine | ✓ (Phase 8) | `src/lib/health/`, dashboard score + needs-attention list, `/api/health` |
-| Advanced reporting | ✓ (Phase 9) | `financial-reports.ts`, balance sheet, cash flow, AR/AP aging tabs on `/app/reports` |
-| Advanced accounting | ✓ (Phase 10) | `010_accounting_periods.sql`, period close, CPA mode, CSV exports, manual adjustments on `/app/accounting` |
+| Advanced reporting | ✓ (historical label — see naming note below) | `financial-reports.ts`, balance sheet, cash flow, AR/AP aging tabs on `/app/reports` |
+| Accounting periods (migration 010) | ✓ (historical label “Phase 10”) | `010_accounting_periods.sql`, CPA mode, CSV exports, legacy `/app/accounting` |
 | Intelligence / automation | ✓ (Phase 11) | `011_intelligence.sql`, `src/lib/intelligence/`, dashboard narrative + scan suggestions with human review |
 | Void / reversal workflow | ✓ (Phase 1) | `voidInvoice()`, `reverseJournalEntry()` |
 | Journal immutability | ✓ (Phase 1) | RLS insert-only on journal tables; `005_accounting_foundation.sql` |
@@ -59,6 +60,33 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Accounts payable & purchasing (Phase 6) | ✓ | Migrations 021–022, vendors, PO/receiving, multi-bill pay, vendor credits, recurring bills, AP dashboard; controlled prod demo covers multi-bill payment, over-allocation rejection, multi-bill credit apply, bank→bill_payment match (no extra journal), closed-period bill/payment rejection, tenant isolation, PO receipt/bill controls, approval rejection |
 | Job costing & profitability (Phase 7) | ✓ | Migration 023, atomic job numbering, line-level job attribution on invoices/expenses/bills, cost categories/budgets, lifecycle APIs, jobs UI, canonical profitability + GL bridge; `postBillOpen` persists document lines; settlement lines exclude `job_id` |
 | Fixed assets & depreciation (Phase 8) | ✓ | Migration 024, FA subledger + GL bridge, straight-line schedules, batch/single depreciation, atomic disposal RPC with UUID idempotency, assets UI, controlled prod 67/67 |
+
+### Phase naming note (historical drift)
+
+- **Advanced reporting** was labeled Phase 9 in early docs — it shipped before month-end close.
+- **Migration 010** (accounting periods) was labeled Phase 10 — do not renumber that migration.
+- **Current roadmap Phase 9** = month-end close, adjusting entries, and accounting controls (`025_phase9_month_end_close.sql`).
+
+### Phase 9 — month-end close (local checkpoint, not production)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Immutable close/reopen history | ✓ local | Append-only `teller_period_closes` events; legacy DELETE → reopen trigger for Phase 8 app |
+| Accounting state watermark | ✓ local | `teller_accounting_state_versions`; close validates `expectedAccountingVersion` + `expectedCloseStateVersion` |
+| Journal direct-insert hardening | ✓ local | No generic period-lock bypass; advisory lock on all journal inserts |
+| Close readiness engine | ✓ local | `src/lib/accounting/close-readiness.ts` |
+| Reconciliation aggregation | ✓ local | `src/lib/accounting/close-reconciliation-summary.ts` |
+| Org-wide job GL reconciliation | ✓ local | `src/lib/accounting/org-job-reconciliation.ts` |
+| Trial balance (full GL scope) | ✓ local | `src/lib/accounting/trial-balance.ts`, `/app/accounting/trial-balance` |
+| Adjusting journal workflow | ✓ local | `teller_adjusting_journal_entries`, multi-line composer, `/app/accounting/adjustments` |
+| Recurring journal templates | ✓ local | `teller_recurring_journal_templates`, draft-only generation |
+| Derived retained earnings | ✓ local | `derived-retained-earnings.ts` — fiscal-year-aware; **no** year-end closing journals |
+| Close UI | ✓ local | `/app/accounting/close`, period detail, checklist APIs |
+| Controlled harness | ✓ local | `setup:phase9-demo-org`, `verify:phase9:controlled`, `demo:phase9:controlled` (100 scenarios), `audit:phase9:deployment-compat` |
+
+**Deferred Phase 9.1:** dedicated prepaid/accrual schedules, auto-post recurring journals, comparative TB columns, AJE attachments.
+
+**Production gate:** Do not apply migration 025 or deploy Phase 9 until controlled prod sign-off.
 
 ### Phase 8 invariants (fixed assets)
 
@@ -84,9 +112,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | HFAC integration | Manual sync button + webhooks; structured won-deal metadata | Event-driven hooks in HFAC; post estimated COGS to GL |
 | Partial payments | Cumulative `amount_paid`, open until fully paid | Payment UI, customer statements |
 | Jurisdiction tax rules | Engine + loader ready; `taxMode: jurisdiction` optional | Authoritative MO/KS rule specs after professional review |
-| Bank reconciliation UI | Import + match suggestions; confirm/ignore | Statement balance reconciliation, period close |
-| Health engine | Score + attention on dashboard | Anomaly detection wired via intelligence scan |
-| Immutability | Journal UPDATE/DELETE blocked; period close locks posting dates | Reopen workflow + adjustment audit trail |
+| Immutability | Journal UPDATE/DELETE blocked; period close locks posting dates via DB trigger + RPC | Reopen requires reason; AJE workflow replaces legacy 2-line adjustment |
+| Bank reconciliation UI | Import + match suggestions; confirm/ignore | Required-bank-for-close settings in `teller_close_settings` |
 | Settings UX | Company + accounting editable in Settings | Locations UI, team invites |
 | Integration adapters | HFAC-specific code paths | Extract `IntegrationProvider` interface |
 | Tests | Balance, reversal, roles, org config, HFAC import | Tenant isolation integration tests |
@@ -99,7 +126,6 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | Medium | MFA requirement for owner/admin |
 | Medium | Rate limiting on auth + webhooks |
 | Medium | Authoritative MO/KS tax rule packs (populate engine after review) |
-| Medium | Full bank reconciliation (statement balances, period lock) |
 | Low | SOC 2 / formal compliance program |
 
 ## Explicit non-goals for V1

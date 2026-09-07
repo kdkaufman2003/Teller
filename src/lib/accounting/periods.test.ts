@@ -9,13 +9,19 @@ import {
 } from "./periods";
 
 describe("booksClosedThrough", () => {
-  it("returns the latest closed period end", () => {
+  it("returns effective closed-through from the latest event", () => {
     expect(
       booksClosedThrough([
-        { period_end: "2026-01-31" },
-        { period_end: "2026-03-31" },
-        { period_end: "2026-02-28" },
+        { period_end: "2026-01-31", effective_closed_through: "2026-01-31", closed_at: "2026-02-01T00:00:00Z" },
+        { period_end: "2026-03-31", effective_closed_through: "2026-03-31", closed_at: "2026-04-01T00:00:00Z" },
+        { period_end: "2026-03-31", effective_closed_through: "2026-02-28", closed_at: "2026-04-02T00:00:00Z" },
       ]),
+    ).toBe("2026-02-28");
+  });
+
+  it("falls back to period_end when effective_closed_through is absent", () => {
+    expect(
+      booksClosedThrough([{ period_end: "2026-03-31", closed_at: "2026-04-01T00:00:00Z" }]),
     ).toBe("2026-03-31");
   });
 });
