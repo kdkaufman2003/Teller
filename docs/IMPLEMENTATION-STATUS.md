@@ -6,8 +6,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
-| `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
-| `PHASE_9_COMPLETE` | **false** | Local only — migration `025_phase9_month_end_close.sql` ready; not applied to production; not deployed |
+| `PHASE_9_COMPLETE` | **true** | Migration 025 applied; deploy `fc54b96`; controlled prod 102/102 Phase 9 demo, 67/67 Phase 8, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; HFAC baseline unchanged; production journals balanced (192 entries) |
+| `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo (post-025 regression), 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
 | `PHASE_7_COMPLETE` | **true** | Migration 023 applied; deploy `faa6bb9`; controlled prod 45/45 Phase 7 demo, 32/32 Phase 6, 18/18 Phase 5; GL revenue/cost reconciliation difference $0.00; HFAC baseline unchanged |
 | `PHASE_6_COMPLETE` | **true** | Controlled prod: 32/32 Phase 6 demo scenarios (incl. 10 accounting/control cases), Phase 5 verify+demo green, HFAC baseline unchanged (8 docs, 3 payments, 16 journals) |
 
@@ -67,26 +67,26 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 - **Migration 010** (accounting periods) was labeled Phase 10 — do not renumber that migration.
 - **Current roadmap Phase 9** = month-end close, adjusting entries, and accounting controls (`025_phase9_month_end_close.sql`).
 
-### Phase 9 — month-end close (local checkpoint, not production)
+### Phase 9 — month-end close (production complete)
 
 | Area | Status | Location |
 |------|--------|----------|
-| Immutable close/reopen history | ✓ local | Append-only `teller_period_closes` events; legacy DELETE → reopen trigger for Phase 8 app |
-| Accounting state watermark | ✓ local | `teller_accounting_state_versions`; close validates `expectedAccountingVersion` + `expectedCloseStateVersion` |
-| Journal direct-insert hardening | ✓ local | No generic period-lock bypass; advisory lock on all journal inserts |
-| Close readiness engine | ✓ local | `src/lib/accounting/close-readiness.ts` |
-| Reconciliation aggregation | ✓ local | `src/lib/accounting/close-reconciliation-summary.ts` |
-| Org-wide job GL reconciliation | ✓ local | `src/lib/accounting/org-job-reconciliation.ts` |
-| Trial balance (full GL scope) | ✓ local | `src/lib/accounting/trial-balance.ts`, `/app/accounting/trial-balance` |
-| Adjusting journal workflow | ✓ local | `teller_adjusting_journal_entries`, multi-line composer, `/app/accounting/adjustments` |
-| Recurring journal templates | ✓ local | `teller_recurring_journal_templates`, draft-only generation |
-| Derived retained earnings | ✓ local | `derived-retained-earnings.ts` — fiscal-year-aware; **no** year-end closing journals |
-| Close UI | ✓ local | `/app/accounting/close`, period detail, checklist APIs |
-| Controlled harness | ✓ local | `setup:phase9-demo-org`, `verify:phase9:controlled`, `demo:phase9:controlled` (100 scenarios), `audit:phase9:deployment-compat` |
+| Immutable close/reopen history | ✓ prod | Append-only `teller_period_closes` events; legacy DELETE → reopen trigger for Phase 8 app |
+| Accounting state watermark | ✓ prod | `teller_accounting_state_versions`; close validates `expectedAccountingVersion` + `expectedCloseStateVersion` |
+| Journal direct-insert hardening | ✓ prod | No generic period-lock bypass; advisory lock on all journal inserts |
+| Close readiness engine | ✓ prod | `src/lib/accounting/close-readiness.ts` |
+| Reconciliation aggregation | ✓ prod | `src/lib/accounting/close-reconciliation-summary.ts` |
+| Org-wide job GL reconciliation | ✓ prod | `src/lib/accounting/org-job-reconciliation.ts` |
+| Trial balance (full GL scope) | ✓ prod | `src/lib/accounting/trial-balance.ts`, `/app/accounting/trial-balance` |
+| Adjusting journal workflow | ✓ prod | `teller_adjusting_journal_entries`, multi-line composer, `/app/accounting/adjustments` |
+| Recurring journal templates | ✓ prod | `teller_recurring_journal_templates`, draft-only generation |
+| Derived retained earnings | ✓ prod | `derived-retained-earnings.ts` — fiscal-year-aware; **no** year-end closing journals |
+| Close UI | ✓ prod | `/app/accounting/close`, period detail, checklist APIs |
+| Controlled harness | ✓ prod | `setup:phase9-demo-org`, `verify:phase9:controlled`, `demo:phase9:controlled` (102 scenarios), `audit:phase9:deployment-compat` |
+
+**Controlled production acceptance (2026-09-07):** migration `025_phase9_month_end_close.sql` applied; `demo:phase9:controlled` **102/102**; Phase 5–8 regressions green; HFAC baseline unchanged (8 docs, 3 payments, 16 journals, AR $1,500.00, AP $0.00).
 
 **Deferred Phase 9.1:** dedicated prepaid/accrual schedules, auto-post recurring journals, comparative TB columns, AJE attachments.
-
-**Production gate:** Do not apply migration 025 or deploy Phase 9 until controlled prod sign-off.
 
 ### Phase 8 invariants (fixed assets)
 
