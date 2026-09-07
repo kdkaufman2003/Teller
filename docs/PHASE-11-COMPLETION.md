@@ -56,7 +56,7 @@
 ## Deferred (not blocking Phase 11)
 
 - **Production scheduler/cron** — `PRODUCTION_SCHEDULER_CRON` deferred until separately authorized; manual occurrence workflows sufficient for V1
-- **Accrual-to-bill automatic settlement** — Phase 11.1; accruals post journals only, not AP bills
+- **Accrual-to-bill automatic settlement** — shipped in Phase 11.1; see [PHASE-11-1-COMPLETION.md](./PHASE-11-1-COMPLETION.md)
 - **Deferred revenue deposit-linked E2E in demo org** — validation guards verified; full Phase 3 deposit → schedule fixture optional
 - **pg_catalog deep verification** — `SUPABASE_DB_URL` not configured; REST table/column probes used instead
 
@@ -68,7 +68,7 @@ Customer deposits (Phase 3) remain the upfront receipt path. Schedule-based reco
 
 ```
 PHASE_11_COMPLETE = true
-PHASE_11_1_STARTED = false
+PHASE_11_1_COMPLETE = true
 PHASE_12_STARTED = false
 PRODUCTION_SCHEDULER_ENABLED = false
 ```

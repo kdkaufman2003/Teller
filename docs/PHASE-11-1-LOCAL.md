@@ -1,11 +1,8 @@
-# Phase 11.1 — Local implementation (not deployed)
+# Phase 11.1 — Accrual-to-bill settlement
 
-Accrual-to-bill settlement and production scheduler readiness implemented locally only.
+**Production complete:** see [PHASE-11-1-COMPLETION.md](./PHASE-11-1-COMPLETION.md).
 
-## Deferred until manual migration 028
-
-- Apply `supabase/migrations/028_phase11_1_accrual_settlement.sql` manually when authorized
-- Do **not** enable `PRODUCTION_SCHEDULER_ENABLED` until separately authorized
+This file retains local implementation notes and accounting corrections reference.
 
 ## Accounting corrections (pre-migration 028)
 

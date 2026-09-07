@@ -127,7 +127,22 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 **Controlled production acceptance (2026-09-07):** migration `027_phase11_subledger_automation.sql` manually applied; `demo:phase11:controlled` **105/105**; `accept:phase11:controlled` **19/19**; Phase 5–10 regressions green; HFAC baseline unchanged (8 docs, 3 payments, 16 journals, AR $1,500.00). Deploy: `https://teller-indol.vercel.app` (`dpl_8ueLU88MWAW2nJbLzqd8YAcUQ7tC`, commit `c91a9cf`). Details: [PHASE-11-COMPLETION.md](./PHASE-11-COMPLETION.md).
 
-**Deferred Phase 11.1:** accrual-to-bill automatic settlement, production scheduler/cron, separate deferred revenue liability account.
+### Phase 11.1 — accrual-to-bill settlement (production complete)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Accrual settlement posting | ✓ prod | `028_phase11_1_accrual_settlement.sql`, `accrual-settlement/*` |
+| Bill form accrual picker | ✓ prod | `AccrualSettlementPicker.tsx`, `postBillOpen()` |
+| Settlement preview / partial / multi-accrual | ✓ prod | `settlement-service.ts`, `allocation-engine.ts` |
+| Variance reporting + close readiness | ✓ prod | `/app/accounting/accrual-settlements`, `close-readiness.ts` |
+| Bill void guard | ✓ prod | `bill-settlement-guard.ts`, `voidBill()` |
+| Line-level purchase tax | ✓ prod | `tax-attribution.ts`, `purchase-tax.ts` |
+| Scheduler run history (disabled cron) | ✓ prod | `teller_scheduler_runs`, `/api/cron/process-schedules` |
+| Controlled harness | ✓ prod | `demo:phase11-1:controlled` (88), `accept:phase11-1:controlled` (23 DB) |
+
+**Controlled production acceptance (2026-09-07):** migration `028_phase11_1_accrual_settlement.sql` manually applied; `demo:phase11-1:controlled` **88/88**; `accept:phase11-1:controlled` **23/23**; Phase 5–11 regressions green; HFAC baseline unchanged; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_9TnchvQbWCTxkQjkAwQ5LtH4xC4C`, commit `0655b9a`). Details: [PHASE-11-1-COMPLETION.md](./PHASE-11-1-COMPLETION.md).
+
+**Deferred Phase 11.1 follow-on:** production scheduler/cron enablement, separate deferred revenue liability account.
 
 ### Phase 8 invariants (fixed assets)
 
