@@ -3,6 +3,7 @@
 **Completed:** 2026-09-07  
 **Migration:** `026_phase10_financial_reporting.sql` (manually applied in Supabase SQL Editor)  
 **Production deploy:** `https://teller-indol.vercel.app`  
+**Git commit:** `c70b7de`  
 **Deployment ID:** `dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1`
 
 ## Gates
