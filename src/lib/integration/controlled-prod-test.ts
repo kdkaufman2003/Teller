@@ -27,6 +27,8 @@ export const CONTROLLED_PHASE12_DEMO_ORG_NAME = "Teller Phase 12 Demo";
 export const CONTROLLED_PHASE12_FOREIGN_ORG_NAME = "Teller Phase 12 Foreign Test";
 export const CONTROLLED_PHASE13_DEMO_ORG_NAME = "Teller Phase 13 Demo";
 export const CONTROLLED_PHASE13_FOREIGN_ORG_NAME = "Teller Phase 13 Foreign Test";
+export const CONTROLLED_PHASE14_DEMO_ORG_NAME = "Teller Phase 14 Demo";
+export const CONTROLLED_PHASE14_FOREIGN_ORG_NAME = "Teller Phase 14 Foreign Test";
 
 export const CONTROLLED_TEST_ORG_METADATA_MARKER = "teller_phase4_controlled_test";
 

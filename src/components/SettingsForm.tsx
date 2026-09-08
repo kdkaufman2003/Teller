@@ -61,27 +61,29 @@ export function SettingsForm({
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    setOrg({
-      name: initialOrganization.name,
-      legal_name: initialOrganization.legal_name,
-      phone: initialOrganization.phone ?? "",
-      timezone: initialOrganization.timezone ?? "America/Chicago",
-      currency: initialOrganization.currency ?? "USD",
-      address_line1: initialOrganization.address_line1 ?? "",
-      city: initialOrganization.city ?? "",
-      state: initialOrganization.state ?? "",
-      postal_code: initialOrganization.postal_code ?? "",
-      country: initialOrganization.country ?? "US",
+    void Promise.resolve().then(() => {
+      setOrg({
+        name: initialOrganization.name,
+        legal_name: initialOrganization.legal_name,
+        phone: initialOrganization.phone ?? "",
+        timezone: initialOrganization.timezone ?? "America/Chicago",
+        currency: initialOrganization.currency ?? "USD",
+        address_line1: initialOrganization.address_line1 ?? "",
+        city: initialOrganization.city ?? "",
+        state: initialOrganization.state ?? "",
+        postal_code: initialOrganization.postal_code ?? "",
+        country: initialOrganization.country ?? "US",
+      });
+      setBasis(String(initialAnswers.basis ?? "accrual"));
+      setFiscalYearStart(String(initialAnswers.fiscalYearStart ?? "1"));
+      setCollectTax(
+        initialAnswers.collectTax !== false &&
+          initialAnswers.collectTax !== "false" &&
+          initialAnswers.collectTax !== "no",
+      );
+      setTaxRate(String(initialAnswers.taxRate ?? "0"));
+      setCpaMode(parseCpaMode(initialAnswers.cpaMode));
     });
-    setBasis(String(initialAnswers.basis ?? "accrual"));
-    setFiscalYearStart(String(initialAnswers.fiscalYearStart ?? "1"));
-    setCollectTax(
-      initialAnswers.collectTax !== false &&
-        initialAnswers.collectTax !== "false" &&
-        initialAnswers.collectTax !== "no",
-    );
-    setTaxRate(String(initialAnswers.taxRate ?? "0"));
-    setCpaMode(parseCpaMode(initialAnswers.cpaMode));
   }, [initialOrganization, initialAnswers]);
 
   async function save(event: React.FormEvent) {

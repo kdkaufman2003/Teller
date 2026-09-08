@@ -39,15 +39,30 @@ export function AccrualSettlementPicker({
 
   useEffect(() => {
     if (!partyId) {
-      setEligible([]);
+      void Promise.resolve().then(() => {
+        setEligible([]);
+        setLoading(false);
+      });
       return;
     }
-    setLoading(true);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoading(true);
+    });
     fetch(`/api/accounting/accrual-settlements/eligible?partyId=${encodeURIComponent(partyId)}`)
       .then((res) => res.json())
-      .then((data: { eligible?: EligibleAccrual[] }) => setEligible(data.eligible ?? []))
-      .catch(() => setEligible([]))
-      .finally(() => setLoading(false));
+      .then((data: { eligible?: EligibleAccrual[] }) => {
+        if (!cancelled) setEligible(data.eligible ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setEligible([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [partyId]);
 
   const selectedTotal = useMemo(
@@ -57,7 +72,7 @@ export function AccrualSettlementPicker({
 
   useEffect(() => {
     if (!value.length || billAmount <= 0) {
-      setPreview(null);
+      void Promise.resolve().then(() => setPreview(null));
       return;
     }
     fetch("/api/accounting/accrual-settlements/preview", {

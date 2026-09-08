@@ -788,7 +788,7 @@ function buildScenarioMatrix(): Scenario[] {
     if (sumOpenGrniSubledger([state]) !== 800) throw new Error("partial return grni");
   }});
   scenarios.push({ label: "160 return after partial bill", run() {
-    let state: ReceiptOpenState = { receiptLineId: "rl1", quantityReceived: 10, quantityMatched: 5, receiptValue: 1000, valueMatched: 500 };
+    const state: ReceiptOpenState = { receiptLineId: "rl1", quantityReceived: 10, quantityMatched: 5, receiptValue: 1000, valueMatched: 500 };
     if (computeOpenReceiptValue(state) !== 500) throw new Error("return after partial");
   }});
 

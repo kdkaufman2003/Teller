@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: routes.purchaseOrders, label: "Purchase orders" },
   { href: routes.apDashboard, label: "AP" },
   { href: routes.reports, label: "Reports" },
+  { href: routes.planning, label: "Planning" },
   { href: routes.accounts, label: "Accounts" },
   { href: routes.ledger, label: "Ledger" },
   { href: routes.accounting, label: "Accounting" },

@@ -23,7 +23,17 @@ export default function DepreciationPage() {
   }
 
   useEffect(() => {
-    void loadPreview();
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch(
+        `/api/fixed-assets/depreciation?periodYear=${periodYear}&periodMonth=${periodMonth}`,
+      );
+      const data = await response.json();
+      if (!cancelled && response.ok) setPreview(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [periodYear, periodMonth]);
 
   async function postBatch() {

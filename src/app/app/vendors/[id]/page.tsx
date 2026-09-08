@@ -90,7 +90,6 @@ export default async function VendorDetailPage({
       })),
   );
 
-  let unappliedCredits = 0;
   const creditRows = await Promise.all(
     (credits ?? []).map(async (credit) => {
       const applied = await sumCreditsAppliedFromDocument(
@@ -99,9 +98,12 @@ export default async function VendorDetailPage({
         credit.id as string,
       );
       const remaining = asNumber(credit.total) - applied;
-      if (remaining > 0.009) unappliedCredits += remaining;
       return { ...credit, remaining };
     }),
+  );
+  const unappliedCredits = creditRows.reduce(
+    (sum, credit) => (credit.remaining > 0.009 ? sum + credit.remaining : sum),
+    0,
   );
 
   const overdue = openBills.reduce((sum, row) => {

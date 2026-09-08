@@ -68,6 +68,9 @@ export const routes = {
   assetsReconciliation: "/app/assets/reconciliation",
   assetCategories: "/app/assets/categories",
   fixedAssetSettings: "/app/settings/fixed-assets",
+  planning: "/app/planning",
+  planningBudgets: "/app/planning/budgets",
+  planningBudgetNew: "/app/planning/budgets/new",
   settings: "/app/settings",
 } as const;
 
@@ -155,4 +158,8 @@ export function accountActivityPath(
   }
   const query = qs.toString();
   return `${routes.reports}/account/${accountId}${query ? `?${query}` : ""}`;
+}
+
+export function planningBudgetPath(id: string) {
+  return `${routes.planningBudgets}/${id}`;
 }

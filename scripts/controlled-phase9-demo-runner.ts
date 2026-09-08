@@ -367,7 +367,7 @@ export async function runPhase9ControlledDemo(): Promise<{
   }
 
   await cleanup(supabase, orgId, orgId);
-  let accounts = await accountMap(supabase, orgId);
+  const accounts = await accountMap(supabase, orgId);
 
   // PERIOD FOUNDATION (1-12)
   await run("1. booksClosedThrough null when no closes", async () => {

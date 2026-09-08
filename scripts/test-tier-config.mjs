@@ -20,6 +20,7 @@ export const PHASE_DEMOS = {
 };
 
 export const PHASE_VERIFY = {
+  14: "verify:migration:032:controlled",
   13: "verify:phase13:controlled",
   12: "verify:phase12:controlled",
   11: "verify:phase11:controlled",
@@ -48,6 +49,7 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/integration/safety.test.ts",
   "src/lib/integration/controlled-prod-test.test.ts",
   "src/lib/integration/controlled-phase-isolation.test.ts",
+  "src/lib/planning/budgets/phase14.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -62,6 +64,7 @@ export const PHASE_UNIT_TESTS = {
   "11.1": ["src/lib/accounting/phase11-1.test.ts"],
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
+  14: ["src/lib/planning/budgets/phase14.test.ts"],
 };
 
 /**
@@ -119,6 +122,11 @@ export const MODULE_DEPENDENCIES = {
     demoPhases: [13, 6, 7, 9, 10, "11.1"],
     unitPatterns: ["src/lib/accounting/phase13.test.ts"],
   },
+  planning: {
+    description: "budgets, planning settings, forecast foundations — no GL mutation",
+    demoPhases: [9, 10],
+    unitPatterns: ["src/lib/planning/budgets/phase14.test.ts"],
+  },
 };
 
 /** Primary modules touched per phase — drives test:affected. */
@@ -133,6 +141,7 @@ export const PHASE_PRIMARY_MODULES = {
   "11.1": ["subledger_automation", "ap_purchasing"],
   12: ["payroll", "job_costing"],
   13: ["inventory_grni", "ap_purchasing", "job_costing", "period_lock_close", "financial_reporting"],
+  14: ["planning", "period_lock_close", "financial_reporting"],
 };
 
 export function demoPhaseKey(phase) {

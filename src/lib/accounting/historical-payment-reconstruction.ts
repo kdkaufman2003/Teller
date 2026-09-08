@@ -741,7 +741,7 @@ export async function reconstructHistoricalPayments(
 
   const partyNames = new Map((parties ?? []).map((row) => [row.id as string, row.name as string]));
 
-  let journalQuery = supabase
+  const journalQuery = supabase
     .from("teller_journal_entries")
     .select("id, entry_date, source_kind, source_id, memo, reverses_entry_id")
     .eq("organization_id", input.organizationId)

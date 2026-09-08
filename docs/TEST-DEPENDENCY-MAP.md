@@ -120,6 +120,20 @@ Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**)
 
 ---
 
+### Planning / budgets (Phase 14)
+
+**Code:** `src/lib/planning/**` — budgets, settings, audit. No GL mutation paths.
+
+**Primary dependencies:** Phase 9 (fiscal year semantics), Phase 10 (future budget vs actual GL alignment).
+
+**Rerun demos:** Phase 9, 10 only when planning touches fiscal/report interfaces.
+
+**Unit tests:** `src/lib/planning/budgets/phase14.test.ts`
+
+**DB acceptance (gate only):** deferred to Phase 14K — requires migration 032 applied manually.
+
+---
+
 ## Phase → primary modules
 
 | Phase | Primary modules | `test:affected` demo phases (Phase 13 active) |
@@ -134,6 +148,7 @@ Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**)
 | 11.1 | subledger_automation, ap_purchasing | 6, 9, 11, 11.1, 13, 7, 10 |
 | 12 | payroll, job_costing | 7, 12, 13, 6, 9, 10, 11.1 |
 | 13 | inventory_grni, ap, job_costing, close, reporting | **6, 7, 9, 10, 11.1, 13** |
+| 14 | planning, period_lock_close, financial_reporting | **9, 10** |
 
 Configuration source: `scripts/test-tier-config.mjs`
 

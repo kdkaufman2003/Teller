@@ -47,9 +47,23 @@ export function PartnerPanel() {
   }
 
   useEffect(() => {
-    load().catch((err) =>
-      setError(err instanceof Error ? err.message : "Could not load integration settings"),
-    );
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/integrations/partner");
+        const payload = (await response.json()) as PartnerState & { error?: string };
+        if (cancelled) return;
+        if (!response.ok) throw new Error(payload.error || "Could not load integration settings");
+        setState(payload);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not load integration settings");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function run(action: "attach" | "detach") {

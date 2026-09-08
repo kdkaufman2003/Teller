@@ -28,7 +28,15 @@ export default function RecurringJournalsPage() {
   }
 
   useEffect(() => {
-    void loadTemplates();
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch("/api/accounting/recurring-journals");
+      const data = (await response.json()) as { templates?: Template[]; error?: string };
+      if (!cancelled && response.ok) setTemplates(data.templates ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function generateDraft(templateId: string) {

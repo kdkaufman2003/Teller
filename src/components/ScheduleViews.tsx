@@ -73,8 +73,31 @@ export function ScheduleDetailView({
   }, [scheduleId]);
 
   useEffect(() => {
-    void load().catch((err) => setError(err instanceof Error ? err.message : "Load failed"));
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/accounting/schedules/${scheduleId}`);
+        const data = (await response.json()) as {
+          schedule?: Schedule;
+          occurrences?: Occurrence[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!response.ok) throw new Error(data.error || "Could not load schedule");
+        setSchedule(data.schedule ?? null);
+        setOccurrences(data.occurrences ?? []);
+        if (data.schedule) {
+          setEditName(data.schedule.name);
+          setEditMemo(String(data.schedule.memo ?? ""));
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Load failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scheduleId]);
 
   useEffect(() => {
     if (!schedule || schedule.status !== "draft") return;

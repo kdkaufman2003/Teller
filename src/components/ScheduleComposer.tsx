@@ -120,7 +120,7 @@ export function ScheduleComposer({
 
   useEffect(() => {
     if (!scheduleType || !originalAmount) {
-      setPreview([]);
+      void Promise.resolve().then(() => setPreview([]));
       return;
     }
     if (scheduleType === "accrued_expense") {
@@ -140,7 +140,7 @@ export function ScheduleComposer({
       return;
     }
     if (!endDate) {
-      setPreview([]);
+      void Promise.resolve().then(() => setPreview([]));
       return;
     }
     void fetch("/api/accounting/schedules/preview", {
