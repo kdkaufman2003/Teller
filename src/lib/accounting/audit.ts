@@ -113,7 +113,16 @@ export type AuditAction =
   | "accrual.settlement.posted"
   | "accrual.settlement.reversed"
   | "accrual.settlement.failed"
-  | "accrual.settlement.linked_to_bill";
+  | "accrual.settlement.linked_to_bill"
+  | "payroll.import.created"
+  | "payroll.run.reviewed"
+  | "payroll.run.posted"
+  | "payroll.run.reversed"
+  | "payroll.mapping.changed"
+  | "payroll.labor.allocated"
+  | "payroll.labor.reallocated"
+  | "payroll.settlement.created"
+  | "payroll.reconciliation.reviewed";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

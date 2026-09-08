@@ -60,6 +60,9 @@ export type JobProfitabilitySummary = {
   remainingCommittedCost: number;
   actualDirectCost: number;
   indirectCost: number;
+  directLaborCost: number;
+  employerLaborBurden: number;
+  totalLaborCost: number;
   grossProfit: number;
   grossMarginPercent: number | null;
   remainingBudget: number;
@@ -144,6 +147,40 @@ export function isEconomicIndirectCostLine(
   if (costClassification !== "indirect") return false;
   if (!["cogs", "expense"].includes(type)) return false;
   return debit > credit + 0.009;
+}
+
+export function summarizeLaborForJob(
+  jobId: string,
+  laborEntries: Array<{
+    job_id: string | null;
+    gross_amount: number;
+    employer_burden_amount: number;
+    labor_type?: string | null;
+  }>,
+): { directLaborCost: number; employerLaborBurden: number; totalLaborCost: number } {
+  let directLaborCost = 0;
+  let employerLaborBurden = 0;
+  for (const row of laborEntries) {
+    if (row.job_id !== jobId) continue;
+    if ((row.labor_type ?? "direct") !== "direct") continue;
+    directLaborCost += asNumber(row.gross_amount);
+    employerLaborBurden += asNumber(row.employer_burden_amount);
+  }
+  directLaborCost = roundMoney(directLaborCost);
+  employerLaborBurden = roundMoney(employerLaborBurden);
+  return {
+    directLaborCost,
+    employerLaborBurden,
+    totalLaborCost: roundMoney(directLaborCost + employerLaborBurden),
+  };
+}
+
+export function computeActualDirectCostWithLabor(
+  journalDirectCost: number,
+  directLaborCost: number,
+  employerLaborBurden: number,
+): number {
+  return roundMoney(journalDirectCost + directLaborCost + employerLaborBurden);
 }
 
 export function summarizeJournalLinesForJob(
@@ -415,10 +452,28 @@ export async function buildJobProfitabilitySummary(
 
   const jobLines = orgJournalLines.filter((row) => row.job_id === jobId);
 
-  const { recognizedRevenue, actualDirectCost, indirectCost } = summarizeJournalLinesForJob(
-    jobId,
-    jobLines,
-    accounts ?? [],
+  const { recognizedRevenue, actualDirectCost: journalDirectCost, indirectCost } =
+    summarizeJournalLinesForJob(jobId, jobLines, accounts ?? []);
+
+  const { data: laborEntries, error: laborError } = await supabase
+    .from("teller_labor_entries")
+    .select("job_id, gross_amount, employer_burden_amount, labor_type")
+    .eq("organization_id", organizationId)
+    .eq("job_id", jobId);
+
+  const labor =
+    laborError?.message?.includes("teller_labor_entries") ||
+    laborError?.code === "42P01"
+      ? { directLaborCost: 0, employerLaborBurden: 0, totalLaborCost: 0 }
+      : laborError
+        ? (() => {
+            throw new Error(laborError.message);
+          })()
+        : summarizeLaborForJob(jobId, laborEntries ?? []);
+  const actualDirectCost = computeActualDirectCostWithLabor(
+    journalDirectCost,
+    labor.directLaborCost,
+    labor.employerLaborBurden,
   );
 
   const glReconciliation = summarizeGlReconciliation(orgJournalLines, accounts ?? [], jobId);
@@ -477,6 +532,9 @@ export async function buildJobProfitabilitySummary(
     remainingCommittedCost,
     actualDirectCost,
     indirectCost,
+    directLaborCost: labor.directLaborCost,
+    employerLaborBurden: labor.employerLaborBurden,
+    totalLaborCost: labor.totalLaborCost,
     grossProfit,
     grossMarginPercent: marginPercent(grossProfit, recognizedRevenue),
     remainingBudget,

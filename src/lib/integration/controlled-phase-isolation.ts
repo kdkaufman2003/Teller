@@ -11,10 +11,12 @@ import {
   CONTROLLED_PHASE9_DEMO_ORG_NAME,
   CONTROLLED_PHASE10_DEMO_ORG_NAME,
   CONTROLLED_PHASE11_DEMO_ORG_NAME,
+  CONTROLLED_PHASE12_DEMO_ORG_NAME,
+  CONTROLLED_PHASE12_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "./controlled-prod-test";
 
-export type ControlledPhase = 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export type ControlledPhase = 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export type OrgEconomicFingerprint = {
   documents: number;
@@ -33,9 +35,10 @@ const PHASE_CONFIG: Record<
   9: { envKey: "TELLER_PHASE9_DEMO_ORG_ID", orgName: CONTROLLED_PHASE9_DEMO_ORG_NAME },
   10: { envKey: "TELLER_PHASE10_DEMO_ORG_ID", orgName: CONTROLLED_PHASE10_DEMO_ORG_NAME },
   11: { envKey: "TELLER_PHASE11_DEMO_ORG_ID", orgName: CONTROLLED_PHASE11_DEMO_ORG_NAME },
+  12: { envKey: "TELLER_PHASE12_DEMO_ORG_ID", orgName: CONTROLLED_PHASE12_DEMO_ORG_NAME },
 };
 
-const ALL_PHASES: ControlledPhase[] = [5, 6, 7, 8, 9, 10, 11];
+const ALL_PHASES: ControlledPhase[] = [5, 6, 7, 8, 9, 10, 11, 12];
 
 export function controlledDemoOrgIdFromEnv(phase: ControlledPhase): string | null {
   return process.env[PHASE_CONFIG[phase].envKey]?.trim() ?? null;
