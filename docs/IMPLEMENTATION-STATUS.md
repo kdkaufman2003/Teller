@@ -6,7 +6,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
-| `PHASE_11_COMPLETE` | **true** | Migration 027 manually applied; deploy `dpl_8ueLU88MWAW2nJbLzqd8YAcUQ7tC` → `https://teller-indol.vercel.app`; controlled prod 105/105 logic + 19/19 DB acceptance; Phase 5–10 regressions green; HFAC unchanged; production journals balanced; scheduler intentionally disabled |
+| `PHASE_12_COMPLETE` | **true** | Migrations 029+030 manually applied; deploy `dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV` → `https://teller-indol.vercel.app`; controlled prod 110/110 logic + 52/52 DB acceptance; claim-before-post concurrency; `ORPHAN_PAYROLL_JOURNALS=0`; HFAC unchanged; production journals balanced; scheduler disabled |
+| `PHASE_11_1_COMPLETE` | **true** | Migration 028 manually applied; deploy `dpl_9TnchvQbWCTxkQjkAwQ5LtH4xC4C` → `https://teller-indol.vercel.app`; controlled prod 88/88 logic + 23/23 DB acceptance; Phase 5–11 regressions green; HFAC unchanged; production journals balanced; scheduler intentionally disabled |
 | `PHASE_10_COMPLETE` | **true** | Migration 026 manually applied; deploy `dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1` → `https://teller-indol.vercel.app`; controlled prod 110/110 Phase 10, Phase 5–9 regressions green; HFAC unchanged; 192/192 journals balanced |
 | `PHASE_9_COMPLETE` | **true** | Migration 025 applied; deploy `fc54b96`; controlled prod 102/102 Phase 9 demo, 67/67 Phase 8, 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; HFAC baseline unchanged; production journals balanced (192 entries) |
 | `PHASE_8_COMPLETE` | **true** | Migration 024 applied (schema-wide); controlled prod 67/67 Phase 8 demo (post-025 regression), 45/45 Phase 7, 32/32 Phase 6, 18/18 Phase 5; GL fixed-asset cost/accum/expense reconciliation difference $0.00; HFAC baseline unchanged; disposal idempotency + atomic RPC verified |
@@ -22,7 +23,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 - **Customer deposits** are liability movements — not revenue until applied to invoices.
 - **Purchase orders** represent commitment; actual cost posts on bills/expenses only.
 - Canonical job profitability reconciles to GL activity within explicit revenue/direct-cost scope (`GL_*_DIFFERENCE = 0.00` in controlled demo).
-- **Labor payroll** job costing remains deferred (no payroll engine in V1).
+- **Labor payroll** job costing — **Phase 12 complete** (see below).
 - Legacy job status values remain temporarily accepted in migration 023 for deploy compatibility; cleanup migration deferred.
 
 ### Phase 7 deferred polish
@@ -143,6 +144,24 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 **Controlled production acceptance (2026-09-07):** migration `028_phase11_1_accrual_settlement.sql` manually applied; `demo:phase11-1:controlled` **88/88**; `accept:phase11-1:controlled` **23/23**; Phase 5–11 regressions green; HFAC baseline unchanged; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_9TnchvQbWCTxkQjkAwQ5LtH4xC4C`, commit `0655b9a`). Details: [PHASE-11-1-COMPLETION.md](./PHASE-11-1-COMPLETION.md).
 
 **Deferred Phase 11.1 follow-on:** production scheduler/cron enablement, separate deferred revenue liability account.
+
+### Phase 12 — payroll & labor accounting (production complete)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Payroll run recognition | ✓ prod | `029_phase12_payroll_labor.sql`, `payroll-service.ts`, atomic RPC 030 |
+| Workers + component mappings | ✓ prod | `teller_workers`, `teller_payroll_account_mappings` |
+| Labor allocation + burden | ✓ prod | `labor-allocation.ts`, `teller_labor_entries` |
+| Liability settlement | ✓ prod | `settlement-service.ts`, `teller_payroll_liability_settlements` |
+| Job profitability labor integration | ✓ prod | `job-profitability.ts` |
+| Claim-before-post concurrency | ✓ prod | `030_phase12_payroll_atomic_rpc.sql`, `atomic-rpc.ts` |
+| Banking integration | ✓ prod | Phase 5 bank match scenarios in DB acceptance |
+| Close + accountant package | ✓ prod | `close-integration.ts`, `reporting.ts` |
+| Controlled harness | ✓ prod | `demo:phase12:controlled` (110), `accept:phase12:controlled` (52 DB) |
+
+**Controlled production acceptance (2026-09-08):** migrations `029` + `030` manually applied; `demo:phase12:controlled` **110/110**; `accept:phase12:controlled` **52/52**; HFAC baseline unchanged; `ORPHAN_PAYROLL_JOURNALS=0`; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV`, commit `00d9e45`). Details: [PHASE-12-COMPLETION.md](./PHASE-12-COMPLETION.md).
+
+**Deferred Phase 12 follow-on:** production scheduler/cron enablement, HFAC technician/time sync (boundary only today).
 
 ### Phase 8 invariants (fixed assets)
 
