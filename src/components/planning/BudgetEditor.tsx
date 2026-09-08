@@ -13,6 +13,14 @@ import {
 import { canEditBudgetLines } from "@/lib/planning/budgets/lifecycle";
 import { planningOwnerLabel } from "@/lib/planning/presentation-labels";
 import { routes } from "@/lib/routes";
+import type { ApprovalReviewSummary } from "@/lib/planning/budgets/approval-review";
+import { BudgetImportPanel } from "@/components/planning/BudgetImportPanel";
+import { BudgetToolsBar } from "@/components/planning/BudgetToolsBar";
+import { CopyForwardPanel } from "@/components/planning/CopyForwardPanel";
+import {
+  BudgetApprovalModal,
+  BudgetLockConfirmModal,
+} from "@/components/planning/BudgetWorkflowModals";
 
 type AccountRow = { id: string; code: string; name: string; type: string };
 type VersionRow = {
@@ -45,6 +53,9 @@ export function BudgetEditor({
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [approvalReview, setApprovalReview] = useState<ApprovalReviewSummary | null>(null);
   const editable = canEditBudgetLines(versionStatus as "draft");
 
   const cellKey = (accountId: string, periodMonth: string) => `${accountId}::${periodMonth}`;
@@ -113,6 +124,21 @@ export function BudgetEditor({
     }
   }
 
+  async function openApprovalReview() {
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/planning/budgets/${budgetId}/versions/${versionId}/review`,
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load review");
+      setApprovalReview(data.review as ApprovalReviewSummary);
+      setShowApproveModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load review");
+    }
+  }
+
   async function lifecycle(action: string, label?: string) {
     setPending(action);
     setError("");
@@ -134,7 +160,15 @@ export function BudgetEditor({
         return;
       }
       if (data.version?.status) setVersionStatus(data.version.status);
-      setMessage(`Version ${action} complete`);
+      setShowApproveModal(false);
+      setShowLockModal(false);
+      setMessage(
+        action === "approve"
+          ? "Plan approved"
+          : action === "lock"
+            ? "Plan locked"
+            : `Version ${action} complete`,
+      );
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -142,6 +176,22 @@ export function BudgetEditor({
       setPending("");
     }
   }
+
+  function reloadVersion() {
+    void fetch(`/api/planning/budgets/${budgetId}/versions/${versionId}`)
+      .then((r) => r.json())
+      .then((versionData) => {
+        const lines = (versionData as { lines?: LineRow[] }).lines ?? [];
+        const next: Record<string, number> = {};
+        for (const line of lines) {
+          next[cellKey(line.account_id, line.period_month)] = Number(line.amount);
+        }
+        setAmounts(next);
+        setMessage("Import complete");
+      });
+  }
+
+  const currentVersion = versions.find((version) => version.id === versionId);
 
   return (
     <div className="space-y-4">
@@ -166,11 +216,23 @@ export function BudgetEditor({
               {pending === "save" ? "Saving…" : "Save plan"}
             </button>
           ) : null}
+          <a
+            href={`/api/planning/budgets/${budgetId}/versions/${versionId}/export`}
+            className="rounded-md border px-4 py-2 text-sm"
+          >
+            Export CSV
+          </a>
+          <BudgetImportPanel
+            budgetId={budgetId}
+            versionId={versionId}
+            editable={editable}
+            onImported={reloadVersion}
+          />
           {versionStatus === "draft" || versionStatus === "submitted" ? (
             <button
               type="button"
               disabled={!!pending}
-              onClick={() => void lifecycle("approve")}
+              onClick={() => void openApprovalReview()}
               className="rounded-md border px-4 py-2 text-sm"
             >
               Approve
@@ -180,7 +242,7 @@ export function BudgetEditor({
             <button
               type="button"
               disabled={!!pending}
-              onClick={() => void lifecycle("lock")}
+              onClick={() => setShowLockModal(true)}
               className="rounded-md border px-4 py-2 text-sm"
             >
               Lock
@@ -195,6 +257,13 @@ export function BudgetEditor({
             >
               {planningOwnerLabel("Create Revision")}
             </button>
+          ) : null}
+          {versionId ? (
+            <CopyForwardPanel
+              budgetId={budgetId}
+              sourceVersionId={versionId}
+              sourceFiscalYear={fiscalYear}
+            />
           ) : null}
         </div>
       </div>
@@ -219,8 +288,20 @@ export function BudgetEditor({
           </select>
         </label>
         <span className="rounded-full bg-muted px-3 py-1 text-xs uppercase tracking-wide">
-          {versionStatus}
+          {versionStatus === "draft"
+            ? planningOwnerLabel("Draft")
+            : versionStatus === "approved"
+              ? planningOwnerLabel("Approved version")
+              : versionStatus === "locked"
+                ? planningOwnerLabel("Locked version")
+                : versionStatus}
         </span>
+        {currentVersion ? (
+          <span className="text-xs text-muted-foreground">
+            v{currentVersion.version_number}
+            {currentVersion.label ? ` · ${currentVersion.label}` : ""}
+          </span>
+        ) : null}
       </div>
 
       {message ? <p className="text-sm text-green-700">{message}</p> : null}
@@ -231,6 +312,15 @@ export function BudgetEditor({
           This version is read-only. {planningOwnerLabel("Create Revision")} to make changes.
         </p>
       ) : null}
+
+      <BudgetToolsBar
+        fiscalYear={fiscalYear}
+        accounts={accounts}
+        amounts={amounts}
+        setAmounts={setAmounts}
+        cellKey={cellKey}
+        editable={editable}
+      />
 
       <div className="overflow-x-auto rounded-lg border border-rule">
         <table className="min-w-full text-sm">
@@ -298,6 +388,23 @@ export function BudgetEditor({
           </tfoot>
         </table>
       </div>
+
+      {showApproveModal && approvalReview ? (
+        <BudgetApprovalModal
+          review={approvalReview}
+          pending={pending === "approve"}
+          onConfirm={() => void lifecycle("approve")}
+          onCancel={() => setShowApproveModal(false)}
+        />
+      ) : null}
+
+      {showLockModal ? (
+        <BudgetLockConfirmModal
+          pending={pending === "lock"}
+          onConfirm={() => void lifecycle("lock")}
+          onCancel={() => setShowLockModal(false)}
+        />
+      ) : null}
     </div>
   );
 }

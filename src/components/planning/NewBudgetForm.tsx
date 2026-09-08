@@ -67,14 +67,13 @@ export function NewBudgetForm() {
           />
           Blank
         </label>
-        <label className="flex items-center gap-2 text-muted-foreground">
+        <label className="flex items-center gap-2">
           <input
             type="radio"
             checked={baselineKind === "prior_year_actual"}
             onChange={() => setBaselineKind("prior_year_actual")}
-            disabled
           />
-          Prior-year actuals (coming in a later release)
+          Start from last year (prior-year GL actuals for P&L accounts)
         </label>
       </fieldset>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

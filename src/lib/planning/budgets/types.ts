@@ -27,6 +27,9 @@ export type BudgetLineRecord = BudgetLineInput & {
 
 export type PlanningAuditEventKind =
   | "budget_created"
+  | "budget_created_from_actuals"
+  | "budget_copied_forward"
+  | "budget_csv_imported"
   | "version_created"
   | "budget_saved"
   | "version_submitted"
@@ -34,5 +37,7 @@ export type PlanningAuditEventKind =
   | "version_locked"
   | "version_archived"
   | "version_cloned";
+
+export type BudgetCsvImportMode = "replace" | "merge";
 
 export const MAX_BULK_LINES = 5000;

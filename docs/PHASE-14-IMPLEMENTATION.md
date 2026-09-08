@@ -1,8 +1,75 @@
-# Phase 14 Implementation — 14A Budget Foundation
+# Phase 14 Implementation — Planning
 
-**Slice:** 14A · **Status:** Complete · **DB verified:** yes (2026-09-08)
+**Slice:** 14A complete · 14B complete (code) · **DB verified (14A):** yes (2026-09-08)
 
 > **Permanent rule:** ALL Teller Supabase migrations and SQL patches are manually applied by the operator.
+
+---
+
+## 14B scope (implemented)
+
+| Area | Status |
+|------|--------|
+| Budget approval review UX | Review modal with totals, account/month counts, warnings |
+| Lock confirmation UX | Deliberate confirm before lock |
+| Create Revision UX | Owner label; clone RPC path |
+| Prior-year actual baseline | GL `teller_gl_account_totals` per month; P&L only |
+| Copy-forward | New draft budget; fiscal-year month shift |
+| CSV export | Account Number, Name, Jan–Dec, Annual Total; formula-safe |
+| CSV import | Upload → preview → validate → confirm; draft-only |
+| Bulk edit tools | Spread annual, copy across, % adjust, clear account |
+| Planning audit | `budget_created_from_actuals`, `budget_copied_forward`, `budget_csv_imported` |
+
+### Prior-year actual baseline rules
+
+- **Source:** Phase 10 aggregated GL via `teller_gl_account_totals` (no journal copies).
+- **Scope:** Operating P&L accounts only — `revenue`, `cogs`, `expense` (non-archived).
+- **Mapping:** Calendar fiscal year — Jan N−1 actual → Jan N budget month (same for all 12 months).
+- **Writes:** Planning lines only; `source_kind = actual_baseline`; zero accounting postings.
+
+### Copy-forward rules
+
+- Creates a **new** budget header + draft version 1.
+- Shifts each line’s `period_month` by `(targetFY − sourceFY)` years.
+- Does **not** copy approval/lock state or audit actors.
+- Sets `source_version_id` lineage on the new version when copying from a version.
+
+### CSV format
+
+```text
+Account Number,Account Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,Annual Total
+```
+
+- Amounts persisted as exact cents (`numeric(14,2)`).
+- Annual Total column optional (informational; row validation warns on mismatch).
+
+### Account matching (import)
+
+1. Account Number (exact, case-insensitive)
+2. Exact normalized Account Name (when code absent or no code match)
+
+No silent GL account creation. Ambiguous code matches and unknown accounts surface as row errors.
+
+### Import modes (draft versions only)
+
+| Mode | Behavior |
+|------|----------|
+| **replace** | Upsert all CSV account/month values (empty month cells → 0) |
+| **merge** | Upsert non-zero CSV values only; preserve other months |
+
+Approved/locked versions reject import at server (`assertLinesEditable`).
+
+### Security
+
+- Org from session only; batch account resolution; upload size/row limits.
+- Exported text fields sanitized against spreadsheet formula injection (`=`, `+`, `-`, `@` prefixes).
+- Import filename sanitized; CSV body not stored in audit payload.
+
+### Deferred (14C+)
+
+- Budget vs actual reporting
+- Forecasting, cash planning, scenarios
+- Production deployment
 
 ---
 
@@ -19,10 +86,8 @@
 | Planning audit events | DB verified |
 | Owner-friendly UI | `/app/planning/*` |
 
-## Deferred (14B+)
+## Deferred (14C+)
 
-- Prior-year actual baseline import
-- CSV import/export
 - Budget vs actual reporting
 - Forecasting, cash planning, scenarios
 - Full controlled demo runner (14K scale)
@@ -30,7 +95,7 @@
 
 ---
 
-## Migration 032 status
+## Migration status
 
 | Item | Value |
 |------|-------|
@@ -115,20 +180,24 @@ src/app/app/planning/
 ## Tests
 
 ```bash
-npm run test:fast                              # includes phase14.test.ts
+npm run test:fast                              # includes phase14 + phase14b tests
 TELLER_TEST_PHASE=14 npm run test:phase        # unit + migration object verify
 npm run verify:migration:032:controlled        # applied DB object gate
-npm run accept:phase14:controlled              # 21-scenario DB acceptance
+npm run accept:phase14:controlled              # 21-scenario DB acceptance (14A)
 ```
 
 ---
 
-## Phase 14A close gate
+## Phase 14 close gates
 
 ```
 PHASE_14A_CODE_COMPLETE = true
 PHASE_14A_DB_VERIFIED = true
 PHASE_14A_COMPLETE = true
+PHASE_14B_CODE_COMPLETE = true
+PHASE_14B_DB_VERIFIED = false   # operator may extend controlled acceptance
+PHASE_14B_STARTED = true
 PHASE_14_COMPLETE = false
-PHASE_14B_STARTED = false
+PHASE_14C_STARTED = false
+MIGRATION_033_REQUIRED = false
 ```

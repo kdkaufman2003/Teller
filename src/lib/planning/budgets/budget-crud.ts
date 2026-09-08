@@ -12,8 +12,14 @@ import {
   validateBudgetName,
   validateFiscalYear,
 } from "./validation";
+import { copyForwardLines } from "./copy-forward";
+import {
+  buildPriorYearActualBaselineLines,
+  type PlanningAccount,
+} from "./prior-year-baseline";
 import type {
   BudgetBaselineKind,
+  BudgetCsvImportMode,
   BudgetLineInput,
   BudgetType,
   BudgetVersionAction,
@@ -119,6 +125,224 @@ export async function createBudget(
   });
 
   return { budget, version };
+}
+
+export async function loadPlanningAccounts(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<PlanningAccount[]> {
+  const { data, error } = await supabase
+    .from("teller_accounts")
+    .select("id, code, name, type, archived")
+    .eq("organization_id", organizationId)
+    .order("code");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    name: row.name as string,
+    type: row.type as string,
+    archived: Boolean(row.archived),
+  }));
+}
+
+export async function createBudgetWithBaseline(
+  supabase: SupabaseClient,
+  input: CreateBudgetInput & { baselineKind: BudgetBaselineKind },
+) {
+  const result = await createBudget(supabase, input);
+
+  if (input.baselineKind === "prior_year_actual") {
+    const accounts = await loadPlanningAccounts(supabase, input.organizationId);
+    const lines = await buildPriorYearActualBaselineLines(supabase, {
+      organizationId: input.organizationId,
+      targetFiscalYear: input.fiscalYear,
+      accounts,
+    });
+    if (lines.length) {
+      await bulkUpsertBudgetLines(supabase, {
+        organizationId: input.organizationId,
+        budgetId: result.budget.id as string,
+        versionId: result.version.id as string,
+        fiscalYear: input.fiscalYear,
+        lines: lines.map((line) => ({ ...line, notes: line.notes ?? "" })),
+        actorId: input.actorId,
+      });
+      await supabase
+        .from("teller_budget_lines")
+        .update({ source_kind: "actual_baseline" })
+        .eq("organization_id", input.organizationId)
+        .eq("budget_version_id", result.version.id as string);
+    }
+    await recordPlanningAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      eventKind: "budget_created_from_actuals",
+      entityKind: "budget_version",
+      entityId: result.version.id as string,
+      payload: { fiscalYear: input.fiscalYear, lineCount: lines.length },
+    });
+  }
+
+  return result;
+}
+
+export async function copyBudgetForward(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    sourceBudgetId: string;
+    sourceVersionId: string;
+    targetFiscalYear: number;
+    name: string;
+    actorId?: string | null;
+  },
+) {
+  validateBudgetName(input.name);
+  validateFiscalYear(input.targetFiscalYear);
+
+  const { budget: sourceBudget, versions } = await getBudgetWithVersions(
+    supabase,
+    input.organizationId,
+    input.sourceBudgetId,
+  );
+  const sourceVersion = versions.find((version) => version.id === input.sourceVersionId);
+  if (!sourceVersion) throw new Error("Source version not found");
+
+  const sourceLinesRaw = await listBudgetLines(
+    supabase,
+    input.organizationId,
+    input.sourceVersionId,
+  );
+  const sourceLines: BudgetLineInput[] = sourceLinesRaw.map((line) => ({
+    accountId: line.account_id as string,
+    periodMonth: line.period_month as string,
+    amount: Number(line.amount),
+    notes: (line.notes as string) ?? "",
+  }));
+
+  const result = await createBudget(supabase, {
+    organizationId: input.organizationId,
+    name: input.name,
+    fiscalYear: input.targetFiscalYear,
+    baselineKind: "prior_version",
+    actorId: input.actorId,
+  });
+
+  const shifted = copyForwardLines(
+    sourceLines,
+    Number(sourceBudget.fiscal_year),
+    input.targetFiscalYear,
+  );
+  if (shifted.length) {
+    await bulkUpsertBudgetLines(supabase, {
+      organizationId: input.organizationId,
+      budgetId: result.budget.id as string,
+      versionId: result.version.id as string,
+      fiscalYear: input.targetFiscalYear,
+      lines: shifted,
+      actorId: input.actorId,
+    });
+    await supabase
+      .from("teller_budget_lines")
+      .update({ source_kind: "prior_version" })
+      .eq("organization_id", input.organizationId)
+      .eq("budget_version_id", result.version.id as string);
+  }
+
+  await supabase
+    .from("teller_budget_versions")
+    .update({ source_version_id: input.sourceVersionId })
+    .eq("organization_id", input.organizationId)
+    .eq("id", result.version.id as string);
+
+  await recordPlanningAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    eventKind: "budget_copied_forward",
+    entityKind: "budget",
+    entityId: result.budget.id as string,
+    payload: {
+      sourceBudgetId: input.sourceBudgetId,
+      sourceVersionId: input.sourceVersionId,
+      targetFiscalYear: input.targetFiscalYear,
+      lineCount: shifted.length,
+    },
+  });
+
+  return result;
+}
+
+export async function applyBudgetCsvImport(
+  supabase: SupabaseClient,
+  input: {
+    organizationId: string;
+    budgetId: string;
+    versionId: string;
+    fiscalYear: number;
+    lines: BudgetLineInput[];
+    mode: BudgetCsvImportMode;
+    actorId?: string | null;
+    sourceFilename?: string;
+  },
+) {
+  const version = await getBudgetVersion(supabase, input.organizationId, input.versionId);
+  assertLinesEditable(version.status as BudgetVersionStatus);
+
+  let linesToSave = input.lines;
+  if (input.mode === "merge") {
+    linesToSave = input.lines.filter((line) => Math.abs(line.amount) >= 0.005);
+    const existing = await listBudgetLines(supabase, input.organizationId, input.versionId);
+    const importedKeys = new Set(
+      linesToSave.map((line) => `${line.accountId}::${line.periodMonth}`),
+    );
+    const preserved = existing
+      .filter((line) => !importedKeys.has(`${line.account_id}::${line.period_month}`))
+      .map((line) => ({
+        accountId: line.account_id as string,
+        periodMonth: line.period_month as string,
+        amount: Number(line.amount),
+        notes: (line.notes as string) ?? "",
+      }));
+    linesToSave = [...preserved, ...linesToSave];
+  }
+
+  const result = await bulkUpsertBudgetLines(supabase, {
+    organizationId: input.organizationId,
+    budgetId: input.budgetId,
+    versionId: input.versionId,
+    fiscalYear: input.fiscalYear,
+    lines: linesToSave,
+    actorId: input.actorId,
+  });
+
+  if (input.lines.length) {
+    const accountIds = [...new Set(input.lines.map((line) => line.accountId))];
+    for (const accountId of accountIds) {
+      await supabase
+        .from("teller_budget_lines")
+        .update({ source_kind: "import" })
+        .eq("organization_id", input.organizationId)
+        .eq("budget_version_id", input.versionId)
+        .eq("account_id", accountId);
+    }
+  }
+
+  await recordPlanningAuditEvent(supabase, {
+    organizationId: input.organizationId,
+    actorId: input.actorId,
+    eventKind: "budget_csv_imported",
+    entityKind: "budget_version",
+    entityId: input.versionId,
+    payload: {
+      mode: input.mode,
+      lineCount: input.lines.length,
+      saved: result.saved,
+      sourceFilename: input.sourceFilename?.slice(0, 120),
+    },
+  });
+
+  return result;
 }
 
 export async function getBudgetWithVersions(

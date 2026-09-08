@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
-import { createBudget } from "@/lib/planning/budgets/budget-crud";
+import { createBudgetWithBaseline } from "@/lib/planning/budgets/budget-crud";
 import type { BudgetBaselineKind } from "@/lib/planning/budgets/types";
 
 export async function GET() {
@@ -37,12 +37,8 @@ export async function POST(request: Request) {
     return jsonError("name and fiscalYear are required", 400);
   }
 
-  if (body.baselineKind === "prior_year_actual") {
-    return jsonError("Prior-year actual baseline is not available yet — choose Blank", 400);
-  }
-
   try {
-    const result = await createBudget(ctx.supabase, {
+    const result = await createBudgetWithBaseline(ctx.supabase, {
       organizationId: ctx.organizationId,
       name: body.name,
       fiscalYear: Number(body.fiscalYear),
