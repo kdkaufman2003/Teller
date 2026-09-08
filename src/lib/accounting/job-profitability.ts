@@ -60,9 +60,12 @@ export type JobProfitabilitySummary = {
   remainingCommittedCost: number;
   actualDirectCost: number;
   indirectCost: number;
+  directMaterialCost: number;
+  inventoryMaterialCost: number;
   directLaborCost: number;
   employerLaborBurden: number;
   totalLaborCost: number;
+  otherDirectCost: number;
   grossProfit: number;
   grossMarginPercent: number | null;
   remainingBudget: number;
@@ -175,12 +178,50 @@ export function summarizeLaborForJob(
   };
 }
 
+export function computeInventoryMaterialCost(
+  movements: Array<{ jobId: string; movementType: string; extendedCost: number }>,
+  jobId: string,
+): number {
+  let cost = 0;
+  for (const row of movements) {
+    if (row.jobId !== jobId) continue;
+    if (row.movementType === "job_issue") cost += row.extendedCost;
+    if (row.movementType === "job_return") cost -= row.extendedCost;
+  }
+  return roundMoney(Math.max(0, cost));
+}
+
+export function computeActualDirectCostBreakdown(input: {
+  journalDirectCost: number;
+  inventoryMaterialCost: number;
+  directLaborCost: number;
+  employerLaborBurden: number;
+}): {
+  directMaterialCost: number;
+  otherDirectCost: number;
+  actualDirectCost: number;
+} {
+  const directMaterialCost = roundMoney(input.inventoryMaterialCost);
+  const otherDirectCost = roundMoney(Math.max(0, input.journalDirectCost - directMaterialCost));
+  const actualDirectCost = roundMoney(
+    directMaterialCost + otherDirectCost + input.directLaborCost + input.employerLaborBurden,
+  );
+  return { directMaterialCost, otherDirectCost, actualDirectCost };
+}
+
 export function computeActualDirectCostWithLabor(
   journalDirectCost: number,
   directLaborCost: number,
   employerLaborBurden: number,
+  inventoryMaterialCost = 0,
 ): number {
-  return roundMoney(journalDirectCost + directLaborCost + employerLaborBurden);
+  const { actualDirectCost } = computeActualDirectCostBreakdown({
+    journalDirectCost,
+    inventoryMaterialCost,
+    directLaborCost,
+    employerLaborBurden,
+  });
+  return actualDirectCost;
 }
 
 export function summarizeJournalLinesForJob(
@@ -470,11 +511,37 @@ export async function buildJobProfitabilitySummary(
             throw new Error(laborError.message);
           })()
         : summarizeLaborForJob(jobId, laborEntries ?? []);
-  const actualDirectCost = computeActualDirectCostWithLabor(
+  let inventoryMaterialCost = 0;
+  const { data: inventoryMovements, error: inventoryError } = await supabase
+    .from("teller_inventory_movements")
+    .select("job_id, movement_type, extended_cost")
+    .eq("organization_id", organizationId)
+    .eq("job_id", jobId);
+
+  if (
+    !inventoryError ||
+    inventoryError.code === "42P01" ||
+    inventoryError.message?.includes("teller_inventory_movements")
+  ) {
+    inventoryMaterialCost = computeInventoryMaterialCost(
+      (inventoryMovements ?? []).map((row) => ({
+        jobId: row.job_id as string,
+        movementType: row.movement_type as string,
+        extendedCost: asNumber(row.extended_cost),
+      })),
+      jobId,
+    );
+  } else if (inventoryError) {
+    throw new Error(inventoryError.message);
+  }
+
+  const costBreakdown = computeActualDirectCostBreakdown({
     journalDirectCost,
-    labor.directLaborCost,
-    labor.employerLaborBurden,
-  );
+    inventoryMaterialCost,
+    directLaborCost: labor.directLaborCost,
+    employerLaborBurden: labor.employerLaborBurden,
+  });
+  const actualDirectCost = costBreakdown.actualDirectCost;
 
   const glReconciliation = summarizeGlReconciliation(orgJournalLines, accounts ?? [], jobId);
 
@@ -532,6 +599,9 @@ export async function buildJobProfitabilitySummary(
     remainingCommittedCost,
     actualDirectCost,
     indirectCost,
+    directMaterialCost: costBreakdown.directMaterialCost,
+    inventoryMaterialCost,
+    otherDirectCost: costBreakdown.otherDirectCost,
     directLaborCost: labor.directLaborCost,
     employerLaborBurden: labor.employerLaborBurden,
     totalLaborCost: labor.totalLaborCost,
