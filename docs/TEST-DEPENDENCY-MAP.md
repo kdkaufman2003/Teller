@@ -1,0 +1,163 @@
+# Teller test dependency map
+
+This map drives `npm run test:affected` and documents which historical suites to rerun when shared accounting modules change.
+
+**Rules preserved:** double-entry, immutable journals, period locks, tenant isolation, idempotency, HFAC hard boundary, **manual migration only**. DB acceptance (`accept:phaseN:controlled`) is never part of the fast loop.
+
+## Tier overview
+
+| Tier | Command | Purpose |
+|------|---------|---------|
+| 1 | `npm run test:fast` | Scoped unit tests + typecheck, no DB |
+| 2 | `npm run test:phase` | Current phase unit + verify + logic matrix |
+| 3 | `npm run test:affected` | Current phase + dependency regressions |
+| 4 | `npm run test:full` | All unit tests + build + all phase demos |
+| Release | `npm run verify:deploy` | Pre-production gates (optional DB acceptance via env) |
+
+Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**).
+
+## Module → regression dependencies
+
+### Shared journal engine
+
+**Code:** `src/lib/accounting/post.ts`, atomic RPC wrappers (`inventory/atomic-rpc.ts`, payroll atomic RPCs), all `teller_post_journal` callers.
+
+**Rerun demos:** Phase 5–13 (any journal mutation path)
+
+**Unit tests:** `post.test.ts`, `integrity.test.ts`
+
+---
+
+### Period lock / close engine
+
+**Code:** `src/lib/accounting/periods.ts`, close readiness (`evaluateCloseReadiness`), inventory close findings (`inventory/close-integration.ts`, `inventory/grni/close-integration.ts`).
+
+**Rerun demos:** Phase 9, 13 (inventory close findings). Phase 5/11 only when lock engine itself changes.
+
+**Unit tests:** `periods.test.ts`
+
+---
+
+### AP / purchasing
+
+**Code:** bills, POs, vendor credits, GRNI bill settlement (`inventory/bill-integration.ts`, `inventory/grni/*`).
+
+**Rerun demos:** Phase 6, 11.1, 13
+
+**Unit tests:** `phase6-ap.test.ts`, `phase4.test.ts`
+
+---
+
+### Job costing
+
+**Code:** `job-profitability.ts` (includes `inventoryMaterialCost`), job allocation, material issue/return economics.
+
+**Rerun demos:** Phase 7, 13 (material issue/return). Phase 12 only when payroll/labor modules change.
+
+**Unit tests:** `job-profitability.test.ts`
+
+---
+
+### Banking
+
+**Code:** `src/lib/banking/*` — match, transfer, categorize. No inventory/GRNI economics.
+
+**Rerun demos:** Phase 5, 6
+
+**Unit tests:** `src/lib/banking/**/*.test.ts`
+
+---
+
+### Fixed assets
+
+**Code:** `fixed-asset-*`, depreciation RPCs. Independent of inventory.
+
+**Rerun demos:** Phase 8 only (unless shared journal engine changed)
+
+**Unit tests:** `fixed-asset-*.test.ts`
+
+---
+
+### Payroll / labor
+
+**Code:** `phase12.test.ts`, payroll services, labor entries.
+
+**Rerun demos:** Phase 12, 7
+
+**Unit tests:** `phase12.test.ts`
+
+---
+
+### Subledger automation (schedules)
+
+**Code:** Phase 11 prepaid/accrual/deferred, Phase 11.1 settlement.
+
+**Rerun demos:** Phase 11, 11.1, 9
+
+**Unit tests:** `phase11.test.ts`, `phase11-1.test.ts`
+
+---
+
+### Financial reporting / accountant package
+
+**Code:** `financial-reports.ts`, `phase10.test.ts`, inventory reporting (`inventory/reporting.ts`, `inventory/grni/reporting.ts`).
+
+**Rerun demos:** Phase 10, 9, 13
+
+**Unit tests:** `phase10.test.ts`, `financial-reports.test.ts`
+
+---
+
+### Inventory + GRNI (Phase 13)
+
+**Code:** `src/lib/accounting/inventory/**`, migration 031 RPCs, receipt/bill allocations.
+
+**Rerun demos:** Phase 13, 6, 7, 9, 10, 11.1
+
+**Unit tests:** `phase13.test.ts`
+
+**DB acceptance (gate only):** `npm run accept:phase13:controlled` — 70 scenarios, separate from fast loop.
+
+---
+
+## Phase → primary modules
+
+| Phase | Primary modules | `test:affected` demo phases (Phase 13 active) |
+|-------|-----------------|-----------------------------------------------|
+| 5 | banking | 5, 6 |
+| 6 | ap_purchasing, banking | 5, 6, 7, 11.1, 13 |
+| 7 | job_costing | 7, 12, 13, 6, 9, 10, 11.1 |
+| 8 | fixed_assets | 8, 5, 9, 10, 11, 11.1, 12, 13 (via journal engine) |
+| 9 | period_lock_close, financial_reporting | 5, 9, 10, 11, 13, 6, 7, 11.1 |
+| 10 | financial_reporting | 9, 10, 13, 6, 7, 11.1 |
+| 11 | subledger_automation, period_lock_close | 5, 9, 11, 11.1, 13, 6, 7, 10 |
+| 11.1 | subledger_automation, ap_purchasing | 6, 9, 11, 11.1, 13, 7, 10 |
+| 12 | payroll, job_costing | 7, 12, 13, 6, 9, 10, 11.1 |
+| 13 | inventory_grni, ap, job_costing, close, reporting | **6, 7, 9, 10, 11.1, 13** |
+
+Configuration source: `scripts/test-tier-config.mjs`
+
+## Parallelization policy
+
+Controlled demos use **separate demo orgs** per phase. `test:affected` runs dependency demos in **parallel** (`TELLER_DEMO_PARALLEL=1` by default).
+
+`test:full` runs all phase demos **sequentially** — parallel all-phase runs can stress the shared controlled DB and cause flaky failures (e.g. Phase 8 under full parallel load).
+
+Do **not** parallelize:
+
+- DB acceptance scenarios within the same org reset cycle
+- Suites sharing idempotency keys on the same org
+- HFAC org (never used for economic tests)
+
+Set `TELLER_DEMO_PARALLEL=0` to force sequential demos.
+
+## Controlled DB strategy
+
+| Context | Command |
+|---------|---------|
+| Daily development | `test:fast`, `test:phase` |
+| Module change with cross-phase risk | `test:affected` |
+| Release / shared infrastructure | `test:full` or `verify:deploy` |
+| Phase gate / RPC economic change | `accept:phaseN:controlled` |
+
+Never auto-apply migrations. Never point fast tests at HFAC production org for writes.

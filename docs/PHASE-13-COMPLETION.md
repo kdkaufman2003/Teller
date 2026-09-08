@@ -130,3 +130,13 @@ HFAC org `812be00d-3084-4227-ac71-ccbd22e4172c` — zero Phase 13 inventory/GRNI
 ## Status
 
 `PHASE_13_COMPLETE = true` · `PRODUCTION_DEPLOYED = true` · `PRODUCTION_SCHEDULER_ENABLED = false` · `PHASE_14_STARTED = false`
+
+## Test workflow (post closeout)
+
+Tiered commands for faster iteration — see `docs/TEST-WORKFLOW.md` and `docs/TEST-DEPENDENCY-MAP.md`:
+
+- `npm run test:fast` — daily loop, no DB
+- `npm run test:phase` / `test:phase13` — current phase only
+- `npm run test:affected` — dependency-aware regressions
+- `npm run test:full` — full historical gate
+- `npm run verify:deploy` — pre-production release checks

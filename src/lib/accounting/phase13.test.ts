@@ -34,7 +34,6 @@ import {
   hfacInventoryIntegrationAllowed,
 } from "./inventory/hfac-boundary";
 import {
-  buildGrniBillSettlementJournalLines,
   buildGrniMatchedBillJournalPreview,
   buildGrniReceiptJournalPreview,
   validateInventoryBillEconomics,
@@ -42,7 +41,7 @@ import {
 } from "./inventory/bill-integration";
 import {
   buildGrniReceiptJournalLines,
-  buildGrniBillSettlementJournalLines as buildGrniBillSettlementLines,
+  buildGrniBillSettlementJournalLines,
   buildUnbilledVendorReturnJournalLines,
   assertSameDayNetEconomics,
   GRNI_PPV_POLICY_V1,
@@ -271,7 +270,7 @@ describe("Phase 13 GRNI bill integration", () => {
   });
 
   it("builds bill settlement Dr GRNI / Dr PPV / Cr AP for positive variance", () => {
-    const lines = buildGrniBillSettlementLines({
+    const lines = buildGrniBillSettlementJournalLines({
       grniAmount: 1000,
       billAmount: 1050,
       grniAccountId: GRNI,
@@ -366,7 +365,7 @@ describe("Phase 13 GRNI bill integration", () => {
       "j1",
     );
     expect(material).toBe(400);
-    void buildGrniBillSettlementLines({
+    void buildGrniBillSettlementJournalLines({
       grniAmount: 1000,
       billAmount: 1050,
       grniAccountId: GRNI,
