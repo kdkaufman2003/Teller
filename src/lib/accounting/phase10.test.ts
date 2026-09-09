@@ -251,11 +251,11 @@ describe("comparative reporting", () => {
 
   it("comparative P&L includes accounts in only one period", () => {
     const current = buildProfitAndLoss(
-      [{ account_id: "rev", debit: 0, credit: 100, entry_date: "2026-03-01" }],
+      [{ account_id: "rev", debit: 0, credit: 100 }],
       ACCOUNTS,
     );
     const comparison = buildProfitAndLoss(
-      [{ account_id: "exp", debit: 50, credit: 0, entry_date: "2026-02-01" }],
+      [{ account_id: "exp", debit: 50, credit: 0 }],
       ACCOUNTS,
     );
     const cpl = buildComparativeProfitAndLoss(current, comparison);

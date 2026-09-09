@@ -250,14 +250,21 @@ export function buildCashFlowStatement(
   };
 }
 
-export type ReportTab = "overview" | "balance_sheet" | "cash_flow" | "ar_aging" | "ap_aging";
+export type ReportTab =
+  | "overview"
+  | "balance_sheet"
+  | "cash_flow"
+  | "ar_aging"
+  | "ap_aging"
+  | "planning";
 
 export function parseReportTab(value: string | null | undefined): ReportTab {
   if (
     value === "balance_sheet" ||
     value === "cash_flow" ||
     value === "ar_aging" ||
-    value === "ap_aging"
+    value === "ap_aging" ||
+    value === "planning"
   ) {
     return value;
   }

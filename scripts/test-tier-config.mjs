@@ -52,6 +52,13 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/planning/budgets/phase14.test.ts",
   "src/lib/planning/budgets/phase14b.test.ts",
   "src/lib/planning/reports/phase14c.test.ts",
+  "src/lib/planning/reports/phase14d.test.ts",
+  "src/lib/planning/reports/phase14e.test.ts",
+  "src/lib/planning/reports/phase14f.test.ts",
+  "src/lib/planning/reports/phase14g.test.ts",
+  "src/lib/planning/reports/phase14h.test.ts",
+  "src/lib/planning/reports/phase14i.test.ts",
+  "src/lib/planning/reports/phase14j.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -66,7 +73,7 @@ export const PHASE_UNIT_TESTS = {
   "11.1": ["src/lib/accounting/phase11-1.test.ts"],
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
-  14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts"],
+  14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts", "src/lib/planning/reports/phase14d.test.ts", "src/lib/planning/reports/phase14e.test.ts", "src/lib/planning/reports/phase14f.test.ts", "src/lib/planning/reports/phase14g.test.ts", "src/lib/planning/reports/phase14h.test.ts", "src/lib/planning/reports/phase14i.test.ts", "src/lib/planning/reports/phase14j.test.ts"],
 };
 
 /**

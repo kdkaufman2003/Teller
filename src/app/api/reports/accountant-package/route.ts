@@ -10,6 +10,8 @@ import { filterGlEntries, paginateGlReport } from "@/lib/accounting/gl-report";
 import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
 import { buildArAging, buildApAging } from "@/lib/accounting/aging-service";
 import { recordAuditEvent } from "@/lib/accounting/audit";
+import { buildPlanningPackageExportFiles } from "@/lib/planning/accountant-package/export";
+import { loadAccountantPlanningPackage } from "@/lib/planning/accountant-package/load-accountant-planning-package";
 import { jsonError, requireBooks } from "@/lib/api";
 import { canExportBooks, parseCpaMode } from "@/lib/accounting/cpa";
 import { parseFiscalYearStart, parseAccountingBasis } from "@/lib/org/config";
@@ -113,6 +115,21 @@ export async function GET(request: Request) {
     apAging: buildApAging(billsPaid, data.partyNames, periodEnd),
     includeTin: false,
   });
+
+  const includePlanning = url.searchParams.get("includePlanning") === "1";
+  if (includePlanning) {
+    const planningPkg = await loadAccountantPlanningPackage(ctx.supabase, ctx.organizationId, {
+      periodEnd,
+      periodLabel: `${periodStart ?? "start"} – ${periodEnd}`,
+      fiscalYear: Number(periodEnd.slice(0, 4)),
+    });
+    files.push(
+      ...buildPlanningPackageExportFiles(
+        planningPkg,
+        session?.organization?.name ?? "organization",
+      ),
+    );
+  }
 
   await recordAuditEvent(ctx.supabase, {
     organizationId: ctx.organizationId,

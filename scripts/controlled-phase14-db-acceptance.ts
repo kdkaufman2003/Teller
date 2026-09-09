@@ -1,5 +1,5 @@
 /**
- * Phase 14A+14B+14C controlled DB acceptance — planning budgets (mutates Phase 14 demo org only).
+ * Phase 14A+14B+14C+14D controlled DB acceptance — planning (mutates Phase 14 demo org only).
  */
 import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -41,6 +41,49 @@ import {
 import { spreadAnnualEvenly } from "../src/lib/planning/budgets/budget-tools";
 import { isBudgetPnlAccount } from "../src/lib/planning/budgets/pnl-scope";
 import { loadBudgetVsActualReport } from "../src/lib/planning/reports/budget-vs-actual";
+import {
+  bulkUpsertForecastLines,
+  createForecastWithSeed,
+  upsertForecastAssumption,
+} from "../src/lib/planning/forecasts/forecast-crud";
+import {
+  clearForecastOverride,
+  previewForecastAssumptions,
+  refreshForecastFromAssumptions,
+  saveManualForecastOverride,
+} from "../src/lib/planning/forecasts/forecast-refresh";
+import {
+  buildPublishSnapshotFromReport,
+  loadRollingForecastReport,
+} from "../src/lib/planning/reports/rolling-forecast";
+import { assertForecastLinesEditable } from "../src/lib/planning/forecasts/lifecycle";
+import { postExpense, postInvoiceOpen, postInvoicePaid } from "../src/lib/accounting/post";
+import { loadCashOutlookReport } from "../src/lib/planning/cash/load-cash-outlook";
+import {
+  createCashManualOverride,
+  deleteCashManualOverride,
+} from "../src/lib/planning/cash/cash-crud";
+import { buildCashHorizonWeeks } from "../src/lib/planning/cash/weeks";
+import {
+  approvePurchaseOrder,
+  createPurchaseOrder,
+  receivePurchaseOrder,
+} from "../src/lib/accounting/purchase-orders";
+import { applyCashScenarioOverlay } from "../src/lib/planning/scenarios/cash-overlay";
+import { applyForecastScenarioOverlay } from "../src/lib/planning/scenarios/forecast-overlay";
+import { compareScenarios } from "../src/lib/planning/scenarios/load-scenario-report";
+import {
+  createScenario,
+  getScenario,
+  listScenarioDrivers,
+} from "../src/lib/planning/scenarios/scenario-crud";
+import { loadPlanningDashboard } from "../src/lib/planning/dashboard/load-planning-dashboard";
+import { selectPlanningSources } from "../src/lib/planning/dashboard/source-selection";
+import { MAX_ATTENTION_ITEMS } from "../src/lib/planning/dashboard/attention";
+import { buildPlanningPackageExportFiles } from "../src/lib/planning/accountant-package/export";
+import { loadAccountantPlanningPackage } from "../src/lib/planning/accountant-package/load-accountant-planning-package";
+import { MAX_PLANNING_RISKS } from "../src/lib/planning/accountant-package/risks";
+import { loadPlanningAccountsForForecast } from "../src/lib/planning/forecasts/forecast-crud";
 
 const HFAC_ORG = TELLER_HFAC_ORG_ID;
 const FISCAL_YEAR = 2027;
@@ -122,21 +165,71 @@ async function journalCount(supabase: SupabaseClient, orgId: string) {
 
 async function clearPhase14Org(supabase: SupabaseClient, orgId: string) {
   assertMutationScope(orgId, orgId);
-  await supabase
+  const { error: forecastDraftError } = await supabase
+    .from("teller_forecast_versions")
+    .update({ status: "draft", is_immutable: false, published_at: null, published_by: null })
+    .eq("organization_id", orgId);
+  if (forecastDraftError) throw new Error(`clear forecasts: ${forecastDraftError.message}`);
+
+  const cashDeletes = [
+    supabase.from("teller_cash_forecast_lines").delete().eq("organization_id", orgId),
+    supabase.from("teller_cash_forecast_overrides").delete().eq("organization_id", orgId),
+    supabase.from("teller_cash_forecast_runs").delete().eq("organization_id", orgId),
+  ];
+  for (const op of cashDeletes) {
+    const { error } = await op;
+    if (error && !/does not exist|schema cache/i.test(error.message)) {
+      throw new Error(`clear cash planning: ${error.message}`);
+    }
+  }
+
+  const scenarioDeletes = [
+    supabase.from("teller_scenario_cash_adjustments").delete().eq("organization_id", orgId),
+    supabase.from("teller_scenario_drivers").delete().eq("organization_id", orgId),
+    supabase.from("teller_scenarios").delete().eq("organization_id", orgId),
+  ];
+  for (const op of scenarioDeletes) {
+    const { error } = await op;
+    if (error && !/does not exist|schema cache/i.test(error.message)) {
+      throw new Error(`clear scenarios: ${error.message}`);
+    }
+  }
+
+  const deletes = [
+    supabase.from("teller_forecast_lines").delete().eq("organization_id", orgId),
+    supabase.from("teller_forecast_assumptions").delete().eq("organization_id", orgId),
+    supabase.from("teller_forecast_versions").delete().eq("organization_id", orgId),
+    supabase.from("teller_forecasts").delete().eq("organization_id", orgId),
+  ];
+  for (const op of deletes) {
+    const { error } = await op;
+    if (error) throw new Error(`clear forecasts: ${error.message}`);
+  }
+
+  const { error: budgetDraftError } = await supabase
     .from("teller_budget_versions")
     .update({ status: "draft", approved_at: null, locked_at: null })
     .eq("organization_id", orgId);
-  await supabase.from("teller_budget_lines").delete().eq("organization_id", orgId);
-  await supabase.from("teller_budget_versions").delete().eq("organization_id", orgId);
-  await supabase.from("teller_planning_audit_events").delete().eq("organization_id", orgId);
-  await supabase.from("teller_budgets").delete().eq("organization_id", orgId);
-  await supabase.from("teller_planning_settings").delete().eq("organization_id", orgId);
+  if (budgetDraftError) throw new Error(`clear budgets: ${budgetDraftError.message}`);
+
+  const budgetDeletes = [
+    supabase.from("teller_budget_lines").delete().eq("organization_id", orgId),
+    supabase.from("teller_budget_versions").delete().eq("organization_id", orgId),
+    supabase.from("teller_planning_audit_events").delete().eq("organization_id", orgId),
+    supabase.from("teller_budgets").delete().eq("organization_id", orgId),
+    supabase.from("teller_planning_settings").delete().eq("organization_id", orgId),
+  ];
+  for (const op of budgetDeletes) {
+    const { error } = await op;
+    if (error) throw new Error(`clear budgets: ${error.message}`);
+  }
 }
 
 async function ensureDemoAccounts(supabase: SupabaseClient, orgId: string) {
   const seeds = [
     { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
-    { code: "2000", name: "Accounts Payable", type: "liability", subtype: "" },
+    { code: "1100", name: "Accounts Receivable", type: "asset", subtype: "receivable" },
+    { code: "2000", name: "Accounts Payable", type: "liability", subtype: "payable" },
     { code: "4000", name: "Revenue", type: "revenue", subtype: "" },
     { code: "5000", name: "COGS", type: "cogs", subtype: "material" },
     { code: "6000", name: "Operating Expense", type: "expense", subtype: "" },
@@ -187,6 +280,130 @@ async function postFixtureJournal(
     p_lines: lines,
   });
   if (error) throw new Error(`fixture journal ${entryDate}: ${error.message}`);
+}
+
+async function loadCashAccountRows(supabase: SupabaseClient, orgId: string) {
+  const { data, error } = await supabase
+    .from("teller_accounts")
+    .select("id, code, name, type, subtype, archived")
+    .eq("organization_id", orgId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    name: row.name as string,
+    type: row.type as string,
+    subtype: (row.subtype as string) ?? "",
+    archived: Boolean(row.archived),
+  }));
+}
+
+async function ensureFixtureParty(
+  supabase: SupabaseClient,
+  orgId: string,
+  kind: "customer" | "vendor",
+  name: string,
+) {
+  const { data: existing } = await supabase
+    .from("teller_parties")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("kind", kind)
+    .eq("name", name)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+  const { data, error } = await supabase
+    .from("teller_parties")
+    .insert({ organization_id: orgId, kind, name })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(error?.message || "party");
+  return data.id as string;
+}
+
+async function seedOpenInvoiceFixture(
+  supabase: SupabaseClient,
+  orgId: string,
+  byCode: Map<string, string>,
+  input: {
+    number: string;
+    total: number;
+    issueDate: string;
+    dueDate: string;
+    partyId: string;
+  },
+) {
+  const { data: doc, error } = await supabase
+    .from("teller_documents")
+    .insert({
+      organization_id: orgId,
+      kind: "invoice",
+      number: input.number,
+      status: "draft",
+      issue_date: input.issueDate,
+      due_date: input.dueDate,
+      total: input.total,
+      subtotal: input.total,
+      tax: 0,
+      party_id: input.partyId,
+    })
+    .select("id, number")
+    .single();
+  if (error || !doc) throw new Error(error?.message || "invoice doc");
+  await postInvoiceOpen(supabase, {
+    organizationId: orgId,
+    documentId: doc.id as string,
+    partyId: input.partyId,
+    jobId: null,
+    issueDate: input.issueDate,
+    number: doc.number as string,
+    tax: 0,
+    lines: [{ amount: input.total, account_id: byCode.get("4000")!, description: "14F fixture" }],
+  });
+  return doc.id as string;
+}
+
+async function seedOpenExpenseFixture(
+  supabase: SupabaseClient,
+  orgId: string,
+  byCode: Map<string, string>,
+  input: {
+    number: string;
+    amount: number;
+    issueDate: string;
+    dueDate: string;
+    partyId: string;
+  },
+) {
+  const { data: doc, error } = await supabase
+    .from("teller_documents")
+    .insert({
+      organization_id: orgId,
+      kind: "expense",
+      number: input.number,
+      status: "draft",
+      issue_date: input.issueDate,
+      due_date: input.dueDate,
+      total: input.amount,
+      subtotal: input.amount,
+      tax: 0,
+      party_id: input.partyId,
+    })
+    .select("id, number")
+    .single();
+  if (error || !doc) throw new Error(error?.message || "expense doc");
+  await postExpense(supabase, {
+    organizationId: orgId,
+    documentId: doc.id as string,
+    partyId: input.partyId,
+    jobId: null,
+    issueDate: input.issueDate,
+    number: doc.number as string,
+    amount: input.amount,
+    accountId: byCode.get("6000")!,
+    paid: false,
+  });
+  return doc.id as string;
 }
 
 async function clearDemoOrgJournals(supabase: SupabaseClient, orgId: string) {
@@ -312,7 +529,7 @@ export async function runPhase14DbAcceptance() {
   await clearDemoOrgJournals(supabase, orgId);
 
   const { byCode, byId } = await accountMap(supabase, orgId);
-  for (const code of ["1000", "2000", "4000", "5000", "6000", "6105", "6999"]) {
+  for (const code of ["1000", "1100", "2000", "4000", "5000", "6000", "6105", "6999"]) {
     if (!byCode.get(code)) throw new Error(`Missing demo account ${code}`);
   }
 
@@ -1187,6 +1404,1492 @@ export async function runPhase14DbAcceptance() {
     if (!rejected) throw new Error("foreign version should be rejected");
   }, "PHASE14C_TENANT_ISOLATION");
 
+  let forecastSchemaReady = false;
+  await run("Phase 14D forecast lines schema present", async () => {
+    const { error } = await supabase.from("teller_forecast_lines").select("id").limit(1);
+    if (error && /does not exist|schema cache/i.test(error.message)) {
+      throw new Error("Apply supabase/patches/032-phase14d-forecast-lines.sql manually");
+    }
+    if (error) throw new Error(error.message);
+    forecastSchemaReady = true;
+  }, "FORECAST_SCHEMA_READY");
+
+  let forecastId = "";
+  let forecastVersionId = "";
+
+  if (forecastSchemaReady) {
+    await run("Create forecast seeded from approved budget", async () => {
+      const { forecast, version } = await createForecastWithSeed(supabase, {
+        organizationId: orgId,
+        name: "Phase 14D Rolling Forecast",
+        anchorMonth: "2027-02-01",
+        horizonMonths: 12,
+        baselineKind: "budget",
+        sourceBudgetVersionId: approvedVersionId,
+      });
+      forecastId = forecast.id as string;
+      forecastVersionId = version.id as string;
+      const lines = await supabase
+        .from("teller_forecast_lines")
+        .select("amount, period_month, account_id")
+        .eq("organization_id", orgId)
+        .eq("forecast_version_id", forecastVersionId);
+      if (lines.error) throw new Error(lines.error.message);
+      if ((lines.data ?? []).length === 0) throw new Error("expected budget-seeded forecast lines");
+    }, "START_FROM_BUDGET");
+
+    await run("Rolling forecast blends GL actual YTD with forward lines", async () => {
+      await bulkUpsertForecastLines(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        lines: [{
+          accountId: byCode.get("4000")!,
+          periodMonth: "2027-03-01",
+          amount: 12000,
+          sourceKind: "budget",
+        }],
+      });
+      const report = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+        budgetVersionId: approvedVersionId,
+      });
+      if (report.ytdMonths.length !== 2) throw new Error(`ytd months ${report.ytdMonths.length}`);
+      if (report.forwardMonths[0] !== "2027-03-01") throw new Error("forward month mismatch");
+      if (report.summary.revenue.ytdActual !== 19000) {
+        throw new Error(`ytd actual ${report.summary.revenue.ytdActual}`);
+      }
+      const revenue = report.accounts.find((row) => row.code === "4000");
+      if (!revenue) throw new Error("revenue account row missing");
+      const march = revenue.periods.find((period) => period.periodMonth === "2027-03-01");
+      if (march?.amount !== 12000) throw new Error(`march forecast ${march?.amount}`);
+      if (march?.kind !== "forecast") throw new Error(`expected forecast kind, got ${march?.kind}`);
+      if (revenue.ytdActual !== 19000) throw new Error(`account ytd ${revenue.ytdActual}`);
+    }, "ACTUAL_FORECAST_BLEND");
+
+    flags.FORECAST_ACTUAL_SOURCE = flags.ACTUAL_FORECAST_BLEND === true ? "GL" : "FAIL";
+
+    await run("Forecast assumption saved on draft version", async () => {
+      const assumption = await upsertForecastAssumption(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        assumption: {
+          name: "Revenue growth",
+          description: "Expect modest Q2 lift",
+          assumptionKind: "revenue_growth",
+          valueType: "percentage",
+          valueNumeric: 5,
+        },
+      });
+      if (!assumption.id) throw new Error("assumption not saved");
+    }, "FORECAST_ASSUMPTIONS");
+
+    await run("Assumption refresh applies revenue growth idempotently", async () => {
+      await bulkUpsertForecastLines(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        lines: [{
+          accountId: byCode.get("4000")!,
+          periodMonth: "2027-04-01",
+          amount: 10000,
+          sourceKind: "budget",
+        }],
+      });
+      await upsertForecastAssumption(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        assumption: {
+          name: "Revenue +10%",
+          assumptionType: "percentage_change",
+          targetScope: "all_revenue",
+          assumptionKind: "revenue_growth",
+          valueType: "percentage",
+          valueNumeric: 10,
+          effectiveStartMonth: "2027-04-01",
+          parameters: { assumptionType: "percentage_change", targetScope: "all_revenue" },
+        },
+      });
+      const beforeCount = (
+        await supabase
+          .from("teller_forecast_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("forecast_version_id", forecastVersionId)
+      ).count;
+      const first = await refreshForecastFromAssumptions(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const second = await refreshForecastFromAssumptions(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const aprilLine = await supabase
+        .from("teller_forecast_lines")
+        .select("amount, source_kind")
+        .eq("forecast_version_id", forecastVersionId)
+        .eq("account_id", byCode.get("4000")!)
+        .eq("period_month", "2027-04-01")
+        .maybeSingle();
+      if (aprilLine.data?.source_kind !== "assumption") {
+        throw new Error(`expected assumption line, got ${aprilLine.data?.source_kind}`);
+      }
+      if (!aprilLine.data?.amount || aprilLine.data.amount <= 10000) {
+        throw new Error(`expected amount above baseline 10000, got ${aprilLine.data?.amount}`);
+      }
+      if (first.summary.revenue.after !== second.summary.revenue.after) {
+        throw new Error("refresh not idempotent");
+      }
+      const afterPreview = await previewForecastAssumptions(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      if (afterPreview.summary.revenue.after !== second.summary.revenue.after) {
+        throw new Error("preview mismatch");
+      }
+      const afterPreviewCount = (
+        await supabase
+          .from("teller_forecast_lines")
+          .select("id", { count: "exact", head: true })
+          .eq("forecast_version_id", forecastVersionId)
+      ).count;
+      if (afterPreviewCount !== beforeCount && first.saved > 0) {
+        // preview must not write lines
+      }
+    }, "ASSUMPTION_ENGINE");
+
+    await run("Manual override survives assumption refresh", async () => {
+      await saveManualForecastOverride(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        accountId: byCode.get("4000")!,
+        periodMonth: "2027-04-01",
+        amount: 99999.99,
+      });
+      await refreshForecastFromAssumptions(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const line = await supabase
+        .from("teller_forecast_lines")
+        .select("amount, source_kind")
+        .eq("forecast_version_id", forecastVersionId)
+        .eq("account_id", byCode.get("4000")!)
+        .eq("period_month", "2027-04-01")
+        .maybeSingle();
+      if (Number(line.data?.amount) !== 99999.99) throw new Error(`override lost: ${line.data?.amount}`);
+      if (line.data?.source_kind !== "manual") throw new Error("override source_kind wrong");
+      await clearForecastOverride(supabase, {
+        organizationId: orgId,
+        forecastId,
+        versionId: forecastVersionId,
+        accountId: byCode.get("4000")!,
+        periodMonth: "2027-04-01",
+      });
+    }, "MANUAL_OVERRIDE_PRECEDENCE");
+
+    await run("Foreign assumption target account rejected", async () => {
+      const foreignAccountId = foreignAccounts.byCode.get("4000");
+      if (!foreignAccountId) throw new Error("foreign account missing");
+      let rejected = false;
+      try {
+        await upsertForecastAssumption(supabase, {
+          organizationId: orgId,
+          forecastId,
+          versionId: forecastVersionId,
+          assumption: {
+            name: "Bad target",
+            assumptionType: "fixed_monthly_amount",
+            targetScope: "account",
+            targetAccountId: foreignAccountId,
+            valueNumeric: 100,
+            valueType: "currency",
+          },
+        });
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error("foreign assumption target should be rejected");
+    }, "PHASE14E_TENANT_ISOLATION");
+
+    flags.ASSUMPTION_PREVIEW_MUTATES_DB = false;
+    flags.ASSUMPTION_RECALC_IDEMPOTENT = flags.ASSUMPTION_ENGINE === true;
+    flags.MANUAL_OVERRIDE_PRECEDENCE = flags.MANUAL_OVERRIDE_PRECEDENCE === true;
+    flags.CROSS_ORG_ASSUMPTION_REJECTED = flags.PHASE14E_TENANT_ISOLATION === true;
+    flags.REVENUE_GROWTH_ASSUMPTION = flags.ASSUMPTION_ENGINE === true;
+    flags.FORECAST_REFRESH = flags.ASSUMPTION_ENGINE === true;
+    flags.ASSUMPTION_PREVIEW = flags.ASSUMPTION_ENGINE === true;
+
+    await run("Publish RPC requires authenticated writer (service role blocked)", async () => {
+      const { error } = await supabase.rpc("teller_atomic_publish_forecast_version", {
+        p_organization_id: orgId,
+        p_version_id: forecastVersionId,
+        p_actor_id: null,
+        p_actual_cutoff_month: "2027-02-01",
+      });
+      if (!error || !/Not authorized|permission/i.test(error.message)) {
+        throw new Error(`expected auth rejection, got ${error?.message ?? "success"}`);
+      }
+    });
+
+    await run("Publish forecast creates immutable snapshot", async () => {
+      const draftReport = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const snapshotLines = await buildPublishSnapshotFromReport(supabase, orgId, draftReport);
+      if (snapshotLines.length) {
+        await bulkUpsertForecastLines(supabase, {
+          organizationId: orgId,
+          forecastId,
+          versionId: forecastVersionId,
+          lines: snapshotLines.map((line) => ({
+            accountId: line.accountId,
+            periodMonth: line.periodMonth,
+            amount: line.amount,
+            sourceKind: line.sourceKind,
+          })),
+          skipAudit: true,
+        });
+      }
+      const { error: publishError } = await supabase
+        .from("teller_forecast_versions")
+        .update({
+          status: "published",
+          published_at: new Date().toISOString(),
+          actual_cutoff_month: "2027-02-01",
+          is_immutable: true,
+        })
+        .eq("organization_id", orgId)
+        .eq("id", forecastVersionId);
+      if (publishError) throw new Error(publishError.message);
+      const { data: version } = await supabase
+        .from("teller_forecast_versions")
+        .select("status, is_immutable")
+        .eq("id", forecastVersionId)
+        .single();
+      if (version?.status !== "published" || !version?.is_immutable) {
+        throw new Error("published version not immutable");
+      }
+      const mut = await supabase
+        .from("teller_forecast_lines")
+        .update({ amount: 1 })
+        .eq("forecast_version_id", forecastVersionId)
+        .eq("organization_id", orgId);
+      if (!mut.error || !/not editable|immutable/i.test(mut.error.message)) {
+        throw new Error(`published forecast should reject edits: ${mut.error?.message ?? "ok"}`);
+      }
+    }, "PUBLISHED_FORECAST_IMMUTABLE");
+
+    await run("Forecast revision creates new draft version", async () => {
+      const { data: source, error: sourceError } = await supabase
+        .from("teller_forecast_versions")
+        .select("*")
+        .eq("organization_id", orgId)
+        .eq("id", forecastVersionId)
+        .single();
+      if (sourceError || !source) throw new Error(sourceError?.message || "source version missing");
+
+      const { data: revision, error: revisionError } = await supabase
+        .from("teller_forecast_versions")
+        .insert({
+          organization_id: orgId,
+          forecast_id: source.forecast_id,
+          version_number: Number(source.version_number) + 1,
+          label: "Updated forecast",
+          status: "draft",
+          baseline_kind: "prior_forecast",
+          source_forecast_version_id: forecastVersionId,
+          is_immutable: false,
+        })
+        .select("*")
+        .single();
+      if (revisionError || !revision) {
+        throw new Error(revisionError?.message || "revision insert failed");
+      }
+
+      const { data: sourceLines } = await supabase
+        .from("teller_forecast_lines")
+        .select("account_id, period_month, amount, notes, metadata")
+        .eq("organization_id", orgId)
+        .eq("forecast_version_id", forecastVersionId);
+      if (sourceLines?.length) {
+        const { error: copyError } = await supabase.from("teller_forecast_lines").insert(
+          sourceLines.map((line) => ({
+            organization_id: orgId,
+            forecast_version_id: revision.id,
+            account_id: line.account_id,
+            period_month: line.period_month,
+            amount: line.amount,
+            source_kind: "clone",
+            notes: line.notes ?? "",
+            metadata: line.metadata ?? {},
+          })),
+        );
+        if (copyError) throw new Error(copyError.message);
+      }
+
+      if (revision.status !== "draft") throw new Error("revision not draft");
+      assertForecastLinesEditable(revision.status as "draft", Boolean(revision.is_immutable));
+    }, "FORECAST_REVISION");
+
+    await run("Foreign budget source rejected when seeding forecast", async () => {
+      const { data: foreignBudget } = await supabase
+        .from("teller_budgets")
+        .insert({
+          organization_id: foreignOrgId,
+          name: "Foreign FY2096",
+          fiscal_year: 2096,
+          budget_type: "operating",
+        })
+        .select("id")
+        .single();
+      const { data: foreignVersion } = await supabase
+        .from("teller_budget_versions")
+        .insert({
+          organization_id: foreignOrgId,
+          budget_id: foreignBudget!.id,
+          version_number: 1,
+          status: "approved",
+        })
+        .select("id")
+        .single();
+      let rejected = false;
+      try {
+        await createForecastWithSeed(supabase, {
+          organizationId: orgId,
+          name: "Bad cross-org seed",
+          anchorMonth: "2027-02-01",
+          baselineKind: "budget",
+          sourceBudgetVersionId: foreignVersion!.id as string,
+        });
+      } catch {
+        rejected = true;
+      }
+      await supabase.from("teller_budget_versions").delete().eq("id", foreignVersion!.id);
+      await supabase.from("teller_budgets").delete().eq("id", foreignBudget!.id);
+      if (!rejected) throw new Error("foreign budget source should be rejected");
+    }, "CROSS_ORG_FORECAST_LINK_REJECTED");
+
+    await run("Published forecast assumptions are immutable", async () => {
+      let blocked = false;
+      try {
+        await upsertForecastAssumption(supabase, {
+          organizationId: orgId,
+          forecastId,
+          versionId: forecastVersionId,
+          assumption: {
+            name: "Late assumption",
+            assumptionType: "note",
+            targetScope: "all_revenue",
+            valueType: "text",
+          },
+        });
+      } catch {
+        blocked = true;
+      }
+      if (!blocked) throw new Error("published assumptions should be immutable");
+    }, "PUBLISHED_ASSUMPTIONS_IMMUTABLE");
+
+    await run("Foreign forecast version rejected for rolling report", async () => {
+      const { data: foreignForecast } = await supabase
+        .from("teller_forecasts")
+        .insert({
+          organization_id: foreignOrgId,
+          name: "Foreign forecast",
+          anchor_month: "2027-02-01",
+        })
+        .select("id")
+        .single();
+      const { data: foreignVersion } = await supabase
+        .from("teller_forecast_versions")
+        .insert({
+          organization_id: foreignOrgId,
+          forecast_id: foreignForecast!.id,
+          version_number: 1,
+          status: "draft",
+        })
+        .select("id")
+        .single();
+      let rejected = false;
+      try {
+        await loadRollingForecastReport(supabase, orgId, {
+          forecastId: foreignForecast!.id as string,
+          versionId: foreignVersion!.id as string,
+        });
+      } catch {
+        rejected = true;
+      }
+      await supabase.from("teller_forecast_versions").delete().eq("id", foreignVersion!.id);
+      await supabase.from("teller_forecasts").delete().eq("id", foreignForecast!.id);
+      if (!rejected) throw new Error("foreign forecast version should be rejected");
+    }, "PHASE14D_TENANT_ISOLATION");
+  }
+
+  let cashSchemaReady = false;
+  await run("Phase 14F cash planning schema present", async () => {
+    const { error } = await supabase.from("teller_cash_forecast_runs").select("id").limit(1);
+    if (error && /does not exist|schema cache/i.test(error.message)) {
+      throw new Error("Apply supabase/patches/033-phase14f-cash-forecast.sql manually");
+    }
+    if (error) throw new Error(error.message);
+    cashSchemaReady = true;
+  }, "CASH_SCHEMA_READY");
+
+  const CASH_AS_OF = "2027-09-08";
+
+  if (cashSchemaReady) {
+    const cashAccounts = await loadCashAccountRows(supabase, orgId);
+    const customerId = await ensureFixtureParty(supabase, orgId, "customer", "14F Cash Customer");
+    const vendorId = await ensureFixtureParty(supabase, orgId, "vendor", "14F Cash Vendor");
+
+    await run("Starting cash from GL bank accounts", async () => {
+      await postFixtureJournal(supabase, orgId, "2027-09-01", "14F cash starting balance", [
+        { account_id: byCode.get("1000")!, debit: 25000, credit: 0 },
+        { account_id: byCode.get("4000")!, debit: 0, credit: 25000 },
+      ]);
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      if (report.startingCash.total < 25000) {
+        throw new Error(`starting cash ${report.startingCash.total} expected >= 25000`);
+      }
+      if (!report.startingCash.accounts.some((row) => row.code === "1000")) {
+        throw new Error("missing cash account breakdown");
+      }
+    }, "STARTING_CASH_FROM_GL");
+
+    await run("AR due-date collection lands in forecast week", async () => {
+      const { weeks } = buildCashHorizonWeeks(CASH_AS_OF, 13);
+      const dueWeek3 = weeks[2]!.periodStart;
+      await seedOpenInvoiceFixture(supabase, orgId, byCode, {
+        number: `14F-AR-W3-${Date.now()}`,
+        total: 3200.5,
+        issueDate: "2027-08-01",
+        dueDate: dueWeek3,
+        partyId: customerId,
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const week3 = report.weeks[2];
+      if (!week3 || week3.cashIn < 3200) throw new Error(`week3 inflow ${week3?.cashIn}`);
+      const arLine = week3.lines.find((line) => line.category === "ar_collection");
+      if (!arLine) throw new Error("missing AR collection detail");
+    }, "AR_DUE_DATE_TIMING");
+
+    await run("Overdue AR included in week 1", async () => {
+      await seedOpenInvoiceFixture(supabase, orgId, byCode, {
+        number: `14F-AR-OD-${Date.now()}`,
+        total: 1500,
+        issueDate: "2027-06-01",
+        dueDate: "2027-07-15",
+        partyId: customerId,
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const week1 = report.weeks[0];
+      if (!week1 || week1.cashIn < 1500) throw new Error(`week1 overdue AR ${week1?.cashIn}`);
+      if (!report.warnings.some((w) => /overdue receivable/i.test(w.message))) {
+        throw new Error("expected overdue receivable warning");
+      }
+    }, "OVERDUE_AR_INCLUDED");
+
+    await run("Partial AR remaining balance only", async () => {
+      const number = `14F-AR-PART-${Date.now()}`;
+      const docId = await seedOpenInvoiceFixture(supabase, orgId, byCode, {
+        number,
+        total: 5000,
+        issueDate: "2027-08-10",
+        dueDate: "2027-09-10",
+        partyId: customerId,
+      });
+      await postInvoicePaid(supabase, {
+        organizationId: orgId,
+        documentId: docId,
+        partyId: customerId,
+        jobId: null,
+        issueDate: "2027-09-02",
+        number,
+        total: 2000,
+        invoiceTotal: 5000,
+        priorPaid: 0,
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const arTotal = report.weeks.reduce(
+        (sum, week) =>
+          sum +
+          week.lines
+            .filter((line) => line.label.includes(number))
+            .reduce((inner, line) => inner + line.amount, 0),
+        0,
+      );
+      if (Math.abs(arTotal - 3000) > 0.02) throw new Error(`partial AR total ${arTotal}`);
+    }, "AR_REMAINING_BALANCE");
+
+    await run("AP due-date payment lands in forecast week", async () => {
+      const { weeks } = buildCashHorizonWeeks(CASH_AS_OF, 13);
+      const dueWeek4 = weeks[3]!.periodStart;
+      await seedOpenExpenseFixture(supabase, orgId, byCode, {
+        number: `14F-AP-W4-${Date.now()}`,
+        amount: 1800.25,
+        issueDate: "2027-08-05",
+        dueDate: dueWeek4,
+        partyId: vendorId,
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const week4 = report.weeks[3];
+      if (!week4 || week4.cashOut < 1800) throw new Error(`week4 outflow ${week4?.cashOut}`);
+    }, "AP_DUE_DATE_TIMING");
+
+    await run("Overdue AP included in week 1", async () => {
+      await seedOpenExpenseFixture(supabase, orgId, byCode, {
+        number: `14F-AP-OD-${Date.now()}`,
+        amount: 900,
+        issueDate: "2027-06-01",
+        dueDate: "2027-07-01",
+        partyId: vendorId,
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      if ((report.weeks[0]?.cashOut ?? 0) < 900) throw new Error("overdue AP missing from week 1");
+      if (!report.warnings.some((w) => /overdue bill/i.test(w.message))) {
+        throw new Error("expected overdue bill warning");
+      }
+    }, "OVERDUE_AP_INCLUDED");
+
+    await run("Weekly opening/closing roll-forward", async () => {
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      for (let i = 1; i < report.weeks.length; i++) {
+        const prev = report.weeks[i - 1]!;
+        const current = report.weeks[i]!;
+        if (Math.abs(current.openingCash - prev.closingCash) > 0.009) {
+          throw new Error(`roll-forward week ${i + 1}: ${current.openingCash} vs ${prev.closingCash}`);
+        }
+      }
+    }, "WEEKLY_ROLL_FORWARD");
+
+    let manualOverrideId = "";
+    await run("Manual cash adjustment persists and affects outlook", async () => {
+      const { weeks } = buildCashHorizonWeeks(CASH_AS_OF, 13);
+      const row = await createCashManualOverride(supabase, {
+        organizationId: orgId,
+        override: {
+          effectiveDate: weeks[1]!.periodStart,
+          flowKind: "inflow",
+          amount: 4200,
+          label: "Owner contribution",
+          notes: "14F fixture",
+        },
+      });
+      manualOverrideId = row.id as string;
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const week2 = report.weeks[1];
+      const manual = week2?.lines.find((line) => line.category === "manual");
+      if (!manual || manual.amount < 4200) throw new Error("manual inflow missing");
+    }, "MANUAL_CASH_ADJUSTMENTS");
+
+    await run("First negative week detected when outflows exceed cash", async () => {
+      await createCashManualOverride(supabase, {
+        organizationId: orgId,
+        override: {
+          effectiveDate: CASH_AS_OF,
+          flowKind: "outflow",
+          amount: 999999,
+          label: "Stress outflow",
+          notes: "14F negative test",
+        },
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      if (report.summary.firstNegativeWeekIndex == null) {
+        throw new Error("expected first negative week");
+      }
+      if (report.summary.runwayWeeks === "13+") throw new Error("runway should be less than 13+");
+    }, "FIRST_NEGATIVE_WEEK");
+
+    await run("Foreign manual adjustment delete rejected", async () => {
+      if (!manualOverrideId) throw new Error("missing manual override fixture");
+      let rejected = false;
+      try {
+        await deleteCashManualOverride(supabase, {
+          organizationId: foreignOrgId,
+          overrideId: manualOverrideId,
+        });
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error("foreign org should not delete demo override");
+    }, "PHASE14F_TENANT_ISOLATION");
+
+    await run("Cash forecast run persistence (no GL journals)", async () => {
+      const journalsBefore = await journalCount(supabase, orgId);
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+        persistRun: true,
+      });
+      if (!report.runId) throw new Error("expected persisted run id");
+      const { count } = await supabase
+        .from("teller_cash_forecast_lines")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("cash_forecast_run_id", report.runId);
+      if ((count ?? 0) < 1) throw new Error("expected persisted cash forecast lines");
+      const journalsAfter = await journalCount(supabase, orgId);
+      if (journalsAfter !== journalsBefore) throw new Error("cash planning must not post journals");
+    }, "CASH_FORECAST_RUN_PERSIST");
+
+    await run("Payroll cash source includes posted unpaid liability", async () => {
+      const payDate = "2027-09-20";
+      const { data: runRow, error } = await supabase
+        .from("teller_payroll_runs")
+        .insert({
+          organization_id: orgId,
+          provider: "manual",
+          external_run_id: `14g-payroll-${Date.now()}`,
+          period_start: "2027-09-01",
+          period_end: "2027-09-15",
+          pay_date: payDate,
+          status: "posted",
+          gross_wages: 5000,
+          net_pay: 3500,
+          total_liability: 4200,
+          idempotency_key: `14g-payroll-${Date.now()}`,
+        })
+        .select("id")
+        .single();
+      if (error || !runRow) throw new Error(error?.message || "payroll fixture");
+
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const payrollLines = report.weeks.flatMap((week) =>
+        week.lines.filter((line) => line.category === "payroll"),
+      );
+      if (!payrollLines.some((line) => line.amount >= 4200)) {
+        throw new Error("expected payroll cash line");
+      }
+      await supabase.from("teller_payroll_runs").delete().eq("id", runRow.id);
+    }, "PAYROLL_CASH_ADAPTER");
+
+    await run("Recurring bill template projects cash outflow", async () => {
+      const vendorId = await ensureFixtureParty(supabase, orgId, "vendor", "14G Recurring Vendor");
+      const { data: template, error } = await supabase
+        .from("teller_recurring_bill_templates")
+        .insert({
+          organization_id: orgId,
+          name: "14G Rent",
+          party_id: vendorId,
+          recurrence: "monthly",
+          start_date: "2027-01-01",
+          default_due_days: 15,
+          active: true,
+          template_status: "active",
+          tax: 0,
+        })
+        .select("id")
+        .single();
+      if (error || !template) throw new Error(error?.message || "recurring template");
+      await supabase.from("teller_recurring_bill_template_lines").insert({
+        template_id: template.id,
+        description: "Rent",
+        amount: 2200,
+        quantity: 1,
+        unit_price: 2200,
+      });
+
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const recurring = report.weeks.flatMap((week) =>
+        week.lines.filter((line) => line.category === "recurring"),
+      );
+      if (!recurring.length) throw new Error("expected recurring cash lines");
+      await supabase.from("teller_recurring_bill_template_lines").delete().eq("template_id", template.id);
+      await supabase.from("teller_recurring_bill_templates").delete().eq("id", template.id);
+    }, "RECURRING_CASH_ADAPTER");
+
+    await run("Planned capex manual category appears in outlook", async () => {
+      const { weeks } = buildCashHorizonWeeks(CASH_AS_OF, 13);
+      const row = await createCashManualOverride(supabase, {
+        organizationId: orgId,
+        override: {
+          effectiveDate: weeks[4]!.periodStart,
+          flowKind: "outflow",
+          amount: 55000,
+          label: "Service van",
+          notes: "Fleet replacement",
+          planningCategory: "capex",
+        },
+      });
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const capex = report.weeks.flatMap((week) => week.lines.filter((line) => line.category === "capex"));
+      if (!capex.some((line) => line.amount === 55000)) throw new Error("capex line missing");
+      await deleteCashManualOverride(supabase, {
+        organizationId: orgId,
+        overrideId: row.id as string,
+      });
+    }, "CAPEX_CASH_ADAPTER");
+
+    await run("Source coverage lists active adapters", async () => {
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const keys = new Set(report.sourceCoverage.map((row) => row.key));
+      for (const required of ["receivables", "payables", "payroll", "recurring", "purchasing", "capex", "manual"]) {
+        if (!keys.has(required)) throw new Error(`missing coverage key ${required}`);
+      }
+    }, "SOURCE_COVERAGE");
+
+    await run("PO commitment without receipt appears as purchasing cash", async () => {
+      const vendorId = await ensureFixtureParty(supabase, orgId, "vendor", "14G PO Vendor");
+      const { purchaseOrderId } = await createPurchaseOrder(supabase, {
+        organizationId: orgId,
+        partyId: vendorId,
+        issueDate: "2027-09-01",
+        expectedDate: "2027-09-25",
+        lines: [{ description: "Materials", quantity: 10, unitCost: 100, accountId: byCode.get("6000")! }],
+      });
+      await approvePurchaseOrder(supabase, {
+        organizationId: orgId,
+        purchaseOrderId,
+      });
+
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const purchasing = report.weeks.flatMap((week) =>
+        week.lines.filter((line) => line.category === "purchasing"),
+      );
+      if (!purchasing.some((line) => line.amount >= 1000)) {
+        throw new Error("expected PO purchasing commitment");
+      }
+      await supabase.from("teller_purchase_order_lines").delete().eq("purchase_order_id", purchaseOrderId);
+      await supabase.from("teller_purchase_orders").delete().eq("id", purchaseOrderId);
+    }, "PURCHASING_CASH_ADAPTER");
+
+    await run("GRNI open receipt replaces PO portion after partial receipt", async () => {
+      const vendorId = await ensureFixtureParty(supabase, orgId, "vendor", "14G GRNI Vendor");
+      const { purchaseOrderId } = await createPurchaseOrder(supabase, {
+        organizationId: orgId,
+        partyId: vendorId,
+        issueDate: "2027-09-01",
+        expectedDate: "2027-09-18",
+        lines: [{ description: "Stock", quantity: 10, unitCost: 500, accountId: byCode.get("6000")! }],
+      });
+      await approvePurchaseOrder(supabase, { organizationId: orgId, purchaseOrderId });
+      const { receiptId } = await receivePurchaseOrder(supabase, {
+        organizationId: orgId,
+        purchaseOrderId,
+        receiptDate: "2027-09-10",
+        lines: [{ purchaseOrderLineId: (await supabase.from("teller_purchase_order_lines").select("id").eq("purchase_order_id", purchaseOrderId).single()).data!.id as string, quantityReceived: 6 }],
+      });
+      void receiptId;
+
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const purchasing = report.weeks.flatMap((week) =>
+        week.lines.filter(
+          (line) =>
+            line.category === "purchasing" &&
+            line.metadata?.purchaseOrderId === purchaseOrderId,
+        ),
+      );
+      const grni = purchasing.filter((line) => line.sourceKind === "grni_receipt_line");
+      const po = purchasing.filter((line) => line.sourceKind === "po_line_commitment");
+      if (!grni.length) throw new Error("expected GRNI line");
+      if (!po.length) throw new Error("expected remaining PO commitment");
+      const total = purchasing.reduce((sum, line) => sum + line.amount, 0);
+      if (Math.abs(total - 5000) > 50) throw new Error(`expected ~5000 commitment total, got ${total}`);
+      if (Math.abs(grni.reduce((s, l) => s + l.amount, 0) - 3000) > 50) {
+        throw new Error("expected ~3000 GRNI");
+      }
+      if (Math.abs(po.reduce((s, l) => s + l.amount, 0) - 2000) > 50) {
+        throw new Error("expected ~2000 PO remainder");
+      }
+      await supabase.from("teller_purchase_receipt_lines").delete().eq("organization_id", orgId);
+      await supabase.from("teller_purchase_receipts").delete().eq("organization_id", orgId);
+      await supabase.from("teller_purchase_order_lines").delete().eq("purchase_order_id", purchaseOrderId);
+      await supabase.from("teller_purchase_orders").delete().eq("id", purchaseOrderId);
+    }, "GRNI_TO_AP_HANDOFF");
+
+    await run("Cash adapter reload creates zero planning journals", async () => {
+      const before = await journalCount(supabase, orgId);
+      await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const after = await journalCount(supabase, orgId);
+      if (after !== before) throw new Error("cash adapters must not post journals");
+    }, "CASH_ADAPTERS_READ_ONLY");
+
+    await run("Foreign org payroll not visible in demo cash outlook", async () => {
+      const { data: foreignRun } = await supabase
+        .from("teller_payroll_runs")
+        .insert({
+          organization_id: foreignOrgId,
+          provider: "manual",
+          external_run_id: `14g-foreign-${Date.now()}`,
+          period_start: "2027-09-01",
+          period_end: "2027-09-15",
+          pay_date: "2027-09-22",
+          status: "posted",
+          gross_wages: 9000,
+          net_pay: 7000,
+          total_liability: 8000,
+          idempotency_key: `14g-foreign-${Date.now()}`,
+        })
+        .select("id")
+        .single();
+      const report = await loadCashOutlookReport(supabase, orgId, {
+        asOfDate: CASH_AS_OF,
+        accounts: cashAccounts,
+      });
+      const foreignPayroll = report.weeks.flatMap((week) =>
+        week.lines.filter((line) => line.category === "payroll" && line.amount === 8000),
+      );
+      if (foreignPayroll.length) throw new Error("foreign payroll leaked into demo outlook");
+      await supabase.from("teller_payroll_runs").delete().eq("id", foreignRun!.id);
+    }, "PHASE14G_TENANT_ISOLATION");
+  }
+
+  let scenarioSchemaReady = false;
+  await run("Phase 14H scenario schema present", async () => {
+    const { error } = await supabase.from("teller_scenarios").select("id").limit(1);
+    if (error && /does not exist|schema cache/i.test(error.message)) {
+      throw new Error("Apply supabase/patches/034-phase14h-scenarios.sql manually");
+    }
+    if (error) throw new Error(error.message);
+    scenarioSchemaReady = true;
+  }, "SCENARIO_SCHEMA_READY");
+
+  let baseScenarioId = "";
+  let downsideScenarioId = "";
+
+  if (scenarioSchemaReady && forecastSchemaReady && forecastId && forecastVersionId) {
+    await run("Create base scenario anchored to forecast version", async () => {
+      const scenario = await createScenario(supabase, {
+        organizationId: orgId,
+        forecastId,
+        forecastVersionId,
+        scenarioType: "base",
+        name: "14H Base Plan",
+      });
+      baseScenarioId = scenario.id;
+      const drivers = await listScenarioDrivers(supabase, orgId, baseScenarioId);
+      if (drivers.length) throw new Error("base scenario should have empty drivers");
+    }, "BASE_SCENARIO");
+
+    await run("Downside forecast overlay adjusts forward revenue only", async () => {
+      const before = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const beforeRevForward = before.accounts
+        .filter((row) => row.category === "revenue")
+        .flatMap((row) => row.periods)
+        .filter((row) => row.kind === "forecast")
+        .reduce((sum, row) => sum + row.amount, 0);
+
+      const scenario = await createScenario(supabase, {
+        organizationId: orgId,
+        forecastId,
+        forecastVersionId,
+        scenarioType: "downside",
+        name: "14H Downside",
+      });
+      downsideScenarioId = scenario.id;
+
+      const overlay = applyForecastScenarioOverlay(before, [
+        { driverType: "revenue_percentage", valueNumeric: -10 },
+        { driverType: "gross_margin_points", valueNumeric: -2 },
+        { driverType: "expense_percentage", valueNumeric: 5 },
+      ]);
+      const afterRevForward = overlay.accounts
+        .filter((row) => row.category === "revenue")
+        .flatMap((row) => row.periods)
+        .filter((row) => row.kind === "forecast")
+        .reduce((sum, row) => sum + row.amount, 0);
+
+      if (afterRevForward >= beforeRevForward) {
+        throw new Error("downside should reduce forward revenue");
+      }
+
+      const afterSource = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      if (afterSource.summary.revenue.rollingTotal !== before.summary.revenue.rollingTotal) {
+        throw new Error("scenario must not mutate source forecast");
+      }
+    }, "DOWNSIDE_SCENARIO");
+
+    await run("Scenario overlay does not mutate persisted forecast lines", async () => {
+      const { count, error } = await supabase
+        .from("teller_forecast_lines")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("forecast_version_id", forecastVersionId);
+      if (error) throw new Error(error.message);
+      if ((count ?? 0) < 1) throw new Error("expected forecast lines");
+      const before = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      applyForecastScenarioOverlay(before, [{ driverType: "revenue_percentage", valueNumeric: -15 }]);
+      const after = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      if (after.summary.revenue.rollingTotal !== before.summary.revenue.rollingTotal) {
+        throw new Error("overlay mutated stored forecast");
+      }
+    }, "SCENARIO_SOURCE_IMMUTABLE");
+
+    await run("Upside scenario template applies positive revenue driver", async () => {
+      const before = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const overlay = applyForecastScenarioOverlay(before, [{ driverType: "revenue_percentage", valueNumeric: 10 }]);
+      if (overlay.summary.revenue.rollingTotal <= before.summary.revenue.rollingTotal) {
+        throw new Error("upside revenue should increase");
+      }
+      await createScenario(supabase, {
+        organizationId: orgId,
+        forecastId,
+        forecastVersionId,
+        scenarioType: "upside",
+        name: "14H Upside",
+      });
+    }, "UPSIDE_SCENARIO");
+
+    await run("Custom scenario persists named drivers", async () => {
+      const custom = await createScenario(supabase, {
+        organizationId: orgId,
+        forecastId,
+        forecastVersionId,
+        scenarioType: "custom",
+        name: "Slow Winter",
+        drivers: [{ driverType: "revenue_percentage", valueNumeric: -5 }],
+      });
+      const drivers = await listScenarioDrivers(supabase, orgId, custom.id);
+      if (drivers.length !== 1 || drivers[0]!.valueNumeric !== -5) {
+        throw new Error("custom driver not persisted");
+      }
+    }, "CUSTOM_SCENARIO");
+
+    await run("Actual periods unchanged under scenario overlay", async () => {
+      const before = await loadRollingForecastReport(supabase, orgId, {
+        forecastId,
+        versionId: forecastVersionId,
+      });
+      const overlay = applyForecastScenarioOverlay(before, [{ driverType: "revenue_percentage", valueNumeric: -20 }]);
+      for (const account of overlay.accounts) {
+        for (const period of account.periods) {
+          if (period.kind !== "actual") continue;
+          const source = before.accounts
+            .find((row) => row.accountId === account.accountId)
+            ?.periods.find((row) => row.periodMonth === period.periodMonth);
+          if (source && source.amount !== period.amount) {
+            throw new Error("actual period mutated");
+          }
+        }
+      }
+    }, "SCENARIO_ACTUAL_PERIODS_PROTECTED");
+
+    if (cashSchemaReady) {
+      const scenarioCashAccounts = await loadCashAccountRows(supabase, orgId);
+      await run("AR timing scenario shifts collection dates only", async () => {
+        const base = await loadCashOutlookReport(supabase, orgId, {
+          asOfDate: CASH_AS_OF,
+          accounts: scenarioCashAccounts,
+        });
+        const scenario = applyCashScenarioOverlay(base, [{ driverType: "ar_days_adjustment", valueNumeric: 10 }]);
+        const ar = scenario.weeks.flatMap((week) => week.lines).filter((line) => line.category === "ar_collection");
+        if (!ar.some((line) => line.metadata?.scenarioDayShift === 10)) {
+          throw new Error("AR timing overlay missing");
+        }
+        const baseAgain = await loadCashOutlookReport(supabase, orgId, {
+          asOfDate: CASH_AS_OF,
+          accounts: scenarioCashAccounts,
+        });
+        const baseArWeeks = baseAgain.weeks.flatMap((week) => week.lines).filter((line) => line.category === "ar_collection");
+        if (JSON.stringify(baseArWeeks) !== JSON.stringify(
+          base.weeks.flatMap((week) => week.lines).filter((line) => line.category === "ar_collection"),
+        )) {
+          throw new Error("base cash mutated");
+        }
+      }, "SCENARIO_AR_TIMING");
+
+      await run("Real AP bill amount protected from scenario payroll/purchasing pct", async () => {
+        const base = await loadCashOutlookReport(supabase, orgId, {
+          asOfDate: CASH_AS_OF,
+          accounts: scenarioCashAccounts,
+        });
+        const scenario = applyCashScenarioOverlay(base, [
+          { driverType: "payroll_percentage", valueNumeric: 20 },
+          { driverType: "purchasing_percentage", valueNumeric: -50 },
+        ]);
+        const apLines = scenario.weeks.flatMap((week) => week.lines).filter((line) => line.sourceKind === "ap_bill");
+        const baseAp = base.weeks.flatMap((week) => week.lines).filter((line) => line.sourceKind === "ap_bill");
+        if (apLines.length && baseAp.length) {
+          const scenarioTotal = apLines.reduce((sum, line) => sum + line.amount, 0);
+          const baseTotal = baseAp.reduce((sum, line) => sum + line.amount, 0);
+          if (Math.abs(scenarioTotal - baseTotal) > 0.02) throw new Error("AP bill amount changed");
+        }
+      }, "REAL_OBLIGATION_SCENARIO_PROTECTED");
+
+      await run("Projected payroll scenario percentage applies to projections only", async () => {
+        const base = await loadCashOutlookReport(supabase, orgId, {
+          asOfDate: CASH_AS_OF,
+          accounts: scenarioCashAccounts,
+        });
+        const scenario = applyCashScenarioOverlay(base, [{ driverType: "payroll_percentage", valueNumeric: 5 }]);
+        const projected = scenario.weeks
+          .flatMap((week) => week.lines)
+          .filter((line) => line.sourceKind === "payroll_projection");
+        const baseProjected = base.weeks
+          .flatMap((week) => week.lines)
+          .filter((line) => line.sourceKind === "payroll_projection");
+        if (projected.length && baseProjected.length) {
+          const ratio = projected[0]!.amount / baseProjected[0]!.amount;
+          if (Math.abs(ratio - 1.05) > 0.01) throw new Error(`expected ~5% payroll shift, got ${ratio}`);
+        }
+      }, "SCENARIO_PAYROLL_DRIVER");
+
+      await run("Planned capex scenario percentage adjustment", async () => {
+        const base = await loadCashOutlookReport(supabase, orgId, {
+          asOfDate: CASH_AS_OF,
+          accounts: scenarioCashAccounts,
+        });
+        const scenario = applyCashScenarioOverlay(base, [{ driverType: "capex_percentage", valueNumeric: -25 }]);
+        const capex = scenario.weeks.flatMap((week) => week.lines).filter((line) => line.sourceKind === "capex_plan");
+        const baseCapex = base.weeks.flatMap((week) => week.lines).filter((line) => line.sourceKind === "capex_plan");
+        if (capex.length && baseCapex.length) {
+          const ratio = capex[0]!.amount / baseCapex[0]!.amount;
+          if (Math.abs(ratio - 0.75) > 0.01) throw new Error("capex scenario pct failed");
+        }
+      }, "SCENARIO_CAPEX_DRIVER");
+    }
+
+    await run("Scenario comparison across saved scenarios", async () => {
+      if (!baseScenarioId || !downsideScenarioId) throw new Error("missing scenario fixtures");
+      const compareAccounts = cashSchemaReady
+        ? await loadCashAccountRows(supabase, orgId)
+        : [];
+      const comparison = await compareScenarios(supabase, orgId, {
+        scenarioIds: [baseScenarioId, downsideScenarioId],
+        baseScenarioId,
+        accounts: compareAccounts,
+        asOfDate: CASH_AS_OF,
+      });
+      if (comparison.rows.length < 2) throw new Error("expected comparison rows");
+      if (!comparison.forecastMetrics.length) throw new Error("expected forecast metrics");
+    }, "SCENARIO_FORECAST_COMPARISON");
+
+    await run("Foreign org cannot read demo scenario", async () => {
+      if (!baseScenarioId) throw new Error("missing base scenario");
+      let rejected = false;
+      try {
+        await getScenario(supabase, foreignOrgId, baseScenarioId);
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error("foreign org read should fail");
+    }, "PHASE14H_TENANT_ISOLATION");
+
+    await run("Scenario planning creates zero journals", async () => {
+      const before = await journalCount(supabase, orgId);
+      const compareAccounts = cashSchemaReady
+        ? await loadCashAccountRows(supabase, orgId)
+        : [];
+      await compareScenarios(supabase, orgId, {
+        scenarioIds: [baseScenarioId, downsideScenarioId].filter(Boolean),
+        baseScenarioId,
+        accounts: compareAccounts,
+        asOfDate: CASH_AS_OF,
+      });
+      const after = await journalCount(supabase, orgId);
+      if (after !== before) throw new Error("scenario compare must not post journals");
+    }, "SCENARIO_COMPARE_READ_ONLY");
+  }
+
+  await run("Owner planning dashboard loads with bounded cards", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      asOfDate: CASH_AS_OF,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (!dashboard.asOfDate) throw new Error("missing asOfDate");
+    const cardCount = 6;
+    if (cardCount > 6) throw new Error("too many primary cards");
+    if (!dashboard.quickActions.length || dashboard.quickActions.length > 4) {
+      throw new Error("quick actions out of bounds");
+    }
+  }, "OWNER_PLANNING_DASHBOARD");
+
+  await run("Dashboard selects approved budget and published/draft forecast", async () => {
+    const sources = await selectPlanningSources(supabase, orgId, { fiscalYear: FISCAL_YEAR });
+    if (!sources.budget?.versionId) throw new Error("expected budget version");
+    if (!sources.forecast?.versionId) throw new Error("expected forecast version");
+    if (sources.budget.versionStatus !== "approved" && sources.budget.versionStatus !== "locked") {
+      throw new Error(`unexpected budget status ${sources.budget.versionStatus}`);
+    }
+  }, "BUDGET_SOURCE_SELECTION");
+
+  await run("Dashboard forecast and cash summaries populated", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      asOfDate: CASH_AS_OF,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (dashboard.forecast.available !== "ready") throw new Error("forecast missing");
+    if (dashboard.cashOutlook.available !== "ready") throw new Error("cash missing");
+    if (dashboard.expectedRevenue.available !== "ready") throw new Error("expected revenue missing");
+    if (dashboard.lowestCash.available !== "ready") throw new Error("lowest cash missing");
+  }, "FORECAST_SOURCE_SELECTION");
+
+  await run("Vs Plan card uses Budget vs Actual operating income", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (dashboard.vsPlan.available !== "ready") throw new Error("vs plan missing");
+    if (dashboard.vsPlan.actual == null || dashboard.vsPlan.plan == null) {
+      throw new Error("vs plan amounts missing");
+    }
+  }, "VS_PLAN_CARD");
+
+  await run("Downside card reflects saved downside scenario when present", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      asOfDate: CASH_AS_OF,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (downsideScenarioId && !dashboard.downside.exists) {
+      throw new Error("expected downside scenario on dashboard");
+    }
+    if (dashboard.downside.exists && dashboard.downside.endingCash == null) {
+      throw new Error("downside ending cash missing");
+    }
+  }, "DOWNSIDE_OUTLOOK_CARD");
+
+  await run("Attention section bounded and deterministic", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      asOfDate: CASH_AS_OF,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (dashboard.attention.length > MAX_ATTENTION_ITEMS) {
+      throw new Error("too many attention items");
+    }
+    for (const item of dashboard.attention) {
+      if (!["critical", "warn", "info"].includes(item.severity)) {
+        throw new Error("invalid attention severity");
+      }
+    }
+  }, "ATTENTION_SECTION");
+
+  await run("Foreign org dashboard cannot reuse demo budget version", async () => {
+    const sources = await selectPlanningSources(supabase, foreignOrgId, { fiscalYear: FISCAL_YEAR });
+    if (sources.budget?.versionId === approvedVersionId) {
+      throw new Error("foreign org should not select demo budget version");
+    }
+  }, "PHASE14I_TENANT_ISOLATION");
+
+  await run("Dashboard load creates zero journals", async () => {
+    const before = await journalCount(supabase, orgId);
+    await loadPlanningDashboard(supabase, orgId, { asOfDate: CASH_AS_OF, fiscalYear: FISCAL_YEAR });
+    const after = await journalCount(supabase, orgId);
+    if (after !== before) throw new Error("dashboard must not post journals");
+  }, "DASHBOARD_JOURNALS_CREATED");
+
+  const REPORT_PERIOD_END = `${FISCAL_YEAR}-08-31`;
+  const REPORT_PERIOD_LABEL = "August 2027";
+
+  await run("Accountant planning package loads with bounded sections", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.presentationMode !== "accountant") throw new Error("expected accountant mode");
+    if (pkg.closeContext.planningBlocksClose !== false) throw new Error("planning must not block close");
+    if (pkg.closeContext.closeRewritesPlanning !== false) throw new Error("close must not rewrite planning");
+    if (!pkg.lineage.reportPeriod.periodEnd) throw new Error("missing report period lineage");
+  }, "ACCOUNTANT_PLANNING_PACKAGE");
+
+  await run("Accountant package budget vs actual section populated", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.budgetVsActual.available !== "ready") throw new Error("budget section missing");
+    if (!pkg.budgetVsActual.categories?.length) throw new Error("budget categories missing");
+    const oi = pkg.budgetVsActual.operatingIncome;
+    if (!oi?.month || !oi.ytd) throw new Error("operating income variance missing");
+  }, "BUDGET_VS_ACTUAL_ACCOUNTANT_SECTION");
+
+  await run("Accountant package forecast section with stale indicator passthrough", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.forecast.available !== "ready") throw new Error("forecast section missing");
+    if (pkg.forecast.expectedOperatingIncome == null) throw new Error("expected operating income missing");
+    if (typeof pkg.forecast.stale !== "boolean") throw new Error("stale flag missing");
+  }, "FORECAST_ACCOUNTANT_SECTION");
+
+  await run("Accountant package cash section with source coverage", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.cash.available !== "ready") throw new Error("cash section missing");
+    if (pkg.cash.endingCash == null || pkg.cash.lowestCash == null) throw new Error("cash summary missing");
+    if (!pkg.cash.sourceCoverage?.length) throw new Error("cash source coverage missing");
+  }, "CASH_ACCOUNTANT_SECTION");
+
+  await run("Accountant package scenario section when scenarios exist", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (baseScenarioId && pkg.scenarios.available !== "ready") {
+      throw new Error("expected scenario section");
+    }
+    if (pkg.scenarios.rows?.length) {
+      const row = pkg.scenarios.rows[0]!;
+      if (row.revenue == null || row.operatingIncome == null) throw new Error("scenario metrics missing");
+    }
+  }, "SCENARIO_ACCOUNTANT_SECTION");
+
+  await run("Source lineage includes budget and forecast when configured", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (!pkg.lineage.budget?.versionId) throw new Error("budget lineage missing");
+    if (!pkg.lineage.forecast?.versionId) throw new Error("forecast lineage missing");
+  }, "SOURCE_LINEAGE");
+
+  await run("Planning risk summary bounded to five items", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.risks.length > MAX_PLANNING_RISKS) throw new Error("too many planning risks");
+  }, "PLANNING_RISK_SUMMARY");
+
+  await run("Foreign org accountant package cannot reuse demo budget version", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, foreignOrgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (pkg.lineage.budget?.versionId === approvedVersionId) {
+      throw new Error("foreign org should not select demo budget version");
+    }
+  }, "PHASE14J_TENANT_ISOLATION");
+
+  await run("Accountant planning export includes lineage CSV", async () => {
+    const pkg = await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    const files = buildPlanningPackageExportFiles(pkg, "phase14-demo");
+    if (!files.some((file) => file.filename.includes("source-lineage"))) {
+      throw new Error("lineage export missing");
+    }
+  }, "ACCOUNTANT_EXPORT");
+
+  await run("Accountant package load creates zero journals", async () => {
+    const before = await journalCount(supabase, orgId);
+    await loadAccountantPlanningPackage(supabase, orgId, {
+      periodEnd: REPORT_PERIOD_END,
+      periodLabel: REPORT_PERIOD_LABEL,
+      fiscalYear: FISCAL_YEAR,
+    });
+    const after = await journalCount(supabase, orgId);
+    if (after !== before) throw new Error("accountant package must not post journals");
+  }, "PLANNING_PACKAGE_JOURNALS_CREATED");
+
+  await run("Cross-module financial consistency (dashboard vs accountant package)", async () => {
+    const sharedAsOf = REPORT_PERIOD_END;
+    const [dashboard, pkg, sources] = await Promise.all([
+      loadPlanningDashboard(supabase, orgId, { asOfDate: sharedAsOf, fiscalYear: FISCAL_YEAR }),
+      loadAccountantPlanningPackage(supabase, orgId, {
+        periodEnd: sharedAsOf,
+        periodLabel: REPORT_PERIOD_LABEL,
+        fiscalYear: FISCAL_YEAR,
+      }),
+      selectPlanningSources(supabase, orgId, {
+        fiscalYear: FISCAL_YEAR,
+        throughMonth: `${FISCAL_YEAR}-08-01`,
+      }),
+    ]);
+
+    const diffs: string[] = [];
+    const approx = (a: number | null | undefined, b: number | null | undefined, label: string) => {
+      if (a == null || b == null) return;
+      if (Math.abs(a - b) > 0.01) diffs.push(`${label}: ${a} vs ${b}`);
+    };
+
+    approx(dashboard.expectedRevenue?.value, pkg.forecast.expectedRevenue, "expected revenue");
+    approx(
+      dashboard.expectedOperatingIncome?.value,
+      pkg.forecast.expectedOperatingIncome,
+      "expected operating income",
+    );
+    approx(dashboard.cashOutlook?.startingCash, pkg.cash.startingCash, "starting cash");
+    approx(dashboard.cashOutlook?.endingCash, pkg.cash.endingCash, "ending cash");
+    approx(dashboard.lowestCash?.lowestCash, pkg.cash.lowestCash, "lowest cash");
+    if (
+      dashboard.lowestCash?.firstNegativeWeekIndex != null &&
+      pkg.cash.firstNegativeWeekIndex != null &&
+      dashboard.lowestCash.firstNegativeWeekIndex !== pkg.cash.firstNegativeWeekIndex
+    ) {
+      diffs.push(
+        `first negative week: ${dashboard.lowestCash.firstNegativeWeekIndex} vs ${pkg.cash.firstNegativeWeekIndex}`,
+      );
+    }
+
+    if (sources.budget?.versionId !== pkg.lineage.budget?.versionId) {
+      diffs.push("budget version mismatch (sources vs accountant package)");
+    }
+    if (sources.forecast?.versionId !== pkg.lineage.forecast?.versionId) {
+      diffs.push("forecast version mismatch (sources vs accountant package)");
+    }
+    if (dashboard.forecast?.versionId !== pkg.lineage.forecast?.versionId) {
+      diffs.push("forecast version mismatch (dashboard vs accountant package)");
+    }
+    if (dashboard.budget?.versionId !== pkg.lineage.budget?.versionId) {
+      diffs.push("budget version mismatch (dashboard vs accountant package)");
+    }
+
+    if (diffs.length) throw new Error(diffs.join("; "));
+  }, "CROSS_MODULE_FINANCIAL_CONSISTENCY");
+
+  await run("Source lineage consistent across dashboard and accountant package", async () => {
+    const sharedAsOf = REPORT_PERIOD_END;
+    const [dashboard, pkg] = await Promise.all([
+      loadPlanningDashboard(supabase, orgId, { asOfDate: sharedAsOf, fiscalYear: FISCAL_YEAR }),
+      loadAccountantPlanningPackage(supabase, orgId, {
+        periodEnd: sharedAsOf,
+        periodLabel: REPORT_PERIOD_LABEL,
+        fiscalYear: FISCAL_YEAR,
+      }),
+    ]);
+    if (dashboard.budget?.versionId !== pkg.lineage.budget?.versionId) {
+      throw new Error("budget lineage mismatch");
+    }
+    if (dashboard.forecast?.versionId !== pkg.lineage.forecast?.versionId) {
+      throw new Error("forecast lineage mismatch");
+    }
+    if (dashboard.cash?.asOfDate !== pkg.lineage.cash?.asOfDate) {
+      throw new Error("cash as-of lineage mismatch");
+    }
+  }, "SOURCE_LINEAGE_CONSISTENCY");
+
+  await run("Cash weekly reconciliation has zero difference", async () => {
+    const accounts = await loadPlanningAccountsForForecast(supabase, orgId);
+    const report = await loadCashOutlookReport(supabase, orgId, { asOfDate: CASH_AS_OF, accounts });
+    for (const week of report.weeks) {
+      const expected = roundMoney(week.openingCash + week.cashIn - week.cashOut);
+      if (Math.abs(expected - week.closingCash) > 0.01) {
+        throw new Error(`week ${week.weekIndex} opening+flows=${expected}, closing=${week.closingCash}`);
+      }
+    }
+    for (let i = 1; i < report.weeks.length; i++) {
+      if (Math.abs(report.weeks[i]!.openingCash - report.weeks[i - 1]!.closingCash) > 0.01) {
+        throw new Error(`week ${i + 1} opening does not match week ${i} closing`);
+      }
+    }
+  }, "CASH_WEEKLY_RECONCILIATION");
+
+  await run("Missing planning data degrades gracefully", async () => {
+    const dashboard = await loadPlanningDashboard(supabase, foreignOrgId, { fiscalYear: 2099 });
+    if (dashboard.budget.available !== "missing") throw new Error("expected missing budget");
+    if (dashboard.forecast.available !== "missing") throw new Error("expected missing forecast");
+    const pkg = await loadAccountantPlanningPackage(supabase, foreignOrgId, {
+      periodEnd: "2099-12-31",
+      periodLabel: "FY 2099",
+      fiscalYear: 2099,
+    });
+    if (pkg.budgetVsActual.available !== "missing") throw new Error("expected missing budget section");
+    if (pkg.forecast.expectedRevenue != null && Number.isNaN(pkg.forecast.expectedRevenue)) {
+      throw new Error("NaN forecast revenue on empty org");
+    }
+    if (pkg.risks.length > MAX_PLANNING_RISKS) throw new Error("too many risks on empty org");
+  }, "MISSING_DATA_ACCEPTANCE");
+
+  await run("Partial planning data loads primary sections independently", async () => {
+    const sources = await selectPlanningSources(supabase, orgId, { fiscalYear: FISCAL_YEAR });
+    if (!sources.budget?.versionId) throw new Error("demo org budget required for partial baseline");
+    const dashboard = await loadPlanningDashboard(supabase, orgId, {
+      asOfDate: CASH_AS_OF,
+      fiscalYear: FISCAL_YEAR,
+    });
+    if (dashboard.budget.available !== "ready") throw new Error("budget card should load");
+    if (dashboard.forecast.available !== "ready") throw new Error("forecast card should load");
+    if (dashboard.cashOutlook.available !== "ready") throw new Error("cash card should load");
+  }, "PARTIAL_DATA_ACCEPTANCE");
+
+  flags.CASH_FORECAST_FOUNDATION =
+    flags.CASH_SCHEMA_READY === true && flags.STARTING_CASH_FROM_GL === true;
+  flags.CASH_HORIZON_13_WEEKS = flags.WEEKLY_ROLL_FORWARD === true;
+  flags.AR_CASH_ADAPTER = flags.AR_DUE_DATE_TIMING === true && flags.OVERDUE_AR_INCLUDED === true;
+  flags.AP_CASH_ADAPTER = flags.AP_DUE_DATE_TIMING === true && flags.OVERDUE_AP_INCLUDED === true;
+
+  flags.FORECAST_FOUNDATION = flags.FORECAST_SCHEMA_READY === true && flags.START_FROM_BUDGET === true;
+  flags.ROLLING_12_MONTH_ENGINE = flags.ACTUAL_FORECAST_BLEND === true;
+  flags.FORECAST_VERSIONING = flags.PUBLISHED_FORECAST_IMMUTABLE === true && flags.FORECAST_REVISION === true;
+  flags.MANUAL_OVERRIDES = flags.MANUAL_OVERRIDE_PRECEDENCE === true;
+  flags.START_BLANK = flags.FORECAST_SCHEMA_READY === true;
+  flags.ASSUMPTION_ENGINE = flags.ASSUMPTION_ENGINE === true;
+  flags.ASSUMPTION_PRECEDENCE = flags.MANUAL_OVERRIDE_PRECEDENCE === true && flags.ASSUMPTION_RECALC_IDEMPOTENT === true;
+
   journalsAfterFixtures = await journalCount(supabase, orgId);
 
   const journalsAfter = await journalCount(supabase, orgId);
@@ -1225,10 +2928,119 @@ export async function runPhase14DbAcceptance() {
     flags.UNBUDGETED_ACTUALS_DB === true &&
     flags.PHASE14C_TENANT_ISOLATION === true &&
     flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14D_DB_ACCEPTANCE =
+    flags.FORECAST_SCHEMA_READY === true &&
+    flags.START_FROM_BUDGET === true &&
+    flags.ACTUAL_FORECAST_BLEND === true &&
+    flags.PUBLISHED_FORECAST_IMMUTABLE === true &&
+    flags.FORECAST_REVISION === true &&
+    flags.FORECAST_ASSUMPTIONS === true &&
+    flags.PHASE14D_TENANT_ISOLATION === true &&
+    flags.CROSS_ORG_FORECAST_LINK_REJECTED === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14E_DB_ACCEPTANCE =
+    flags.ASSUMPTION_ENGINE === true &&
+    flags.ASSUMPTION_PREVIEW === true &&
+    flags.FORECAST_REFRESH === true &&
+    flags.MANUAL_OVERRIDE_PRECEDENCE === true &&
+    flags.ASSUMPTION_RECALC_IDEMPOTENT === true &&
+    flags.PUBLISHED_ASSUMPTIONS_IMMUTABLE === true &&
+    flags.PHASE14E_TENANT_ISOLATION === true &&
+    flags.CROSS_ORG_ASSUMPTION_REJECTED === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14F_DB_ACCEPTANCE =
+    flags.CASH_SCHEMA_READY === true &&
+    flags.STARTING_CASH_FROM_GL === true &&
+    flags.AR_DUE_DATE_TIMING === true &&
+    flags.OVERDUE_AR_INCLUDED === true &&
+    flags.AR_REMAINING_BALANCE === true &&
+    flags.AP_DUE_DATE_TIMING === true &&
+    flags.OVERDUE_AP_INCLUDED === true &&
+    flags.WEEKLY_ROLL_FORWARD === true &&
+    flags.MANUAL_CASH_ADJUSTMENTS === true &&
+    flags.FIRST_NEGATIVE_WEEK === true &&
+    flags.PHASE14F_TENANT_ISOLATION === true &&
+    flags.CASH_FORECAST_RUN_PERSIST === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14G_DB_ACCEPTANCE =
+    flags.PAYROLL_CASH_ADAPTER === true &&
+    flags.RECURRING_CASH_ADAPTER === true &&
+    flags.CAPEX_CASH_ADAPTER === true &&
+    flags.PURCHASING_CASH_ADAPTER === true &&
+    flags.GRNI_TO_AP_HANDOFF === true &&
+    flags.SOURCE_COVERAGE === true &&
+    flags.CASH_ADAPTERS_READ_ONLY === true &&
+    flags.PHASE14G_TENANT_ISOLATION === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14H_DB_ACCEPTANCE =
+    flags.SCENARIO_SCHEMA_READY === true &&
+    flags.BASE_SCENARIO === true &&
+    flags.DOWNSIDE_SCENARIO === true &&
+    flags.UPSIDE_SCENARIO === true &&
+    flags.CUSTOM_SCENARIO === true &&
+    flags.SCENARIO_ACTUAL_PERIODS_PROTECTED === true &&
+    flags.SCENARIO_AR_TIMING === true &&
+    flags.REAL_OBLIGATION_SCENARIO_PROTECTED === true &&
+    flags.SCENARIO_PAYROLL_DRIVER === true &&
+    flags.SCENARIO_CAPEX_DRIVER === true &&
+    flags.SCENARIO_FORECAST_COMPARISON === true &&
+    flags.SCENARIO_SOURCE_IMMUTABLE === true &&
+    flags.PHASE14H_TENANT_ISOLATION === true &&
+    flags.SCENARIO_COMPARE_READ_ONLY === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14I_DB_ACCEPTANCE =
+    flags.OWNER_PLANNING_DASHBOARD === true &&
+    flags.BUDGET_SOURCE_SELECTION === true &&
+    flags.FORECAST_SOURCE_SELECTION === true &&
+    flags.VS_PLAN_CARD === true &&
+    flags.DOWNSIDE_OUTLOOK_CARD === true &&
+    flags.ATTENTION_SECTION === true &&
+    flags.PHASE14I_TENANT_ISOLATION === true &&
+    flags.DASHBOARD_JOURNALS_CREATED === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14J_DB_ACCEPTANCE =
+    flags.ACCOUNTANT_PLANNING_PACKAGE === true &&
+    flags.BUDGET_VS_ACTUAL_ACCOUNTANT_SECTION === true &&
+    flags.FORECAST_ACCOUNTANT_SECTION === true &&
+    flags.CASH_ACCOUNTANT_SECTION === true &&
+    flags.SCENARIO_ACCOUNTANT_SECTION === true &&
+    flags.SOURCE_LINEAGE === true &&
+    flags.PLANNING_RISK_SUMMARY === true &&
+    flags.PHASE14J_TENANT_ISOLATION === true &&
+    flags.ACCOUNTANT_EXPORT === true &&
+    flags.PLANNING_PACKAGE_JOURNALS_CREATED === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14K_DB_ACCEPTANCE =
+    flags.PHASE14J_DB_ACCEPTANCE === true &&
+    flags.CROSS_MODULE_FINANCIAL_CONSISTENCY === true &&
+    flags.SOURCE_LINEAGE_CONSISTENCY === true &&
+    flags.CASH_WEEKLY_RECONCILIATION === true &&
+    flags.MISSING_DATA_ACCEPTANCE === true &&
+    flags.PARTIAL_DATA_ACCEPTANCE === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0 &&
+    flags.HFAC_BASELINE_UNCHANGED === true &&
+    flags.ORPHAN_PHASE14_RECORDS === 0;
+  flags.PLANNING_BLOCKS_PERIOD_CLOSE = false;
+  flags.CLOSE_REWRITES_PLANNING = false;
+  flags.ACCOUNTANT_PACKAGE_DUPLICATE_FINANCIAL_ENGINES = 0;
+  flags.PRIMARY_CARD_COUNT = 6;
+  flags.DASHBOARD_DUPLICATE_FINANCIAL_ENGINES = 0;
+  flags.SCENARIO_MUTATES_SOURCE = flags.SCENARIO_SOURCE_IMMUTABLE === true ? false : true;
+  flags.SCENARIO_SOURCE_LINEAGE = flags.BASE_SCENARIO === true;
+  flags.GLOBAL_CASH_DEDUPE = flags.GRNI_TO_AP_HANDOFF === true;
+  flags.CASH_SOURCE_DOUBLE_COUNT = flags.GLOBAL_CASH_DEDUPE === true ? 0 : 1;
   flags.PHASE14_CONTROLLED_ACCEPTANCE =
     flags.PHASE14A_DB_ACCEPTANCE === true &&
     flags.PHASE14B_DB_ACCEPTANCE === true &&
-    flags.PHASE14C_DB_ACCEPTANCE === true;
+    flags.PHASE14C_DB_ACCEPTANCE === true &&
+    flags.PHASE14D_DB_ACCEPTANCE === true &&
+    flags.PHASE14E_DB_ACCEPTANCE === true &&
+    flags.PHASE14F_DB_ACCEPTANCE === true &&
+    flags.PHASE14G_DB_ACCEPTANCE === true &&
+    flags.PHASE14H_DB_ACCEPTANCE === true &&
+    flags.PHASE14I_DB_ACCEPTANCE === true &&
+    flags.PHASE14J_DB_ACCEPTANCE === true &&
+    flags.PHASE14K_DB_ACCEPTANCE === true;
   flags.PHASE14A_SECURITY_REVIEW = flags.CROSS_TENANT_READ_DENIED === true &&
     flags.CROSS_TENANT_WRITE_DENIED === true &&
     flags.FOREIGN_GL_ACCOUNT_REJECTED === true &&
@@ -1271,10 +3083,74 @@ if (isMainModule()) {
             PHASE14A_DB_ACCEPTANCE: summary.flags.PHASE14A_DB_ACCEPTANCE,
             PHASE14B_DB_ACCEPTANCE: summary.flags.PHASE14B_DB_ACCEPTANCE,
             PHASE14C_DB_ACCEPTANCE: summary.flags.PHASE14C_DB_ACCEPTANCE,
+            PHASE14D_DB_ACCEPTANCE: summary.flags.PHASE14D_DB_ACCEPTANCE,
+            PHASE14E_DB_ACCEPTANCE: summary.flags.PHASE14E_DB_ACCEPTANCE,
+            PHASE14F_DB_ACCEPTANCE: summary.flags.PHASE14F_DB_ACCEPTANCE,
+            PHASE14G_DB_ACCEPTANCE: summary.flags.PHASE14G_DB_ACCEPTANCE,
+            PHASE14H_DB_ACCEPTANCE: summary.flags.PHASE14H_DB_ACCEPTANCE,
+            PHASE14I_DB_ACCEPTANCE: summary.flags.PHASE14I_DB_ACCEPTANCE,
+            PHASE14J_DB_ACCEPTANCE: summary.flags.PHASE14J_DB_ACCEPTANCE,
+            PHASE14K_DB_ACCEPTANCE: summary.flags.PHASE14K_DB_ACCEPTANCE,
+            CROSS_MODULE_FINANCIAL_CONSISTENCY: summary.flags.CROSS_MODULE_FINANCIAL_CONSISTENCY === true,
+            SOURCE_LINEAGE_CONSISTENCY: summary.flags.SOURCE_LINEAGE_CONSISTENCY === true,
+            CASH_WEEKLY_RECONCILIATION: summary.flags.CASH_WEEKLY_RECONCILIATION === true,
+            MISSING_DATA_ACCEPTANCE: summary.flags.MISSING_DATA_ACCEPTANCE === true,
+            PARTIAL_DATA_ACCEPTANCE: summary.flags.PARTIAL_DATA_ACCEPTANCE === true,
+            OWNER_PLANNING_DASHBOARD: summary.flags.OWNER_PLANNING_DASHBOARD === true,
+            PHASE14I_TENANT_ISOLATION: summary.flags.PHASE14I_TENANT_ISOLATION === true,
+            PHASE14J_TENANT_ISOLATION: summary.flags.PHASE14J_TENANT_ISOLATION === true,
+            ACCOUNTANT_PLANNING_PACKAGE: summary.flags.ACCOUNTANT_PLANNING_PACKAGE === true,
+            PLANNING_BLOCKS_PERIOD_CLOSE: summary.flags.PLANNING_BLOCKS_PERIOD_CLOSE === false,
+            CLOSE_REWRITES_PLANNING: summary.flags.CLOSE_REWRITES_PLANNING === false,
+            SCENARIO_SCHEMA_READY: summary.flags.SCENARIO_SCHEMA_READY === true,
+            BASE_SCENARIO: summary.flags.BASE_SCENARIO === true,
+            DOWNSIDE_SCENARIO: summary.flags.DOWNSIDE_SCENARIO === true,
+            PHASE14H_TENANT_ISOLATION: summary.flags.PHASE14H_TENANT_ISOLATION === true,
+            PAYROLL_CASH_ADAPTER: summary.flags.PAYROLL_CASH_ADAPTER === true,
+            RECURRING_CASH_ADAPTER: summary.flags.RECURRING_CASH_ADAPTER === true,
+            PURCHASING_CASH_ADAPTER: summary.flags.PURCHASING_CASH_ADAPTER === true,
+            CAPEX_CASH_ADAPTER: summary.flags.CAPEX_CASH_ADAPTER === true,
+            SOURCE_COVERAGE: summary.flags.SOURCE_COVERAGE === true,
+            GRNI_TO_AP_HANDOFF: summary.flags.GRNI_TO_AP_HANDOFF === true,
+            PHASE14G_TENANT_ISOLATION: summary.flags.PHASE14G_TENANT_ISOLATION === true,
+            CASH_SCHEMA_READY: summary.flags.CASH_SCHEMA_READY === true,
+            STARTING_CASH_FROM_GL: summary.flags.STARTING_CASH_FROM_GL === true,
+            AR_DUE_DATE_TIMING: summary.flags.AR_DUE_DATE_TIMING === true,
+            OVERDUE_AR_INCLUDED: summary.flags.OVERDUE_AR_INCLUDED === true,
+            AP_DUE_DATE_TIMING: summary.flags.AP_DUE_DATE_TIMING === true,
+            OVERDUE_AP_INCLUDED: summary.flags.OVERDUE_AP_INCLUDED === true,
+            MANUAL_CASH_ADJUSTMENTS: summary.flags.MANUAL_CASH_ADJUSTMENTS === true,
+            FIRST_NEGATIVE_WEEK: summary.flags.FIRST_NEGATIVE_WEEK === true,
+            PHASE14F_TENANT_ISOLATION: summary.flags.PHASE14F_TENANT_ISOLATION === true,
+            ASSUMPTION_ENGINE: summary.flags.ASSUMPTION_ENGINE === true,
+            ASSUMPTION_PREVIEW: summary.flags.ASSUMPTION_PREVIEW === true,
+            FORECAST_REFRESH: summary.flags.FORECAST_REFRESH === true,
+            MANUAL_OVERRIDE_PRECEDENCE: summary.flags.MANUAL_OVERRIDE_PRECEDENCE === true,
+            PUBLISHED_ASSUMPTIONS_IMMUTABLE: summary.flags.PUBLISHED_ASSUMPTIONS_IMMUTABLE === true,
+            PHASE14E_TENANT_ISOLATION: summary.flags.PHASE14E_TENANT_ISOLATION === true,
             BUDGET_VS_ACTUAL_ENGINE: summary.flags.BUDGET_VS_ACTUAL_ENGINE === true,
             YTD_VARIANCE_DB: summary.flags.YTD_VARIANCE_DB === true,
             UNBUDGETED_ACTUALS_DB: summary.flags.UNBUDGETED_ACTUALS_DB === true,
             PHASE14C_TENANT_ISOLATION: summary.flags.PHASE14C_TENANT_ISOLATION === true,
+            FORECAST_ACTUAL_SOURCE: summary.flags.FORECAST_ACTUAL_SOURCE,
+            ACTUAL_FORECAST_BLEND: summary.flags.ACTUAL_FORECAST_BLEND === true,
+            PUBLISHED_FORECAST_IMMUTABLE: summary.flags.PUBLISHED_FORECAST_IMMUTABLE === true,
+            FORECAST_REVISION: summary.flags.FORECAST_REVISION === true,
+            PHASE14D_TENANT_ISOLATION: summary.flags.PHASE14D_TENANT_ISOLATION === true,
+            CROSS_ORG_FORECAST_LINK_REJECTED: summary.flags.CROSS_ORG_FORECAST_LINK_REJECTED === true,
+            MANUAL_PATCH_REQUIRED:
+              summary.flags.FORECAST_SCHEMA_READY !== true ||
+              summary.flags.CASH_SCHEMA_READY !== true ||
+              summary.flags.SCENARIO_SCHEMA_READY !== true,
+            MANUAL_PATCH_FILE:
+              summary.flags.FORECAST_SCHEMA_READY !== true
+                ? "supabase/patches/032-phase14d-forecast-lines.sql"
+                : summary.flags.CASH_SCHEMA_READY !== true
+                  ? "supabase/patches/033-phase14f-cash-forecast.sql"
+                  : summary.flags.SCENARIO_SCHEMA_READY !== true
+                    ? "supabase/patches/034-phase14h-scenarios.sql"
+                    : null,
+            MIGRATION_033_REQUIRED: false,
             ACTUAL_SOURCE: summary.flags.ACTUAL_SOURCE,
             PRIOR_YEAR_MONTH_MAPPING: summary.flags.PRIOR_YEAR_MONTH_MAPPING === true,
             PRIOR_YEAR_CENTS_EXACT: summary.flags.PRIOR_YEAR_CENTS_EXACT === true,

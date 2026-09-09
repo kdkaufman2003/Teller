@@ -10,6 +10,13 @@ export const OWNER_MODE_PLANNING_LABELS: Record<string, string> = {
   "Approved version": "Approved plan",
   "Locked version": "Locked plan",
   Draft: "Draft",
+  Scenarios: "What-if scenarios",
+  "Expected Revenue": "Expected revenue",
+  "Expected Operating Income": "Expected profit",
+  "13-Week Cash Outlook": "Cash outlook (13 weeks)",
+  "Lowest Projected Cash": "Lowest cash",
+  "Downside Outlook": "Downside outlook",
+  "Needs Attention": "Needs attention",
 };
 
 export function planningOwnerLabel(accountantLabel: string): string {

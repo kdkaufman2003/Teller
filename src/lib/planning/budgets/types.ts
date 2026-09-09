@@ -36,7 +36,26 @@ export type PlanningAuditEventKind =
   | "version_approved"
   | "version_locked"
   | "version_archived"
-  | "version_cloned";
+  | "version_cloned"
+  | "forecast_created"
+  | "forecast_version_created"
+  | "forecast_initialized_from_budget"
+  | "forecast_saved"
+  | "forecast_published"
+  | "forecast_revision_created"
+  | "forecast_archived"
+  | "forecast_assumption_saved"
+  | "forecast_assumption_deleted"
+  | "forecast_refreshed"
+  | "forecast_override_cleared"
+  | "cash_forecast_run_created"
+  | "cash_manual_adjustment_created"
+  | "cash_manual_adjustment_updated"
+  | "cash_manual_adjustment_deleted"
+  | "cash_timing_settings_updated"
+  | "scenario_created"
+  | "scenario_updated"
+  | "scenario_archived";
 
 export type BudgetCsvImportMode = "replace" | "merge";
 

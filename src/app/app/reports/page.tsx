@@ -17,6 +17,7 @@ import type { ReportComparison } from "@/lib/accounting/report-context";
 import { parseFiscalYearStart } from "@/lib/org/config";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
+import { loadAccountantPlanningPackage } from "@/lib/planning/accountant-package/load-accountant-planning-package";
 import { routes } from "@/lib/routes";
 import { redirect } from "next/navigation";
 
@@ -97,6 +98,15 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     ]),
   );
 
+  const planningPackage =
+    tab === "planning"
+      ? await loadAccountantPlanningPackage(supabase, organizationId, {
+          periodEnd: asOf,
+          periodLabel: range.label,
+          fiscalYear: Number(asOf.slice(0, 4)),
+        })
+      : null;
+
   return (
     <div className="space-y-6">
       <header className="page-header">
@@ -128,6 +138,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
           cashFlow={reports.cashFlow}
           arAging={reports.arAging}
           apAging={reports.apAging}
+          planningPackage={planningPackage}
         />
       </Suspense>
     </div>

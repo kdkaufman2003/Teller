@@ -14,6 +14,7 @@ import { accountingClosePeriodPath, routes } from "@/lib/routes";
 import { redirect, notFound } from "next/navigation";
 import { ClosePeriodActions } from "@/components/ClosePeriodActions";
 import { CloseChecklistPanel } from "@/components/CloseChecklistPanel";
+import { ClosePlanningContextPanel } from "@/components/planning/ClosePlanningContextPanel";
 
 type PageProps = { params: Promise<{ period: string }> };
 
@@ -105,6 +106,14 @@ export default async function ClosePeriodDetailPage({ params }: PageProps) {
         periodEnd={periodEnd}
         items={(readiness.checklist ?? []) as import("@/components/CloseChecklistPanel").CloseChecklistItem[]}
         canManage={canManageClose}
+      />
+
+      <ClosePlanningContextPanel
+        supabase={supabase}
+        organizationId={organizationId}
+        periodEnd={periodEnd}
+        periodLabel={period.label}
+        fiscalYear={parsed.year}
       />
 
       <div className="card overflow-hidden">

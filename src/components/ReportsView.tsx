@@ -18,6 +18,8 @@ import type {
   SalesSummary,
 } from "@/lib/accounting/reports";
 import type { ComparativeProfitAndLoss } from "@/lib/accounting/comparative-reports";
+import type { AccountantPlanningPackage } from "@/lib/planning/accountant-package/types";
+import { AccountantPlanningPackagePanel } from "@/components/planning/AccountantPlanningPackagePanel";
 
 const PERIODS: { id: ReportPeriod; label: string }[] = [
   { id: "month", label: "This month" },
@@ -32,6 +34,7 @@ const TABS: { id: ReportTab; label: string }[] = [
   { id: "cash_flow", label: "Cash flow" },
   { id: "ar_aging", label: "AR aging" },
   { id: "ap_aging", label: "AP aging" },
+  { id: "planning", label: "Planning" },
 ];
 
 export function ReportsView({
@@ -53,6 +56,7 @@ export function ReportsView({
   accountByCode = {},
   comparativeProfitAndLoss = null,
   comparativeBalanceSheet = null,
+  planningPackage = null,
 }: {
   period: ReportPeriod;
   periodLabel: string;
@@ -72,6 +76,7 @@ export function ReportsView({
   accountByCode?: Record<string, { id: string; subtype?: string | null }>;
   comparativeProfitAndLoss?: ComparativeProfitAndLoss | null;
   comparativeBalanceSheet?: import("@/lib/accounting/comparative-reports").ComparativeBalanceSheet | null;
+  planningPackage?: AccountantPlanningPackage | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -159,7 +164,10 @@ export function ReportsView({
           >
             {presentationMode === "owner" ? "Accountant terms" : "Owner terms"}
           </button>
-          <Link href="/api/reports/accountant-package" className="rounded-md border border-rule px-3 py-1.5 text-sm">
+          <Link
+            href={`/api/reports/accountant-package?periodEnd=${periodEnd}${periodStart ? `&periodStart=${periodStart}` : ""}&includePlanning=1`}
+            className="rounded-md border border-rule px-3 py-1.5 text-sm"
+          >
             Export package
           </Link>
         </div>
@@ -215,6 +223,15 @@ export function ReportsView({
       ) : null}
       {tab === "ap_aging" ? (
         <AgingTab title="Accounts payable aging" report={apAging} entityLabel="Vendor" />
+      ) : null}
+      {tab === "planning" && planningPackage ? (
+        <AccountantPlanningPackagePanel
+          pkg={planningPackage}
+          exportHref={`/api/planning/accountant-package?format=csv&periodEnd=${periodEnd}&periodLabel=${encodeURIComponent(periodLabel)}`}
+        />
+      ) : null}
+      {tab === "planning" && !planningPackage ? (
+        <p className="text-sm text-muted">Loading planning package…</p>
       ) : null}
     </div>
   );

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { money } from "@/lib/format";
 import { fiscalYearCalendarMonths, monthLabel } from "@/lib/planning/budgets/periods";
 import { planningOwnerLabel } from "@/lib/planning/presentation-labels";
-import { formatVariancePercent, varianceStatusLabel } from "@/lib/planning/reports/variance";
+import { formatVariancePercent, varianceStatusLabel, type VarianceAmounts } from "@/lib/planning/reports/variance";
 import type { BudgetVsActualReport } from "@/lib/planning/reports/budget-vs-actual";
 import { accountActivityPath, planningBudgetPath, routes } from "@/lib/routes";
 
@@ -230,13 +230,15 @@ export function BudgetVsActualReportView({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Revenue vs Plan", report.summary.revenue],
-              ["Gross Profit vs Plan", report.summary.grossProfit],
-              ["Expenses vs Plan", report.summary.expenses],
-              ["Operating Income vs Plan", report.summary.operatingIncome],
-            ].map(([label, amounts]) => (
-              <div key={label as string} className="rounded-lg border p-4">
+            {(
+              [
+                ["Revenue vs Plan", report.summary.revenue],
+                ["Gross Profit vs Plan", report.summary.grossProfit],
+                ["Expenses vs Plan", report.summary.expenses],
+                ["Operating Income vs Plan", report.summary.operatingIncome],
+              ] satisfies Array<[string, VarianceAmounts]>
+            ).map(([label, amounts]) => (
+              <div key={label} className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <p className="mt-1 font-ledger text-xl">{money(amounts.actual)}</p>
                 <p className="text-sm text-muted-foreground">

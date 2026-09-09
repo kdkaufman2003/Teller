@@ -128,9 +128,13 @@ Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**)
 
 **Rerun demos:** Phase 9, 10 only when planning touches fiscal/report interfaces.
 
-**Unit tests:** `src/lib/planning/budgets/phase14.test.ts`
+**Unit tests:** `src/lib/planning/budgets/phase14.test.ts`, `phase14b.test.ts`, `src/lib/planning/reports/phase14c.test.ts`, `phase14d.test.ts`, `phase14e.test.ts`, `phase14f.test.ts`, `phase14g.test.ts`, `phase14h.test.ts`, `phase14i.test.ts`, `phase14j.test.ts`
 
-**DB acceptance (gate only):** deferred to Phase 14K — requires migration 032 applied manually.
+**14K final gate:** `scripts/controlled-phase14-db-acceptance.ts` (106 scenarios incl. cross-module consistency, cash weekly reconciliation, missing/partial data) · `npm run verify:phase14:planning` · `npm run snapshot:phase14:production pre-deploy` · `npm run test:full`
+
+**Primary dependencies (14F–14G cash):** Phase 1/2 (AR/AP), Phase 5 (bank/cash GL), Phase 6 (AP/purchasing), Phase 8 (fixed assets — capex semantics only), Phase 11 (recurring bills), Phase 12 (payroll), Phase 13 (GRNI/PO), Phase 10 (money utilities), Phase 14 settings.
+
+**DB acceptance (gate only):** `npm run accept:phase14:controlled` — 69 scenarios after migration 032 + patches `032-phase14d-forecast-lines.sql` and `033-phase14f-cash-forecast.sql` applied manually.
 
 ---
 

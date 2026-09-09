@@ -98,6 +98,8 @@
     "patch:031:grni-settle-rpc:controlled": "node scripts/patch-031-grni-settle-rpc-controlled.mjs",
     "audit:phase13:deployment-compat": "node scripts/audit-phase13-deployment-compat.mjs",
     "snapshot:phase13:production": "node scripts/snapshot-phase13-production.mjs",
+    "snapshot:phase14:production": "node scripts/snapshot-phase14-production.mjs pre-deploy",
+    "snapshot:phase14:production:post": "node scripts/snapshot-phase14-production.mjs post-deploy",
     "benchmark:phase10:reports": "tsx scripts/benchmark-phase10-reports.ts",
     "verify:migrations": "node scripts/verify-migrations.mjs",
     "legacy:payment-audit": "tsx scripts/legacy-payment-audit.ts",

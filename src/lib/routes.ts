@@ -72,6 +72,11 @@ export const routes = {
   planningBudgets: "/app/planning/budgets",
   planningBudgetNew: "/app/planning/budgets/new",
   planningBudgetVsActual: "/app/planning/budget-vs-actual",
+  planningForecasts: "/app/planning/forecasts",
+  planningForecastNew: "/app/planning/forecasts/new",
+  planningCash: "/app/planning/cash",
+  planningScenarios: "/app/planning/scenarios",
+  planningScenarioNew: "/app/planning/scenarios/new",
   settings: "/app/settings",
 } as const;
 
@@ -163,4 +168,12 @@ export function accountActivityPath(
 
 export function planningBudgetPath(id: string) {
   return `${routes.planningBudgets}/${id}`;
+}
+
+export function forecastPath(id: string) {
+  return `${routes.planningForecasts}/${id}`;
+}
+
+export function scenarioPath(id: string) {
+  return `${routes.planningScenarios}/${id}`;
 }
