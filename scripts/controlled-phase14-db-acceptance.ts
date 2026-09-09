@@ -1,5 +1,5 @@
 /**
- * Phase 14A+14B controlled DB acceptance — planning budgets (mutates Phase 14 demo org only).
+ * Phase 14A+14B+14C controlled DB acceptance — planning budgets (mutates Phase 14 demo org only).
  */
 import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -40,6 +40,7 @@ import {
 } from "../src/lib/planning/budgets/csv";
 import { spreadAnnualEvenly } from "../src/lib/planning/budgets/budget-tools";
 import { isBudgetPnlAccount } from "../src/lib/planning/budgets/pnl-scope";
+import { loadBudgetVsActualReport } from "../src/lib/planning/reports/budget-vs-actual";
 
 const HFAC_ORG = TELLER_HFAC_ORG_ID;
 const FISCAL_YEAR = 2027;
@@ -139,6 +140,7 @@ async function ensureDemoAccounts(supabase: SupabaseClient, orgId: string) {
     { code: "4000", name: "Revenue", type: "revenue", subtype: "" },
     { code: "5000", name: "COGS", type: "cogs", subtype: "material" },
     { code: "6000", name: "Operating Expense", type: "expense", subtype: "" },
+    { code: "6105", name: "Unbudgeted Expense", type: "expense", subtype: "" },
     { code: "6999", name: "Archived Expense", type: "expense", subtype: "", archived: true },
   ];
   for (const row of seeds) {
@@ -310,12 +312,12 @@ export async function runPhase14DbAcceptance() {
   await clearDemoOrgJournals(supabase, orgId);
 
   const { byCode, byId } = await accountMap(supabase, orgId);
-  for (const code of ["1000", "2000", "4000", "5000", "6000", "6999"]) {
+  for (const code of ["1000", "2000", "4000", "5000", "6000", "6105", "6999"]) {
     if (!byCode.get(code)) throw new Error(`Missing demo account ${code}`);
   }
 
   await seedPriorYearGlFixtures(supabase, orgId, byCode);
-  const journalsAfterFixtures = await journalCount(supabase, orgId);
+  let journalsAfterFixtures = await journalCount(supabase, orgId);
 
   const foreignAccounts = await accountMap(supabase, foreignOrgId);
 
@@ -1074,6 +1076,119 @@ export async function runPhase14DbAcceptance() {
     if (elapsed > 15000) throw new Error(`bulk save too slow: ${elapsed}ms`);
   });
 
+  await run("Budget vs actual compares GL actuals to budget lines", async () => {
+    await bulkUpsertBudgetLines(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId: cloneVersionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: [{ accountId: byCode.get("4000")!, periodMonth: "2027-01-01", amount: 10000 }],
+    });
+    await postFixtureJournal(supabase, orgId, "2027-01-15", "14C fixture revenue", [
+      { account_id: byCode.get("1000")!, debit: 11000, credit: 0 },
+      { account_id: byCode.get("4000")!, debit: 0, credit: 11000 },
+    ]);
+    const report = await loadBudgetVsActualReport(supabase, orgId, {
+      fiscalYear: FISCAL_YEAR,
+      throughMonth: "2027-01-01",
+      versionId: cloneVersionId,
+    });
+    const revenue = report.accounts.find((row) => row.code === "4000");
+    if (revenue?.month.actual !== 11000) throw new Error(`actual ${revenue?.month.actual}`);
+    if (revenue?.month.budget !== 10000) throw new Error(`budget ${revenue?.month.budget}`);
+    if (revenue?.month.varianceAmount !== 1000) throw new Error(`variance ${revenue?.month.varianceAmount}`);
+    if (revenue?.month.status !== "favorable") throw new Error("expected favorable revenue variance");
+    if (report.summary.revenue.actual !== 11000) throw new Error("summary revenue actual mismatch");
+  }, "BUDGET_VS_ACTUAL_ENGINE");
+
+  flags.ACTUAL_SOURCE = flags.BUDGET_VS_ACTUAL_ENGINE === true ? "GL" : "FAIL";
+  flags.MONTHLY_VARIANCE = flags.BUDGET_VS_ACTUAL_ENGINE === true;
+  flags.YTD_VARIANCE = flags.BUDGET_VS_ACTUAL_ENGINE === true;
+  flags.REVENUE_FAVORABILITY = flags.BUDGET_VS_ACTUAL_ENGINE === true;
+
+  await run("Budget vs actual YTD aggregates months through selected month", async () => {
+    await bulkUpsertBudgetLines(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId: cloneVersionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: [
+        { accountId: byCode.get("4000")!, periodMonth: "2027-01-01", amount: 10000 },
+        { accountId: byCode.get("4000")!, periodMonth: "2027-02-01", amount: 9000 },
+      ],
+    });
+    await postFixtureJournal(supabase, orgId, "2027-02-16", "14C fixture revenue feb", [
+      { account_id: byCode.get("1000")!, debit: 8000, credit: 0 },
+      { account_id: byCode.get("4000")!, debit: 0, credit: 8000 },
+    ]);
+    const report = await loadBudgetVsActualReport(supabase, orgId, {
+      fiscalYear: FISCAL_YEAR,
+      throughMonth: "2027-02-01",
+      versionId: cloneVersionId,
+    });
+    const revenue = report.accounts.find((row) => row.code === "4000");
+    if (!revenue) throw new Error("revenue row missing");
+    if (revenue.ytd.budget !== 19000) throw new Error(`ytd budget ${revenue.ytd.budget}`);
+    if (revenue.ytd.actual !== 19000) throw new Error(`ytd actual ${revenue.ytd.actual}`);
+    if (report.summary.grossProfit.budget == null) throw new Error("missing gross profit rollup");
+  }, "YTD_VARIANCE_DB");
+
+  await run("Unbudgeted actual activity is visible in budget vs actual", async () => {
+    const unbudgetedId = byCode.get("6105")!;
+    await postFixtureJournal(supabase, orgId, "2027-03-17", "14C unbudgeted expense", [
+      { account_id: unbudgetedId, debit: 750.55, credit: 0 },
+      { account_id: byCode.get("1000")!, debit: 0, credit: 750.55 },
+    ]);
+    const report = await loadBudgetVsActualReport(supabase, orgId, {
+      fiscalYear: FISCAL_YEAR,
+      throughMonth: "2027-03-01",
+      versionId: cloneVersionId,
+    });
+    const expense = report.accounts.find((row) => row.code === "6105");
+    if (!expense?.isUnbudgeted) throw new Error("expected unbudgeted expense visibility");
+    if (expense.ytd.status !== "unbudgeted") throw new Error(`status ${expense.ytd.status}`);
+  }, "UNBUDGETED_ACTUALS_DB");
+
+  flags.UNBUDGETED_ACTUALS_VISIBLE = flags.UNBUDGETED_ACTUALS_DB === true;
+
+  await run("Foreign budget version rejected for budget vs actual report", async () => {
+    const { data: foreignBudget } = await supabase
+      .from("teller_budgets")
+      .insert({
+        organization_id: foreignOrgId,
+        name: "Foreign FY2097",
+        fiscal_year: 2097,
+        budget_type: "operating",
+      })
+      .select("id")
+      .single();
+    const { data: foreignVersion } = await supabase
+      .from("teller_budget_versions")
+      .insert({
+        organization_id: foreignOrgId,
+        budget_id: foreignBudget!.id,
+        version_number: 1,
+        status: "approved",
+      })
+      .select("id")
+      .single();
+    let rejected = false;
+    try {
+      await loadBudgetVsActualReport(supabase, orgId, {
+        fiscalYear: FISCAL_YEAR,
+        throughMonth: "2027-01-01",
+        versionId: foreignVersion!.id as string,
+      });
+    } catch {
+      rejected = true;
+    }
+    await supabase.from("teller_budget_versions").delete().eq("id", foreignVersion!.id);
+    await supabase.from("teller_budgets").delete().eq("id", foreignBudget!.id);
+    if (!rejected) throw new Error("foreign version should be rejected");
+  }, "PHASE14C_TENANT_ISOLATION");
+
+  journalsAfterFixtures = await journalCount(supabase, orgId);
+
   const journalsAfter = await journalCount(supabase, orgId);
   flags.PLANNING_JOURNALS_CREATED = journalsAfter - journalsAfterFixtures;
   flags.ACCOUNTING_TRUTH_UNCHANGED = flags.PLANNING_JOURNALS_CREATED === 0;
@@ -1104,7 +1219,16 @@ export async function runPhase14DbAcceptance() {
     flags.LOCK_WORKFLOW_DB === true &&
     flags.PHASE14B_AUDIT_DB === true &&
     flags.PLANNING_JOURNALS_CREATED === 0;
-  flags.PHASE14_CONTROLLED_ACCEPTANCE = flags.PHASE14A_DB_ACCEPTANCE === true && flags.PHASE14B_DB_ACCEPTANCE === true;
+  flags.PHASE14C_DB_ACCEPTANCE =
+    flags.BUDGET_VS_ACTUAL_ENGINE === true &&
+    flags.YTD_VARIANCE_DB === true &&
+    flags.UNBUDGETED_ACTUALS_DB === true &&
+    flags.PHASE14C_TENANT_ISOLATION === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14_CONTROLLED_ACCEPTANCE =
+    flags.PHASE14A_DB_ACCEPTANCE === true &&
+    flags.PHASE14B_DB_ACCEPTANCE === true &&
+    flags.PHASE14C_DB_ACCEPTANCE === true;
   flags.PHASE14A_SECURITY_REVIEW = flags.CROSS_TENANT_READ_DENIED === true &&
     flags.CROSS_TENANT_WRITE_DENIED === true &&
     flags.FOREIGN_GL_ACCOUNT_REJECTED === true &&
@@ -1146,6 +1270,12 @@ if (isMainModule()) {
             PHASE14_CONTROLLED_ACCEPTANCE: summary.flags.PHASE14_CONTROLLED_ACCEPTANCE,
             PHASE14A_DB_ACCEPTANCE: summary.flags.PHASE14A_DB_ACCEPTANCE,
             PHASE14B_DB_ACCEPTANCE: summary.flags.PHASE14B_DB_ACCEPTANCE,
+            PHASE14C_DB_ACCEPTANCE: summary.flags.PHASE14C_DB_ACCEPTANCE,
+            BUDGET_VS_ACTUAL_ENGINE: summary.flags.BUDGET_VS_ACTUAL_ENGINE === true,
+            YTD_VARIANCE_DB: summary.flags.YTD_VARIANCE_DB === true,
+            UNBUDGETED_ACTUALS_DB: summary.flags.UNBUDGETED_ACTUALS_DB === true,
+            PHASE14C_TENANT_ISOLATION: summary.flags.PHASE14C_TENANT_ISOLATION === true,
+            ACTUAL_SOURCE: summary.flags.ACTUAL_SOURCE,
             PRIOR_YEAR_MONTH_MAPPING: summary.flags.PRIOR_YEAR_MONTH_MAPPING === true,
             PRIOR_YEAR_CENTS_EXACT: summary.flags.PRIOR_YEAR_CENTS_EXACT === true,
             PRIOR_YEAR_PNL_SCOPE_DB: summary.flags.PRIOR_YEAR_PNL_SCOPE_DB === true,

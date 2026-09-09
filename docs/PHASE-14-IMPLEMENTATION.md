@@ -1,8 +1,51 @@
 # Phase 14 Implementation — Planning
 
-**Slice:** 14A complete · 14B complete · **DB verified:** yes (2026-09-08)
+**Slice:** 14A complete · 14B complete · 14C complete · **DB verified:** yes (2026-09-08)
 
 > **Permanent rule:** ALL Teller Supabase migrations and SQL patches are manually applied by the operator.
+
+---
+
+## 14C scope (implemented)
+
+| Area | Status |
+|------|--------|
+| Budget vs Actual engine | GL actuals + budget version adapter |
+| Monthly / YTD / annual columns | Month + YTD + annual plan progress |
+| Variance $ and % | `actual - budget`; N/M when budget = 0 |
+| Favorable / unfavorable | Type-aware (revenue vs expense/COGS) |
+| Category rollups | Revenue, COGS, Gross Profit, Expenses, Operating Income |
+| Unbudgeted actuals | Surfaced explicitly |
+| Report UI | `/app/planning/budget-vs-actual` |
+| CSV export | `?format=csv` on report API |
+| Controlled DB acceptance | 36/36 PASS (14A+14B+14C) |
+
+### Actual source
+
+- **Actual:** Phase 10 `teller_gl_account_totals` via `periodActivityFromTotals` (canonical GL).
+- **Budget:** Selected version lines from `teller_budget_lines` (defaults to latest approved/locked).
+- **Read-only:** No journals, no budget mutations during reporting.
+
+### Variance rules
+
+| Formula | Value |
+|---------|-------|
+| Variance $ | `Actual − Budget` |
+| Variance % | `Variance / \|Budget\|`; `0%` when both zero; `N/M` when budget zero and actual non-zero |
+| Revenue favorable | Actual > Budget |
+| Expense / COGS favorable | Actual < Budget |
+
+Sign normalization uses positive owner-facing magnitudes for P&L types (`normalizeOwnerFacingAmount`).
+
+### Route
+
+- UI: `/app/planning/budget-vs-actual`
+- API: `GET /api/planning/reports/budget-vs-actual?fiscalYear=&throughMonth=&versionId=`
+- Export: append `&format=csv`
+
+### Deferred (14D+)
+
+- Forecasting, rolling forecast, cash planning, scenarios, dashboard cards, accountant package section
 
 ---
 
@@ -183,8 +226,20 @@ src/app/app/planning/
 npm run test:fast                              # includes phase14 + phase14b tests
 TELLER_TEST_PHASE=14 npm run test:phase        # unit + migration object verify
 npm run verify:migration:032:controlled        # applied DB object gate
-npm run accept:phase14:controlled              # 32-scenario DB acceptance (14A+14B)
+npm run accept:phase14:controlled              # 36-scenario DB acceptance (14A+14B+14C)
 ```
+
+---
+
+## Phase 14C controlled DB verification (2026-09-08)
+
+| Gate | Result |
+|------|--------|
+| Budget vs actual engine (GL + budget lines) | PASS |
+| YTD aggregation | PASS |
+| Unbudgeted actual visibility | PASS |
+| Tenant isolation (foreign version) | PASS |
+| Planning journals created | 0 |
 
 ---
 
@@ -222,8 +277,12 @@ PHASE_14A_COMPLETE = true
 PHASE_14B_CODE_COMPLETE = true
 PHASE_14B_DB_VERIFIED = true
 PHASE_14B_COMPLETE = true
+PHASE_14C_CODE_COMPLETE = true
+PHASE_14C_DB_VERIFIED = true
+PHASE_14C_COMPLETE = true
 PHASE_14B_STARTED = true
+PHASE_14C_STARTED = true
 PHASE_14_COMPLETE = false
-PHASE_14C_STARTED = false
+PHASE_14D_STARTED = false
 MIGRATION_033_REQUIRED = false
 ```

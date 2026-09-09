@@ -51,6 +51,7 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/integration/controlled-phase-isolation.test.ts",
   "src/lib/planning/budgets/phase14.test.ts",
   "src/lib/planning/budgets/phase14b.test.ts",
+  "src/lib/planning/reports/phase14c.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -65,7 +66,7 @@ export const PHASE_UNIT_TESTS = {
   "11.1": ["src/lib/accounting/phase11-1.test.ts"],
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
-  14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts"],
+  14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts"],
 };
 
 /**
@@ -126,7 +127,7 @@ export const MODULE_DEPENDENCIES = {
   planning: {
     description: "budgets, planning settings, forecast foundations — no GL mutation",
     demoPhases: [9, 10],
-    unitPatterns: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts"],
+    unitPatterns: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts"],
   },
 };
 

@@ -22,6 +22,18 @@ export default function PlanningHubPage() {
         </div>
         <BudgetListPanel />
       </section>
+      <section className="rounded-lg border p-4">
+        <h2 className="text-lg font-medium">{planningOwnerLabel("Budget vs Actual")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          See how posted results compare to your approved plan.
+        </p>
+        <Link
+          href={routes.planningBudgetVsActual}
+          className="mt-3 inline-block rounded-md border px-4 py-2 text-sm"
+        >
+          Open report
+        </Link>
+      </section>
     </div>
   );
 }

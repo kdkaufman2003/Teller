@@ -71,6 +71,7 @@ export const routes = {
   planning: "/app/planning",
   planningBudgets: "/app/planning/budgets",
   planningBudgetNew: "/app/planning/budgets/new",
+  planningBudgetVsActual: "/app/planning/budget-vs-actual",
   settings: "/app/settings",
 } as const;
 
