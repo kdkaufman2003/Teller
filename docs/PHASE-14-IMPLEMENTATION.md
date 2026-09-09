@@ -531,8 +531,53 @@ PHASE_14J_DB_VERIFIED = true
 PHASE_14J_COMPLETE = true
 PHASE_14K_STARTED = true
 PHASE_14K_COMPLETE = true
-PHASE_14_COMPLETE = false
+PHASE_14L_STARTED = true
+PHASE_14L_COMPLETE = true
+PHASE_14_COMPLETE = true
+PRODUCTION_DEPLOYED_FOR_PHASE14 = true
 ```
+
+---
+
+## 14L scope (production deploy + post-deploy verification)
+
+**Completed:** 2026-09-09  
+**Release commit:** `ca0ac38dacb8c45ed31c6a290d4276fb13b7f3d9`  
+**Production URL:** `https://teller-indol.vercel.app`  
+**Deployment ID:** `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44`  
+**Deployment state:** Ready (Vercel GitHub status success on release SHA)
+
+| Gate | Result |
+|------|--------|
+| Release commit created | PASS — `ca0ac38` (108 files, Phase 14A–K) |
+| Secrets in release commit | 0 |
+| `LOCAL_HEAD = ORIGIN_MAIN` | PASS |
+| Pre-deploy `test:fast` | **207/207 PASS** |
+| Pre-deploy Phase 14 tests | PASS |
+| Static schema verify | `npm run verify:phase14:planning` PASS |
+| Pre-deploy production read | `verify:migration:032:controlled` PASS; HFAC counts match pre snapshot |
+| Production deploy | Auto-deploy from `main` push; alias updated |
+| Production alias | `https://teller-indol.vercel.app` → `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` |
+| Deployed SHA = release SHA | PASS (GitHub Vercel check on `ca0ac38`) |
+| Planning routes smoke | PASS — `/login` 200; planning/reports routes 307 (auth); APIs 401 |
+| Owner dashboard (14I) | PASS — release includes `PlanningDashboardView` + `/api/planning/dashboard` |
+| Accountant package (14J) | PASS — Planning tab, close context, `/api/planning/accountant-package` wired |
+| Post-deploy Phase 14 schema | PASS — all planning tables present (read-only probe) |
+| Post-deploy journals balanced | PASS |
+| HFAC baseline unchanged | PASS (8 docs, 3 payments, 16 journals, 0 HFAC planning) |
+| Phase 14 orphans | 0 (budget/forecast lines without version) |
+| Deploy accounting writes | 0 journals / 0 documents / 0 payments created |
+| Runtime logs (bounded) | 0 blocking errors |
+| Migrations/SQL auto-applied | false (manual rule upheld) |
+
+**Snapshots**
+
+- Pre-deploy: `artifacts/controlled-prod-snapshots/pre-phase14-deploy-2026-09-09T16-25-36-386Z.json`
+- Post-deploy: `artifacts/controlled-prod-snapshots/post-phase14-deploy-2026-09-09T19-34-36-183Z.json`
+- Pre/post HFAC accounting differences: **0**
+- Pre/post global planning fixture counts unchanged (controlled demo org data only)
+
+**Phase 15:** NEXT / NOT STARTED
 
 ---
 
@@ -578,7 +623,6 @@ Final Phase 14 regression gate across slices 14A–14J. No new product features.
 
 ### Known deferrals (unchanged)
 
-- Phase 14L production deploy + post-deploy verification
 - Phase 15+ (sales tax, multi-entity, ML forecasting, treasury, etc.)
 - Pre-existing ESLint `react-hooks/set-state-in-effect` in scenario UI (14H lint, non-blocking)
 
@@ -625,10 +669,6 @@ YTD variances ≥ $25,000 surfaced in risk summary and material variance list (t
 - Unit: `src/lib/planning/reports/phase14j.test.ts`
 - Controlled acceptance: +10 scenarios in `scripts/controlled-phase14-db-acceptance.ts`
 
-### Deferred (14L+)
-
-- Production deployment + post-deploy verification
-
 ---
 
 ## 14I scope (implemented — no schema patch)
@@ -653,6 +693,3 @@ Owner planning dashboard at `/app/planning` — aggregation only, no new financi
 5. Lowest Projected Cash — lowest week + first negative week
 6. Downside Outlook — scenario ending cash vs base (CTA if missing)
 
-### Deferred (14L+)
-
-- Production deployment

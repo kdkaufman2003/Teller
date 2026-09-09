@@ -6,6 +6,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_14_COMPLETE` | **true** | Migration 032 + patches 032d/033f/034h manually applied; deploy `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` → `https://teller-indol.vercel.app` (commit `ca0ac38`); controlled prod 106/106 DB acceptance; fast 207/207; full 689/689; HFAC unchanged (8 docs, 16 journals, 0 HFAC planning); production journals balanced; planning writes 0 journals |
+| `PHASE_13_COMPLETE` | **true** | Migration 031 manually applied; deploy `dpl_Du2Lfjuwh8hRcWYE7PT3fppmPawZ` → `https://teller-indol.vercel.app`; controlled prod 70/70 DB acceptance; HFAC unchanged; production journals balanced |
 | `PHASE_12_COMPLETE` | **true** | Migrations 029+030 manually applied; deploy `dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV` → `https://teller-indol.vercel.app`; controlled prod 110/110 logic + 52/52 DB acceptance; claim-before-post concurrency; `ORPHAN_PAYROLL_JOURNALS=0`; HFAC unchanged; production journals balanced; scheduler disabled |
 | `PHASE_11_1_COMPLETE` | **true** | Migration 028 manually applied; deploy `dpl_9TnchvQbWCTxkQjkAwQ5LtH4xC4C` → `https://teller-indol.vercel.app`; controlled prod 88/88 logic + 23/23 DB acceptance; Phase 5–11 regressions green; HFAC unchanged; production journals balanced; scheduler intentionally disabled |
 | `PHASE_10_COMPLETE` | **true** | Migration 026 manually applied; deploy `dpl_6fLHJCy9Hjjog1JZzezGugFEcMX1` → `https://teller-indol.vercel.app`; controlled prod 110/110 Phase 10, Phase 5–9 regressions green; HFAC unchanged; 192/192 journals balanced |
@@ -162,6 +164,23 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 **Controlled production acceptance (2026-09-08):** migrations `029` + `030` manually applied; `demo:phase12:controlled` **110/110**; `accept:phase12:controlled` **52/52**; HFAC baseline unchanged; `ORPHAN_PAYROLL_JOURNALS=0`; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV`, commit `00d9e45`). Details: [PHASE-12-COMPLETION.md](./PHASE-12-COMPLETION.md).
 
 **Deferred Phase 12 follow-on:** production scheduler/cron enablement, HFAC technician/time sync (boundary only today).
+
+### Phase 14 — budgeting, forecasting & cash planning (production complete)
+
+| Area | Status | Location |
+|------|--------|----------|
+| Budgets + versions + lines | ✓ prod | `032_phase14_planning.sql`, `src/lib/planning/budgets/` |
+| Budget vs Actual | ✓ prod | Phase 14C reports |
+| Rolling forecasts + assumptions | ✓ prod | Patch 032d, `src/lib/planning/forecasts/` |
+| 13-week cash outlook | ✓ prod | Patch 033f, `src/lib/planning/cash/` |
+| Scenarios | ✓ prod | Patch 034h, `src/lib/planning/scenarios/` |
+| Owner dashboard | ✓ prod | `/app/planning`, `PlanningDashboardView` |
+| Accountant planning package | ✓ prod | Reports Planning tab, close context, export |
+| Accounting boundary | ✓ prod | Planning reads only — 0 journal posts |
+
+**Controlled production acceptance (2026-09-09):** migration `032` + patches `032d`/`033f`/`034h` manually applied; `accept:phase14:controlled` **106/106**; full suite **689/689** + build; HFAC baseline unchanged; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44`, commit `ca0ac38`). Details: [PHASE-14-IMPLEMENTATION.md](./PHASE-14-IMPLEMENTATION.md).
+
+**Phase 15:** not started.
 
 ### Phase 8 invariants (fixed assets)
 
