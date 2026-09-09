@@ -1,6 +1,6 @@
 # Phase 14 Implementation — Planning
 
-**Slice:** 14A complete · 14B complete (code) · **DB verified (14A):** yes (2026-09-08)
+**Slice:** 14A complete · 14B complete · **DB verified:** yes (2026-09-08)
 
 > **Permanent rule:** ALL Teller Supabase migrations and SQL patches are manually applied by the operator.
 
@@ -183,8 +183,33 @@ src/app/app/planning/
 npm run test:fast                              # includes phase14 + phase14b tests
 TELLER_TEST_PHASE=14 npm run test:phase        # unit + migration object verify
 npm run verify:migration:032:controlled        # applied DB object gate
-npm run accept:phase14:controlled              # 21-scenario DB acceptance (14A)
+npm run accept:phase14:controlled              # 32-scenario DB acceptance (14A+14B)
 ```
+
+---
+
+## Phase 14B controlled DB verification (2026-09-08)
+
+**Harness:** `npm run accept:phase14:controlled` — **32/32 PASS**
+
+| Gate | Result |
+|------|--------|
+| Prior-year GL baseline (month mapping, exact cents) | PASS |
+| P&L scope (excludes balance sheet + archived) | PASS |
+| Copy-forward (FY shift, draft, lineage) | PASS |
+| Revision clone (source immutable, draft editable) | PASS |
+| Approval / lock immutability | PASS |
+| CSV import (money formats, merge, replace) | PASS |
+| CSV export + formula injection protection | PASS |
+| Draft-only import (approved/locked rejected) | PASS |
+| Bulk budget tools persistence | PASS |
+| Phase 14B audit events | PASS |
+| Cross-tenant isolation + IDOR | PASS |
+| Planning journals created by planning ops | 0 |
+| HFAC baseline unchanged | PASS |
+| Orphan planning records | 0 |
+
+**Fixture note:** Acceptance clears Phase 14 demo org journals before seeding controlled 2026 GL actuals so prior-year baseline reads are deterministic across re-runs.
 
 ---
 
@@ -195,7 +220,8 @@ PHASE_14A_CODE_COMPLETE = true
 PHASE_14A_DB_VERIFIED = true
 PHASE_14A_COMPLETE = true
 PHASE_14B_CODE_COMPLETE = true
-PHASE_14B_DB_VERIFIED = false   # operator may extend controlled acceptance
+PHASE_14B_DB_VERIFIED = true
+PHASE_14B_COMPLETE = true
 PHASE_14B_STARTED = true
 PHASE_14_COMPLETE = false
 PHASE_14C_STARTED = false

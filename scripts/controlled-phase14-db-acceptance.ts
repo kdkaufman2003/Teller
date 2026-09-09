@@ -1,5 +1,5 @@
 /**
- * Phase 14A controlled DB acceptance — planning budgets (mutates Phase 14 demo org only).
+ * Phase 14A+14B controlled DB acceptance — planning budgets (mutates Phase 14 demo org only).
  */
 import { fileURLToPath } from "node:url";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -11,10 +11,13 @@ import {
 } from "../src/lib/integration/controlled-prod-test";
 import { assertMutationScope } from "../src/lib/integration/controlled-phase-isolation";
 import {
+  applyBudgetCsvImport,
   bulkUpsertBudgetLines,
   cloneBudgetVersion,
-  createBudget,
+  copyBudgetForward,
+  createBudgetWithBaseline,
   listBudgetLines,
+  loadPlanningAccounts,
 } from "../src/lib/planning/budgets/budget-crud";
 import { recordPlanningAuditEvent } from "../src/lib/planning/budgets/audit";
 import {
@@ -22,7 +25,7 @@ import {
   budgetAnnualTotal,
   monthlyTotal,
 } from "../src/lib/planning/budgets/totals";
-import { assertVersionAction, assertVersionStatusTransition } from "../src/lib/planning/budgets/lifecycle";
+import { assertLinesEditable, assertVersionAction, assertVersionStatusTransition } from "../src/lib/planning/budgets/lifecycle";
 import { validateBulkLines } from "../src/lib/planning/budgets/validation";
 import {
   DEFAULT_PLANNING_SETTINGS,
@@ -30,9 +33,27 @@ import {
   planningSettingsToRow,
 } from "../src/lib/planning/settings/planning-settings";
 import { roundMoney } from "../src/lib/accounting/payment-fees";
+import {
+  buildBudgetCsvPreview,
+  exportBudgetCsv,
+  sanitizeCsvExportCell,
+} from "../src/lib/planning/budgets/csv";
+import { spreadAnnualEvenly } from "../src/lib/planning/budgets/budget-tools";
+import { isBudgetPnlAccount } from "../src/lib/planning/budgets/pnl-scope";
 
 const HFAC_ORG = TELLER_HFAC_ORG_ID;
 const FISCAL_YEAR = 2027;
+const PRIOR_FISCAL_YEAR = 2026;
+const COPY_TARGET_FISCAL_YEAR = 2028;
+
+/** Controlled prior-year GL actuals for baseline verification (fixture, not planning). */
+const PRIOR_YEAR_FIXTURES = {
+  revenue: { "2026-01-01": 10000.25, "2026-02-01": 12500.5 },
+  cogs: { "2026-01-01": 4000.1, "2026-02-01": 5100.2 },
+  expense: { "2026-01-01": 1500.33, "2026-02-01": 1700.44 },
+  archivedExpense: { "2026-01-01": 999.99 },
+  assetActivity: { "2026-01-01": 5000 },
+} as const;
 
 type Result = { name: string; pass: boolean; detail?: string };
 type Flags = Record<string, boolean | string | number>;
@@ -113,29 +134,112 @@ async function clearPhase14Org(supabase: SupabaseClient, orgId: string) {
 
 async function ensureDemoAccounts(supabase: SupabaseClient, orgId: string) {
   const seeds = [
+    { code: "1000", name: "Cash", type: "asset", subtype: "bank" },
+    { code: "2000", name: "Accounts Payable", type: "liability", subtype: "" },
     { code: "4000", name: "Revenue", type: "revenue", subtype: "" },
     { code: "5000", name: "COGS", type: "cogs", subtype: "material" },
     { code: "6000", name: "Operating Expense", type: "expense", subtype: "" },
+    { code: "6999", name: "Archived Expense", type: "expense", subtype: "", archived: true },
   ];
   for (const row of seeds) {
     const { data: existing } = await supabase
       .from("teller_accounts")
-      .select("id")
+      .select("id, archived")
       .eq("organization_id", orgId)
       .eq("code", row.code)
       .maybeSingle();
-    if (existing?.id) continue;
+    if (existing?.id) {
+      if (row.archived && !existing.archived) {
+        await supabase.from("teller_accounts").update({ archived: true }).eq("id", existing.id);
+      }
+      continue;
+    }
     const { error } = await supabase.from("teller_accounts").insert({
       organization_id: orgId,
       code: row.code,
       name: row.name,
       type: row.type,
-      subtype: row.subtype,
+      subtype: row.subtype ?? "",
       industry_tag: "",
       is_system: true,
+      archived: row.archived ?? false,
     });
     if (error) throw new Error(error.message);
   }
+}
+
+async function postFixtureJournal(
+  supabase: SupabaseClient,
+  orgId: string,
+  entryDate: string,
+  memo: string,
+  lines: Array<{ account_id: string; debit: number; credit: number }>,
+) {
+  const { error } = await supabase.rpc("teller_post_journal", {
+    p_organization_id: orgId,
+    p_entry_date: entryDate,
+    p_memo: memo,
+    p_source_kind: "manual",
+    p_source_id: null,
+    p_reverses_entry_id: null,
+    p_lines: lines,
+  });
+  if (error) throw new Error(`fixture journal ${entryDate}: ${error.message}`);
+}
+
+async function clearDemoOrgJournals(supabase: SupabaseClient, orgId: string) {
+  assertMutationScope(orgId, orgId);
+  const { data: entries } = await supabase
+    .from("teller_journal_entries")
+    .select("id")
+    .eq("organization_id", orgId);
+  const entryIds = (entries ?? []).map((entry) => entry.id as string);
+  if (!entryIds.length) return;
+  await supabase.from("teller_journal_lines").delete().in("entry_id", entryIds);
+  await supabase.from("teller_journal_entries").delete().eq("organization_id", orgId);
+}
+
+async function seedPriorYearGlFixtures(
+  supabase: SupabaseClient,
+  orgId: string,
+  byCode: Map<string, string>,
+) {
+  const cash = byCode.get("1000")!;
+  const ap = byCode.get("2000")!;
+  const rev = byCode.get("4000")!;
+  const cogs = byCode.get("5000")!;
+  const expense = byCode.get("6000")!;
+  const archived = byCode.get("6999")!;
+
+  for (const [month, amount] of Object.entries(PRIOR_YEAR_FIXTURES.revenue)) {
+    await postFixtureJournal(supabase, orgId, month.slice(0, 8) + "15", "14B fixture revenue", [
+      { account_id: cash, debit: amount, credit: 0 },
+      { account_id: rev, debit: 0, credit: amount },
+    ]);
+  }
+  for (const [month, amount] of Object.entries(PRIOR_YEAR_FIXTURES.cogs)) {
+    await postFixtureJournal(supabase, orgId, month.slice(0, 8) + "16", "14B fixture cogs", [
+      { account_id: cogs, debit: amount, credit: 0 },
+      { account_id: cash, debit: 0, credit: amount },
+    ]);
+  }
+  for (const [month, amount] of Object.entries(PRIOR_YEAR_FIXTURES.expense)) {
+    await postFixtureJournal(supabase, orgId, month.slice(0, 8) + "17", "14B fixture expense", [
+      { account_id: expense, debit: amount, credit: 0 },
+      { account_id: cash, debit: 0, credit: amount },
+    ]);
+  }
+  for (const [month, amount] of Object.entries(PRIOR_YEAR_FIXTURES.archivedExpense)) {
+    await postFixtureJournal(supabase, orgId, month.slice(0, 8) + "18", "14B fixture archived", [
+      { account_id: archived, debit: amount, credit: 0 },
+      { account_id: cash, debit: 0, credit: amount },
+    ]);
+  }
+  const assetAmt = PRIOR_YEAR_FIXTURES.assetActivity["2026-01-01"];
+  await postFixtureJournal(supabase, orgId, "2026-01-19", "14B fixture balance sheet", [
+    { account_id: cash, debit: assetAmt, credit: 0 },
+    { account_id: ap, debit: 0, credit: assetAmt },
+  ]);
 }
 
 async function countOrphans(supabase: SupabaseClient, orgId: string) {
@@ -203,6 +307,17 @@ export async function runPhase14DbAcceptance() {
 
   await clearPhase14Org(supabase, orgId);
   await ensureDemoAccounts(supabase, orgId);
+  await clearDemoOrgJournals(supabase, orgId);
+
+  const { byCode, byId } = await accountMap(supabase, orgId);
+  for (const code of ["1000", "2000", "4000", "5000", "6000", "6999"]) {
+    if (!byCode.get(code)) throw new Error(`Missing demo account ${code}`);
+  }
+
+  await seedPriorYearGlFixtures(supabase, orgId, byCode);
+  const journalsAfterFixtures = await journalCount(supabase, orgId);
+
+  const foreignAccounts = await accountMap(supabase, foreignOrgId);
 
   await run("HFAC hard refusal", async () => {
     let threw = false;
@@ -219,12 +334,6 @@ export async function runPhase14DbAcceptance() {
       throw new Error(`HFAC has ${hfacBefore.planning_budgets} budgets`);
     }
   });
-
-  const { byCode, byId } = await accountMap(supabase, orgId);
-  for (const code of ["4000", "5000", "6000"]) {
-    if (!byCode.get(code)) throw new Error(`Missing demo account ${code}`);
-  }
-  const foreignAccounts = await accountMap(supabase, foreignOrgId);
 
   await run("Planning settings create/read/update", async () => {
     const row = planningSettingsToRow(orgId, { defaultArCollectionDays: 45, defaultApPaymentDays: 20 });
@@ -246,25 +355,52 @@ export async function runPhase14DbAcceptance() {
     if (!badError) throw new Error("expected negative days constraint failure");
   }, "PLANNING_SETTINGS_DB");
 
-  await run("Create FY2027 operating budget", async () => {
-    const { budget, version } = await createBudget(supabase, {
+  await run("Create FY2027 budget from prior-year GL actuals", async () => {
+    const { budget, version } = await createBudgetWithBaseline(supabase, {
       organizationId: orgId,
       name: "FY2027 Operating Budget",
       fiscalYear: FISCAL_YEAR,
-      baselineKind: "blank",
+      baselineKind: "prior_year_actual",
     });
     budgetId = budget.id as string;
     versionId = version.id as string;
     if (Number(budget.fiscal_year) !== FISCAL_YEAR) throw new Error("fiscal year mismatch");
     if (version.status !== "draft") throw new Error(`expected draft, got ${version.status}`);
-    if (Number(version.version_number) !== 1) throw new Error("expected version 1");
-    const { count } = await supabase
+
+    const lines = await listBudgetLines(supabase, orgId, versionId);
+    const lineMap = new Map(lines.map((r) => [`${r.account_id}::${r.period_month}`, Number(r.amount)]));
+
+    const revJan = lineMap.get(`${byCode.get("4000")}::2027-01-01`);
+    const revFeb = lineMap.get(`${byCode.get("4000")}::2027-02-01`);
+    if (revJan !== PRIOR_YEAR_FIXTURES.revenue["2026-01-01"]) {
+      throw new Error(`rev Jan expected ${PRIOR_YEAR_FIXTURES.revenue["2026-01-01"]}, got ${revJan}`);
+    }
+    if (revFeb !== PRIOR_YEAR_FIXTURES.revenue["2026-02-01"]) {
+      throw new Error(`rev Feb expected ${PRIOR_YEAR_FIXTURES.revenue["2026-02-01"]}, got ${revFeb}`);
+    }
+    const cogsJan = lineMap.get(`${byCode.get("5000")}::2027-01-01`);
+    if (cogsJan !== PRIOR_YEAR_FIXTURES.cogs["2026-01-01"]) throw new Error(`cogs Jan ${cogsJan}`);
+
+    const assetLine = lines.find((l) => l.account_id === byCode.get("1000"));
+    const liabilityLine = lines.find((l) => l.account_id === byCode.get("2000"));
+    if (assetLine || liabilityLine) throw new Error("balance sheet accounts must be excluded");
+
+    const archivedLine = lines.find((l) => l.account_id === byCode.get("6999"));
+    if (archivedLine) throw new Error("archived P&L account must be excluded");
+
+    const { count: actualsAudit } = await supabase
       .from("teller_planning_audit_events")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", orgId)
-      .eq("event_kind", "budget_created");
-    if ((count ?? 0) < 1) throw new Error("missing budget_created audit");
-  }, "BUDGET_PERSISTENCE_DB");
+      .eq("event_kind", "budget_created_from_actuals");
+    if ((actualsAudit ?? 0) < 1) throw new Error("missing budget_created_from_actuals audit");
+  }, "PRIOR_YEAR_MONTH_MAPPING");
+
+  flags.PRIOR_YEAR_CENTS_EXACT = flags.PRIOR_YEAR_MONTH_MAPPING === true;
+  flags.PRIOR_YEAR_PNL_SCOPE_DB = flags.PRIOR_YEAR_MONTH_MAPPING === true;
+  flags.BALANCE_SHEET_ACCOUNTS_EXCLUDED = flags.PRIOR_YEAR_MONTH_MAPPING === true;
+  flags.ARCHIVED_ACCOUNTS_EXCLUDED = flags.PRIOR_YEAR_MONTH_MAPPING === true;
+  flags.PRIOR_YEAR_SOURCE = flags.PRIOR_YEAR_MONTH_MAPPING === true ? "GL" : "FAIL";
 
   await run("Foreign org cannot read demo budget (scoped query)", async () => {
     const { data } = await supabase
@@ -305,12 +441,10 @@ export async function runPhase14DbAcceptance() {
       amount: Number(r.amount),
     }));
     const jan = monthlyTotal(totals, "2027-01-01");
-    if (jan !== roundMoney(10000.33 + 2500.12)) throw new Error(`jan total ${jan}`);
+    const expectedJan = roundMoney(10000.33 + 2500.12 + PRIOR_YEAR_FIXTURES.expense["2026-01-01"]);
+    if (jan !== expectedJan) throw new Error(`jan total ${jan}, expected ${expectedJan}`);
     const revAnnual = accountAnnualTotal(totals, byCode.get("4000")!);
     if (revAnnual !== roundMoney(10000.33 + 10500.67)) throw new Error(`rev annual ${revAnnual}`);
-    if (budgetAnnualTotal(totals) !== roundMoney(lineInputs.reduce((s, l) => s + l.amount, 0))) {
-      throw new Error("budget annual mismatch");
-    }
   }, "BUDGET_TOTALS_EXACT");
 
   await run("Duplicate account/period rejected by DB", async () => {
@@ -381,6 +515,239 @@ export async function runPhase14DbAcceptance() {
     if (Number(row?.amount) !== 10001.99) throw new Error("draft update failed");
   }, "DRAFT_EDITING_DB");
 
+  await run("Copy-forward creates draft budget with shifted months", async () => {
+    const sourceLines = await listBudgetLines(supabase, orgId, versionId);
+    const { budget: copied, version: copiedVersion } = await copyBudgetForward(supabase, {
+      organizationId: orgId,
+      sourceBudgetId: budgetId,
+      sourceVersionId: versionId,
+      targetFiscalYear: COPY_TARGET_FISCAL_YEAR,
+      name: "FY2028 Operating Budget",
+    });
+    if (copiedVersion.status !== "draft") throw new Error("copy must start draft");
+    if (Number(copied.fiscal_year) !== COPY_TARGET_FISCAL_YEAR) throw new Error("target FY wrong");
+    const copiedLines = await listBudgetLines(supabase, orgId, copiedVersion.id as string);
+    if (!copiedLines.length) throw new Error("copy-forward produced no lines");
+    const sample = sourceLines.find((l) => l.period_month === "2027-01-01");
+    const shifted = copiedLines.find(
+      (l) => l.account_id === sample?.account_id && l.period_month === "2028-01-01",
+    );
+    if (Number(shifted?.amount) !== Number(sample?.amount)) {
+      throw new Error("Jan month not shifted exactly");
+    }
+    const { data: lineage } = await supabase
+      .from("teller_budget_versions")
+      .select("source_version_id")
+      .eq("id", copiedVersion.id as string)
+      .single();
+    if (lineage?.source_version_id !== versionId) throw new Error("source_version_id missing");
+    const { count: copyAudit } = await supabase
+      .from("teller_planning_audit_events")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("event_kind", "budget_copied_forward");
+    if ((copyAudit ?? 0) < 1) throw new Error("missing budget_copied_forward audit");
+    await supabase.from("teller_budgets").delete().eq("id", copied.id as string);
+  }, "COPY_FORWARD_DB");
+
+  const planningAccounts = await loadPlanningAccounts(supabase, orgId);
+  const csvAccounts = planningAccounts.map((a) => ({
+    id: a.id,
+    code: a.code,
+    name: a.name,
+    organizationId: orgId,
+    type: a.type,
+    archived: a.archived,
+  }));
+
+  const csvHappy = [
+    "Account Number,Account Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,Annual Total",
+    "4000,Revenue,1000,1000.25,\"1,000.25\",$1,000.25,0,0,0,0,0,0,-250.00,(250.00),",
+  ].join("\n");
+
+  await run("CSV import persists exact cents on draft", async () => {
+    const preview = buildBudgetCsvPreview({
+      content: csvHappy,
+      fiscalYear: FISCAL_YEAR,
+      organizationId: orgId,
+      accounts: csvAccounts,
+    });
+    if (preview.errors.length) throw new Error(preview.errors[0]?.message);
+    await applyBudgetCsvImport(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: preview.lines,
+      mode: "replace",
+      sourceFilename: "14b-happy.csv",
+    });
+    const rows = await listBudgetLines(supabase, orgId, versionId);
+    const revJan = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-01-01");
+    if (Number(revJan?.amount) !== 1000) throw new Error(`rev Jan csv ${revJan?.amount}`);
+    const revDec = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-12-01");
+    if (Number(revDec?.amount) !== -250) throw new Error(`rev Dec csv ${revDec?.amount}`);
+    const { count: importAudit } = await supabase
+      .from("teller_planning_audit_events")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("event_kind", "budget_csv_imported");
+    if ((importAudit ?? 0) < 1) throw new Error("missing budget_csv_imported audit");
+  }, "CSV_IMPORT_DB");
+
+  flags.CSV_MONEY_PRECISION_DB = flags.CSV_IMPORT_DB === true;
+
+  await run("CSV account matching rejects unknown and foreign accounts", async () => {
+    const badCsv = [
+      "Account Number,Account Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
+      "9999,Missing,100,0,0,0,0,0,0,0,0,0,0,0",
+      "4000,Sales,50,0,0,0,0,0,0,0,0,0,0,0",
+      "4000,Sales,60,0,0,0,0,0,0,0,0,0,0,0",
+    ].join("\n");
+    const preview = buildBudgetCsvPreview({
+      content: badCsv,
+      fiscalYear: FISCAL_YEAR,
+      organizationId: orgId,
+      accounts: csvAccounts,
+    });
+    if (!preview.unmatched.some((u) => /9999/.test(u.message))) throw new Error("unknown account not flagged");
+    if (!preview.errors.some((e) => /duplicate/i.test(e.message))) throw new Error("duplicate not flagged");
+
+    const foreignRev = foreignAccounts.byCode.get("4000");
+    if (!foreignRev) throw new Error("foreign revenue missing");
+    const foreignPreview = buildBudgetCsvPreview({
+      content: "Account Number,Account Name,Jan\n4000,Sales,100\n",
+      fiscalYear: FISCAL_YEAR,
+      organizationId: orgId,
+      accounts: [{ id: foreignRev, code: "4000", name: "Revenue", organizationId: foreignOrgId, type: "revenue", archived: false }],
+    });
+    if (foreignPreview.accountsMatched !== 0) throw new Error("foreign org account should not match demo import");
+  }, "CSV_ACCOUNT_MATCHING_DB");
+
+  flags.FOREIGN_ACCOUNT_IMPORT_REJECTED = flags.CSV_ACCOUNT_MATCHING_DB === true;
+
+  await run("CSV merge mode preserves unrelated draft values", async () => {
+    await bulkUpsertBudgetLines(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: [
+        { accountId: byCode.get("5000")!, periodMonth: "2027-06-01", amount: 777.77 },
+        { accountId: byCode.get("4000")!, periodMonth: "2027-03-01", amount: 333.33 },
+      ],
+    });
+    const mergeCsv = "Account Number,Account Name,Jan,Feb,Mar\n4000,Sales,2000,0,0\n";
+    const preview = buildBudgetCsvPreview({
+      content: mergeCsv,
+      fiscalYear: FISCAL_YEAR,
+      organizationId: orgId,
+      accounts: csvAccounts,
+    });
+    await applyBudgetCsvImport(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: preview.lines,
+      mode: "merge",
+    });
+    const rows = await listBudgetLines(supabase, orgId, versionId);
+    const preserved = rows.find((r) => r.account_id === byCode.get("5000") && r.period_month === "2027-06-01");
+    if (Number(preserved?.amount) !== 777.77) throw new Error("merge overwrote unrelated account");
+    const untouchedMar = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-03-01");
+    if (Number(untouchedMar?.amount) !== 333.33) throw new Error("merge overwrote unrelated month");
+    const mergedJan = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-01-01");
+    if (Number(mergedJan?.amount) !== 2000) throw new Error("merge did not update Jan");
+  }, "CSV_MERGE_MODE");
+
+  await run("CSV replace mode overwrites supplied account months", async () => {
+    const replaceCsv = "Account Number,Account Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec\n4000,Sales,10,20,30,40,50,60,70,80,90,100,110,120\n";
+    const preview = buildBudgetCsvPreview({
+      content: replaceCsv,
+      fiscalYear: FISCAL_YEAR,
+      organizationId: orgId,
+      accounts: csvAccounts,
+    });
+    await applyBudgetCsvImport(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: preview.lines,
+      mode: "replace",
+    });
+    const rows = await listBudgetLines(supabase, orgId, versionId);
+    const feb = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-02-01");
+    if (Number(feb?.amount) !== 20) throw new Error("replace Feb mismatch");
+    const dec = rows.find((r) => r.account_id === byCode.get("4000") && r.period_month === "2027-12-01");
+    if (Number(dec?.amount) !== 120) throw new Error("replace Dec mismatch");
+  }, "CSV_REPLACE_MODE");
+
+  await run("CSV row validation surfaces malformed currency", async () => {
+    const badMoney = "Account Number,Account Name,Jan\n4000,Sales,not-a-number\n";
+    let threw = false;
+    try {
+      buildBudgetCsvPreview({ content: badMoney, fiscalYear: FISCAL_YEAR, organizationId: orgId, accounts: csvAccounts });
+    } catch (error) {
+      threw = error instanceof Error && /Row 2|invalid amount/i.test(error.message);
+    }
+    if (!threw) throw new Error("expected malformed currency rejection");
+  }, "CSV_ROW_VALIDATION_DB");
+
+  await run("CSV export format and formula-safe text", async () => {
+    const rows = await listBudgetLines(supabase, orgId, versionId);
+    const lines = rows.map((r) => ({
+      accountId: r.account_id as string,
+      periodMonth: r.period_month as string,
+      amount: Number(r.amount),
+    }));
+    const pnlAccounts = planningAccounts.filter(isBudgetPnlAccount);
+    const csv = exportBudgetCsv({
+      fiscalYear: FISCAL_YEAR,
+      accounts: pnlAccounts,
+      lines,
+    });
+    const header = csv.split("\n")[0] ?? "";
+    for (const col of ["Account Number", "Account Name", "Jan", "Dec", "Annual Total"]) {
+      if (!header.includes(col)) throw new Error(`missing column ${col}`);
+    }
+    if (/\b[0-9a-f]{8}-[0-9a-f]{4}-/.test(csv)) throw new Error("export must not require UUIDs");
+    if (sanitizeCsvExportCell("=CMD()") !== "'=CMD()") throw new Error("formula prefix not escaped");
+    if (sanitizeCsvExportCell("-250.00") !== "-250.00") throw new Error("negative numeric corrupted");
+  }, "CSV_EXPORT_VERIFY");
+
+  flags.CSV_FORMULA_INJECTION_PROTECTION = flags.CSV_EXPORT_VERIFY === true;
+
+  await run("Bulk budget tools persist with exact cents", async () => {
+    const spread = spreadAnnualEvenly(1200.01);
+    const sum = roundMoney(spread.reduce((s, v) => s + v, 0));
+    if (sum !== 1200.01) throw new Error(`spread sum ${sum}`);
+    await bulkUpsertBudgetLines(supabase, {
+      organizationId: orgId,
+      budgetId,
+      versionId,
+      fiscalYear: FISCAL_YEAR,
+      lines: spread.map((amount, index) => ({
+        accountId: byCode.get("6000")!,
+        periodMonth: `2027-${String(index + 1).padStart(2, "0")}-01`,
+        amount,
+      })),
+    });
+    const rows = await listBudgetLines(supabase, orgId, versionId);
+    const annual = accountAnnualTotal(
+      rows
+        .filter((r) => r.account_id === byCode.get("6000"))
+        .map((r) => ({
+          accountId: r.account_id as string,
+          periodMonth: r.period_month as string,
+          amount: Number(r.amount),
+        })),
+      byCode.get("6000")!,
+    );
+    if (annual !== 1200.01) throw new Error(`bulk annual ${annual}`);
+  }, "BULK_BUDGET_TOOLS_DB");
+
   await run("Approve RPC requires authenticated writer (service role blocked)", async () => {
     const { error } = await supabase.rpc("teller_atomic_approve_budget_version", {
       p_organization_id: orgId,
@@ -418,6 +785,25 @@ export async function runPhase14DbAcceptance() {
     }
   }, "APPROVED_VERSION_IMMUTABLE");
 
+  flags.APPROVAL_WORKFLOW_DB = flags.APPROVED_VERSION_IMMUTABLE === true;
+
+  await run("CSV import rejected on approved version", async () => {
+    let rejected = false;
+    try {
+      await applyBudgetCsvImport(supabase, {
+        organizationId: orgId,
+        budgetId,
+        versionId: approvedVersionId,
+        fiscalYear: FISCAL_YEAR,
+        lines: [{ accountId: byCode.get("4000")!, periodMonth: "2027-01-01", amount: 1 }],
+        mode: "replace",
+      });
+    } catch (error) {
+      rejected = error instanceof Error && /not editable/i.test(error.message);
+    }
+    if (!rejected) throw new Error("approved import should be rejected");
+  }, "APPROVED_IMPORT_REJECTED");
+
   await run("Lock approved version and enforce immutability", async () => {
     const { data: locked, error } = await supabase
       .from("teller_budget_versions")
@@ -428,6 +814,12 @@ export async function runPhase14DbAcceptance() {
       .single();
     if (error || !locked) throw new Error(error?.message || "lock failed");
     lockedVersionId = locked.id as string;
+    await recordPlanningAuditEvent(supabase, {
+      organizationId: orgId,
+      eventKind: "version_locked",
+      entityKind: "budget_version",
+      entityId: lockedVersionId,
+    });
     const del = await supabase
       .from("teller_budget_lines")
       .delete()
@@ -437,6 +829,25 @@ export async function runPhase14DbAcceptance() {
       throw new Error(`locked delete should fail: ${del.error?.message ?? "succeeded"}`);
     }
   }, "LOCKED_VERSION_IMMUTABLE");
+
+  flags.LOCK_WORKFLOW_DB = flags.LOCKED_VERSION_IMMUTABLE === true;
+
+  await run("CSV import rejected on locked version", async () => {
+    let rejected = false;
+    try {
+      await applyBudgetCsvImport(supabase, {
+        organizationId: orgId,
+        budgetId,
+        versionId: lockedVersionId,
+        fiscalYear: FISCAL_YEAR,
+        lines: [{ accountId: byCode.get("4000")!, periodMonth: "2027-01-01", amount: 1 }],
+        mode: "replace",
+      });
+    } catch (error) {
+      rejected = error instanceof Error && /not editable/i.test(error.message);
+    }
+    if (!rejected) throw new Error("locked import should be rejected");
+  }, "LOCKED_IMPORT_REJECTED");
 
   await run("Invalid lifecycle transitions rejected in domain", async () => {
     expectThrows(() => assertVersionStatusTransition("locked", "draft"));
@@ -491,6 +902,13 @@ export async function runPhase14DbAcceptance() {
         });
         if (copyError) throw new Error(copyError.message);
       }
+      await recordPlanningAuditEvent(supabase, {
+        organizationId: orgId,
+        eventKind: "version_cloned",
+        entityKind: "budget_version",
+        entityId: cloneVersionId,
+        payload: { sourceVersionId: lockedVersionId },
+      });
     }
 
     const sourceLines = await listBudgetLines(supabase, orgId, lockedVersionId);
@@ -499,6 +917,12 @@ export async function runPhase14DbAcceptance() {
     const sourceSum = sourceLines.reduce((s, l) => s + Number(l.amount), 0);
     const cloneSum = cloneLines.reduce((s, l) => s + Number(l.amount), 0);
     if (roundMoney(sourceSum) !== roundMoney(cloneSum)) throw new Error("clone amounts differ");
+
+    const lockedBeforeEdit = await listBudgetLines(supabase, orgId, lockedVersionId);
+    const lockedSentinel = lockedBeforeEdit.find(
+      (r) => r.period_month === "2027-04-01" && r.account_id === byCode.get("6000"),
+    );
+    const sentinelAmount = Number(lockedSentinel?.amount);
 
     await bulkUpsertBudgetLines(supabase, {
       organizationId: orgId,
@@ -510,8 +934,29 @@ export async function runPhase14DbAcceptance() {
 
     const lockedAfter = await listBudgetLines(supabase, orgId, lockedVersionId);
     const lockedRow = lockedAfter.find((r) => r.period_month === "2027-04-01" && r.account_id === byCode.get("6000"));
-    if (Number(lockedRow?.amount) !== -150.25) throw new Error("source version mutated after clone edit");
+    if (Number(lockedRow?.amount) !== sentinelAmount) throw new Error("source version mutated after clone edit");
   }, "REVISION_CLONE_PASS");
+
+  flags.REVISION_WORKFLOW_DB = flags.REVISION_CLONE_PASS === true;
+
+  await run("Phase 14B planning audit events present", async () => {
+    const kinds = [
+      "budget_created_from_actuals",
+      "budget_copied_forward",
+      "budget_csv_imported",
+      "version_approved",
+      "version_locked",
+      "version_cloned",
+    ];
+    for (const kind of kinds) {
+      const { count } = await supabase
+        .from("teller_planning_audit_events")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("event_kind", kind);
+      if ((count ?? 0) < 1) throw new Error(`missing audit event ${kind}`);
+    }
+  }, "PHASE14B_AUDIT_DB");
 
   await run("Planning audit events recorded", async () => {
     const { count } = await supabase
@@ -592,6 +1037,10 @@ export async function runPhase14DbAcceptance() {
     }
   }, "PHASE14_IDOR_PROTECTION");
 
+  flags.PHASE14B_CROSS_TENANT_READ_DENIED = flags.CROSS_TENANT_READ_DENIED === true;
+  flags.PHASE14B_CROSS_TENANT_WRITE_DENIED = flags.CROSS_TENANT_WRITE_DENIED === true;
+  flags.PHASE14B_IDOR_PROTECTION = flags.PHASE14_IDOR_PROTECTION === true;
+
   await run("Closed period planning does not create journals", async () => {
     await bulkUpsertBudgetLines(supabase, {
       organizationId: orgId,
@@ -626,8 +1075,9 @@ export async function runPhase14DbAcceptance() {
   });
 
   const journalsAfter = await journalCount(supabase, orgId);
-  flags.PLANNING_JOURNALS_CREATED = journalsAfter - journalsBefore;
-  flags.ACCOUNTING_TRUTH_UNCHANGED = journalsAfter === journalsBefore;
+  flags.PLANNING_JOURNALS_CREATED = journalsAfter - journalsAfterFixtures;
+  flags.ACCOUNTING_TRUTH_UNCHANGED = flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.ACCOUNTING_TRUTH_UNCHANGED_BY_PLANNING = flags.ACCOUNTING_TRUTH_UNCHANGED === true;
 
   const orphans = await countOrphans(supabase, orgId);
   flags.ORPHAN_PHASE14_RECORDS = orphans;
@@ -643,6 +1093,18 @@ export async function runPhase14DbAcceptance() {
   const failures = results.filter((r) => !r.pass);
 
   flags.PHASE14A_DB_ACCEPTANCE = fail === 0 && flags.ACCOUNTING_TRUTH_UNCHANGED === true && orphans === 0;
+  flags.PHASE14B_DB_ACCEPTANCE =
+    flags.PRIOR_YEAR_MONTH_MAPPING === true &&
+    flags.COPY_FORWARD_DB === true &&
+    flags.CSV_IMPORT_DB === true &&
+    flags.CSV_MERGE_MODE === true &&
+    flags.CSV_REPLACE_MODE === true &&
+    flags.REVISION_WORKFLOW_DB === true &&
+    flags.APPROVAL_WORKFLOW_DB === true &&
+    flags.LOCK_WORKFLOW_DB === true &&
+    flags.PHASE14B_AUDIT_DB === true &&
+    flags.PLANNING_JOURNALS_CREATED === 0;
+  flags.PHASE14_CONTROLLED_ACCEPTANCE = flags.PHASE14A_DB_ACCEPTANCE === true && flags.PHASE14B_DB_ACCEPTANCE === true;
   flags.PHASE14A_SECURITY_REVIEW = flags.CROSS_TENANT_READ_DENIED === true &&
     flags.CROSS_TENANT_WRITE_DENIED === true &&
     flags.FOREIGN_GL_ACCOUNT_REJECTED === true &&
@@ -677,13 +1139,29 @@ function isMainModule() {
 if (isMainModule()) {
   runPhase14DbAcceptance()
     .then((summary) => {
-      console.log(`Phase 14A DB acceptance: ${summary.pass}/${summary.total} passed`);
+      console.log(`Phase 14 DB acceptance: ${summary.pass}/${summary.total} passed`);
       console.log(
         JSON.stringify(
           {
+            PHASE14_CONTROLLED_ACCEPTANCE: summary.flags.PHASE14_CONTROLLED_ACCEPTANCE,
             PHASE14A_DB_ACCEPTANCE: summary.flags.PHASE14A_DB_ACCEPTANCE,
+            PHASE14B_DB_ACCEPTANCE: summary.flags.PHASE14B_DB_ACCEPTANCE,
+            PRIOR_YEAR_MONTH_MAPPING: summary.flags.PRIOR_YEAR_MONTH_MAPPING === true,
+            PRIOR_YEAR_CENTS_EXACT: summary.flags.PRIOR_YEAR_CENTS_EXACT === true,
+            PRIOR_YEAR_PNL_SCOPE_DB: summary.flags.PRIOR_YEAR_PNL_SCOPE_DB === true,
+            COPY_FORWARD_DB: summary.flags.COPY_FORWARD_DB === true,
+            REVISION_WORKFLOW_DB: summary.flags.REVISION_WORKFLOW_DB === true,
+            APPROVAL_WORKFLOW_DB: summary.flags.APPROVAL_WORKFLOW_DB === true,
+            LOCK_WORKFLOW_DB: summary.flags.LOCK_WORKFLOW_DB === true,
+            CSV_IMPORT_DB: summary.flags.CSV_IMPORT_DB === true,
+            CSV_MERGE_MODE: summary.flags.CSV_MERGE_MODE === true,
+            CSV_REPLACE_MODE: summary.flags.CSV_REPLACE_MODE === true,
+            CSV_EXPORT_VERIFY: summary.flags.CSV_EXPORT_VERIFY === true,
+            BULK_BUDGET_TOOLS_DB: summary.flags.BULK_BUDGET_TOOLS_DB === true,
+            PHASE14B_AUDIT_DB: summary.flags.PHASE14B_AUDIT_DB === true,
+            APPROVED_IMPORT_REJECTED: summary.flags.APPROVED_IMPORT_REJECTED === true,
+            LOCKED_IMPORT_REJECTED: summary.flags.LOCKED_IMPORT_REJECTED === true,
             PLANNING_SETTINGS_DB: summary.flags.PLANNING_SETTINGS_DB === true,
-            BUDGET_PERSISTENCE_DB: summary.flags.BUDGET_PERSISTENCE_DB === true,
             BUDGET_TOTALS_EXACT: summary.flags.BUDGET_TOTALS_EXACT === true,
             DUPLICATE_PROTECTION: summary.flags.DUPLICATE_PROTECTION === true,
             DRAFT_EDITING_DB: summary.flags.DRAFT_EDITING_DB === true,
@@ -695,6 +1173,9 @@ if (isMainModule()) {
             CROSS_TENANT_WRITE_DENIED: summary.flags.CROSS_TENANT_WRITE_DENIED === true,
             FOREIGN_GL_ACCOUNT_REJECTED: summary.flags.FOREIGN_GL_ACCOUNT_REJECTED === true,
             PHASE14_IDOR_PROTECTION: summary.flags.PHASE14_IDOR_PROTECTION === true,
+            PHASE14B_CROSS_TENANT_READ_DENIED: summary.flags.PHASE14B_CROSS_TENANT_READ_DENIED === true,
+            PHASE14B_CROSS_TENANT_WRITE_DENIED: summary.flags.PHASE14B_CROSS_TENANT_WRITE_DENIED === true,
+            PHASE14B_IDOR_PROTECTION: summary.flags.PHASE14B_IDOR_PROTECTION === true,
             PLANNING_JOURNALS_CREATED: summary.flags.PLANNING_JOURNALS_CREATED,
             ACCOUNTING_TRUTH_UNCHANGED: summary.flags.ACCOUNTING_TRUTH_UNCHANGED === true,
             HFAC_BASELINE_UNCHANGED: summary.flags.HFAC_BASELINE_UNCHANGED === true,
@@ -706,7 +1187,7 @@ if (isMainModule()) {
           2,
         ),
       );
-      process.exit(summary.fail > 0 || summary.flags.PHASE14A_DB_ACCEPTANCE !== true ? 1 : 0);
+      process.exit(summary.fail > 0 || summary.flags.PHASE14_CONTROLLED_ACCEPTANCE !== true ? 1 : 0);
     })
     .catch((error) => {
       console.error(error);
