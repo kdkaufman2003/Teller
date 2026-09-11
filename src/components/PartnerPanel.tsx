@@ -21,6 +21,8 @@ type PartnerState = {
     billing: string | null;
   };
   organizationId: string;
+  hfacCompanyId: string | null;
+  defaultHfacCompanyId: string;
   hfac: {
     enabled?: boolean;
     last_synced_at?: string | null;
@@ -38,12 +40,15 @@ export function PartnerPanel() {
   const [state, setState] = useState<PartnerState | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [companyIdDraft, setCompanyIdDraft] = useState("");
+  const [mappingSaved, setMappingSaved] = useState(false);
 
   async function load() {
     const response = await fetch("/api/integrations/partner");
     const payload = (await response.json()) as PartnerState & { error?: string };
     if (!response.ok) throw new Error(payload.error || "Could not load integration settings");
     setState(payload);
+    setCompanyIdDraft(payload.hfacCompanyId ?? payload.defaultHfacCompanyId ?? "");
   }
 
   useEffect(() => {
@@ -55,6 +60,7 @@ export function PartnerPanel() {
         if (cancelled) return;
         if (!response.ok) throw new Error(payload.error || "Could not load integration settings");
         setState(payload);
+        setCompanyIdDraft(payload.hfacCompanyId ?? payload.defaultHfacCompanyId ?? "");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load integration settings");
@@ -89,6 +95,30 @@ export function PartnerPanel() {
     }
   }
 
+  async function saveCompanyMapping() {
+    setError("");
+    setMappingSaved(false);
+    setPending(true);
+    try {
+      const response = await fetch("/api/integrations/partner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "map-external",
+          externalAccountId: companyIdDraft.trim(),
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not save HFAC company ID");
+      await load();
+      setMappingSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save HFAC company ID");
+    } finally {
+      setPending(false);
+    }
+  }
+
   if (!state) {
     return <p className="text-sm text-muted">Loading integrations…</p>;
   }
@@ -118,6 +148,40 @@ export function PartnerPanel() {
 
       {attached ? (
         <div className="space-y-3 text-sm">
+          <form
+            className="space-y-2 rounded-lg border border-brass/40 bg-paper p-3 text-sm"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveCompanyMapping();
+            }}
+          >
+            <label className="block font-medium text-navy" htmlFor="hfac-company-id">
+              HFAC company/account ID
+            </label>
+            <p className="text-xs text-muted">
+              Paste the Hassle Free platform company ID, then save. Default is{" "}
+              <code>{state.defaultHfacCompanyId}</code>.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                id="hfac-company-id"
+                className="min-w-[16rem] flex-1 rounded-md border border-rule bg-white px-3 py-2 font-tabular text-xs"
+                value={companyIdDraft}
+                onChange={(event) => {
+                  setCompanyIdDraft(event.target.value);
+                  setMappingSaved(false);
+                }}
+                placeholder={state.defaultHfacCompanyId}
+                autoComplete="off"
+              />
+              <button type="submit" className="btn btn-brass text-sm" disabled={pending}>
+                Save mapping
+              </button>
+            </div>
+            {mappingSaved ? (
+              <p className="text-xs text-brass-deep">HFAC company ID saved.</p>
+            ) : null}
+          </form>
           <p>
             <strong>{integrationName}</strong> is connected. Imports are optional
             shortcuts — you can still enter everything manually in Teller.
@@ -160,6 +224,10 @@ export function PartnerPanel() {
                 <li>
                   HFAC: same webhook secret +{" "}
                   <code className="text-xs">TELLER_ORGANIZATION_ID</code> as below
+                </li>
+                <li>
+                  Teller: save the HFAC company/account ID below (Hassle Free default{" "}
+                  <code className="text-xs">a1000000-0000-4000-8000-000000000001</code>)
                 </li>
                 <li>
                   HFAC admin (logged in):{" "}

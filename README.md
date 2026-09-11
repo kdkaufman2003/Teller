@@ -62,6 +62,8 @@ NEXT_PUBLIC_TELLER_INTEGRATION=1
 NEXT_PUBLIC_TELLER_URL=https://<your-teller>.vercel.app
 TELLER_WEBHOOK_SECRET=<same as Teller TELLER_HFAC_WEBHOOK_SECRET>
 TELLER_ORGANIZATION_ID=<uuid from Teller Settings>
+# Optional override; default is the HFAC platform org id
+# TELLER_COMPANY_ID=a1000000-0000-4000-8000-000000000001
 TELLER_SUBSCRIBERS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/subscribers
 TELLER_QUOTES_URL=https://<your-teller>.vercel.app/api/integrations/hfac/quotes
 TELLER_PAYMENTS_URL=https://<your-teller>.vercel.app/api/integrations/hfac/payments

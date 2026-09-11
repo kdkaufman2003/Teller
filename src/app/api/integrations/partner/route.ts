@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
-import { attachPartner, detachPartner } from "@/lib/partners/attachment";
+import { configExternalId, setHfacExternalMapping } from "@/lib/integrations/hfac-org";
+import { attachPartner, defaultHfacCompanyId, detachPartner } from "@/lib/partners/attachment";
 import { getHfacPlatformUrl, getHfacWebhookUrl, getHfacWebhookUrls, getPartner, getTellerPublicUrl } from "@/lib/partners/registry";
 import { hasServiceRole } from "@/lib/supabase/admin";
 
@@ -37,6 +38,8 @@ export async function GET() {
       publicUrlConfigured: Boolean(getTellerPublicUrl()),
     },
     organizationId,
+    hfacCompanyId: configExternalId(hfacIntegration?.config) ?? null,
+    defaultHfacCompanyId: defaultHfacCompanyId(),
     hfac: hfacIntegration ?? null,
   });
 }
@@ -47,8 +50,9 @@ export async function POST(request: Request) {
   const { supabase, organizationId } = ctx;
 
   const body = (await request.json()) as {
-    action?: "attach" | "detach";
+    action?: "attach" | "detach" | "map-external";
     partnerId?: string;
+    externalAccountId?: string;
   };
 
   try {
@@ -63,6 +67,15 @@ export async function POST(request: Request) {
     if (body.action === "detach") {
       await detachPartner(supabase, organizationId);
       return NextResponse.json({ ok: true, mode: "standalone", partnerId: null });
+    }
+
+    if (body.action === "map-external") {
+      const externalAccountId = body.externalAccountId?.trim() || defaultHfacCompanyId();
+      if (!externalAccountId) {
+        return jsonError("HFAC company/account ID is required");
+      }
+      await setHfacExternalMapping(supabase, organizationId, externalAccountId);
+      return NextResponse.json({ ok: true, hfacCompanyId: externalAccountId });
     }
 
     return jsonError("Unknown action");

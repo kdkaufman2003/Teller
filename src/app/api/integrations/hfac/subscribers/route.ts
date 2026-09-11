@@ -3,7 +3,7 @@ import {
   recordHfacWebhookDelivery,
   type HfacSubscriber,
 } from "@/lib/integrations/hfac";
-import { handleHfacWebhookRequest } from "@/lib/integrations/hfac-webhook";
+import { handleHfacWebhookRequest, HfacWebhookClientError } from "@/lib/integrations/hfac-webhook";
 
 function normalizeSubscribers(body: Record<string, unknown>): HfacSubscriber[] {
   const subscribers = body.subscribers;
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   return handleHfacWebhookRequest(request, "subscribers", async (supabase, organizationId, body) => {
     const subscribers = normalizeSubscribers(body);
     if (!subscribers.length) {
-      throw new Error("subscriber or subscribers is required");
+      throw new HfacWebhookClientError("subscriber or subscribers is required");
     }
     const result = await importSubscribersFromHfac(supabase, organizationId, subscribers);
     await recordHfacWebhookDelivery(supabase, organizationId, result, "subscribers");

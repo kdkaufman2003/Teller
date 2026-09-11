@@ -10,6 +10,16 @@ import {
 } from "@/lib/integrations/hfac-org";
 import { createServiceClient, hasServiceRole } from "@/lib/supabase/admin";
 
+export class HfacWebhookClientError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "HfacWebhookClientError";
+    this.status = status;
+  }
+}
+
 type HfacWebhookHandler = (
   supabase: SupabaseClient,
   organizationId: string,
@@ -89,6 +99,10 @@ export async function handleHfacWebhookRequest(
         authReason: auth.ok ? auth.mode : undefined,
       });
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+
+    if (error instanceof HfacWebhookClientError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
     const message = error instanceof Error ? error.message : "Import failed";
