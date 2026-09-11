@@ -3,7 +3,10 @@ import {
   documentRemainingBalance,
   resolveDocumentAmountPaid,
 } from "@/lib/accounting/balances";
-import { postInvoiceOpen, postInvoicePaid, voidInvoice } from "@/lib/accounting/post";
+import { postInvoicePaid, voidInvoice } from "@/lib/accounting/post";
+import { openInvoiceDocument } from "@/lib/accounting/tax/posting/open-document";
+import { taxLocationFromOrg } from "@/lib/accounting/tax/posting/location";
+import { TaxPostingBlockedError } from "@/lib/accounting/tax/posting/open-invoice";
 import { writeOffInvoice } from "@/lib/accounting/settlements";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
@@ -98,20 +101,37 @@ export async function POST(request: Request, { params }: Params) {
 
   const { data: lines } = await supabase
     .from("teller_document_lines")
-    .select("amount, account_id, description, job_id, cost_classification")
+    .select("id, amount, account_id, description, job_id, cost_classification, item_type")
     .eq("document_id", id);
 
+  const taxLocation = taxLocationFromOrg(session.organization ?? {});
+
   if (body.action === "open" && invoice.status === "draft") {
-    await postInvoiceOpen(supabase, {
-      organizationId,
-      documentId: id,
-      partyId: invoice.party_id,
-      jobId: invoice.job_id,
-      issueDate: invoice.issue_date,
-      number: invoice.number,
-      tax: asNumber(invoice.tax),
-      lines: lines ?? [],
-    });
+    try {
+      await openInvoiceDocument(supabase, {
+        organizationId,
+        documentId: id,
+        partyId: invoice.party_id,
+        jobId: invoice.job_id,
+        issueDate: invoice.issue_date,
+        number: invoice.number,
+        tax: asNumber(invoice.tax),
+        location: taxLocation,
+        lines: (lines ?? []).map((line) => ({
+          id: line.id,
+          amount: asNumber(line.amount),
+          account_id: line.account_id,
+          description: line.description,
+          job_id: line.job_id,
+          cost_classification: line.cost_classification,
+          item_type: line.item_type,
+        })),
+        actorId: session.userId,
+      });
+    } catch (err) {
+      if (err instanceof TaxPostingBlockedError) return jsonError(err.message, 400);
+      throw err;
+    }
   }
 
   if (body.action === "pay" || body.action === "paid") {
@@ -123,16 +143,31 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     if (invoice.status === "draft") {
-      await postInvoiceOpen(supabase, {
-        organizationId,
-        documentId: id,
-        partyId: invoice.party_id,
-        jobId: invoice.job_id,
-        issueDate: invoice.issue_date,
-        number: invoice.number,
-        tax: asNumber(invoice.tax),
-        lines: lines ?? [],
-      });
+      try {
+        await openInvoiceDocument(supabase, {
+          organizationId,
+          documentId: id,
+          partyId: invoice.party_id,
+          jobId: invoice.job_id,
+          issueDate: invoice.issue_date,
+          number: invoice.number,
+          tax: asNumber(invoice.tax),
+          location: taxLocation,
+          lines: (lines ?? []).map((line) => ({
+            id: line.id,
+            amount: asNumber(line.amount),
+            account_id: line.account_id,
+            description: line.description,
+            job_id: line.job_id,
+            cost_classification: line.cost_classification,
+            item_type: line.item_type,
+          })),
+          actorId: session.userId,
+        });
+      } catch (err) {
+        if (err instanceof TaxPostingBlockedError) return jsonError(err.message, 400);
+        throw err;
+      }
     }
 
     const invoiceTotal = asNumber(invoice.total);

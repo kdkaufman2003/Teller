@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { billRequiresApproval, loadApSettings } from "./ap-settings";
 import { recordAuditEvent } from "./audit";
-import { postBillOpen } from "./bills";
+import { openBillDocument } from "./tax/posting/open-document";
+import { taxLocationFromOrg } from "./tax/posting/location";
 import { assertBillStatusTransition } from "./document-transitions";
 
 export async function submitBillForApproval(
@@ -144,20 +145,32 @@ async function approveAndPostBill(
       .eq("id", input.documentId);
   }
 
-  const { data: lines } = await supabase
+  const { data: lines, error: linesError } = await supabase
     .from("teller_document_lines")
-    .select("amount, account_id, description, job_id, cost_category, cost_type, cost_classification")
+    .select(
+      "id, amount, account_id, description, job_id, cost_category, cost_type, cost_classification, item_type",
+    )
     .eq("document_id", input.documentId);
+  if (linesError) throw new Error(linesError.message);
+  if (!lines?.length) throw new Error("Bill has no lines to post");
 
-  await postBillOpen(supabase, {
+  const { data: org } = await supabase
+    .from("teller_organizations")
+    .select("country, state, city, county, postal_code")
+    .eq("id", input.organizationId)
+    .maybeSingle();
+
+  await openBillDocument(supabase, {
     organizationId: input.organizationId,
     documentId: input.documentId,
     partyId: input.bill.party_id as string | null,
     jobId: input.bill.job_id as string | null,
     issueDate: input.bill.issue_date as string,
     number: input.bill.number as string,
-    tax: asNumber(input.bill.tax),
+    vendorTaxCharged: asNumber(input.bill.tax),
+    location: taxLocationFromOrg(org ?? {}),
     lines: (lines ?? []).map((line) => ({
+      id: line.id as string,
       amount: asNumber(line.amount),
       account_id: line.account_id as string | null,
       description: line.description as string,
@@ -165,6 +178,7 @@ async function approveAndPostBill(
       cost_category: line.cost_category as string,
       cost_type: line.cost_type as string,
       cost_classification: (line.cost_classification as string) || "direct",
+      item_type: line.item_type as string | null,
     })),
     actorId: input.actorId,
     accrualAllocations: input.accrualAllocations,

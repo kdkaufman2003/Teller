@@ -23,6 +23,7 @@ import {
   reverseJournalEntry,
   assertOrgPeriodOpen,
 } from "./post";
+import { recordPurchaseTaxReversalForDocument } from "./tax/posting/reverse-transactions";
 
 type JournalLineInput = {
   account_id: string;
@@ -62,6 +63,7 @@ export async function postBillOpen(
     actorId?: string | null;
     accrualAllocations?: AccrualAllocationInput[];
     settlementIdempotencyKey?: string | null;
+    additionalJournalLines?: JournalLineInput[];
   },
 ) {
   const { data: currentDoc } = await supabase
@@ -217,6 +219,10 @@ export async function postBillOpen(
         memo: taxLine.memo ?? `Tax on ${input.number}`,
       });
     }
+  }
+
+  if (input.additionalJournalLines?.length) {
+    journal.push(...input.additionalJournalLines);
   }
 
   journal.push({
@@ -448,6 +454,8 @@ export async function voidBill(
   const entryIds = new Set((linkedEntries ?? []).map((e) => e.id as string));
   if (input.postedEntryId) entryIds.add(input.postedEntryId);
 
+  let billReversalEntryId: string | null = null;
+
   for (const entryId of entryIds) {
     const { count } = await supabase
       .from("teller_journal_entries")
@@ -469,6 +477,18 @@ export async function voidBill(
       documentId: input.documentId,
       journalEntryId: reversalEntryId,
       linkKind: "reversal",
+    });
+
+    if (!billReversalEntryId && (!input.postedEntryId || entryId === input.postedEntryId)) {
+      billReversalEntryId = reversalEntryId;
+    }
+  }
+
+  if (billReversalEntryId) {
+    await recordPurchaseTaxReversalForDocument(supabase, input.organizationId, {
+      documentId: input.documentId,
+      reversalJournalEntryId: billReversalEntryId,
+      voidDate: input.voidDate,
     });
   }
 

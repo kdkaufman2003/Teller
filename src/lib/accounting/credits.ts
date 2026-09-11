@@ -24,6 +24,7 @@ import {
 import { recordDocumentJournalLink } from "./journal-links";
 import { roundMoney } from "./payment-fees";
 import { postJournal, loadOrgAccounts, reverseJournalEntry, assertOrgPeriodOpen } from "./post";
+import { recordTaxSubledgerReversalForDocument } from "./tax/posting/reverse-transactions";
 
 type JournalLineInput = {
   account_id: string;
@@ -44,6 +45,7 @@ export async function postCreditMemoOpen(
     issueDate: string;
     number: string;
     tax: number;
+    taxPayableAccountId?: string | null;
     reason?: string;
     lines: { amount: number; account_id: string | null; description: string }[];
     actorId?: string | null;
@@ -53,7 +55,12 @@ export async function postCreditMemoOpen(
 
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
-  const taxPayable = accountBySubtype(accounts, "tax") || accountByCode(accounts, "2100");
+  const taxPayable =
+    (input.taxPayableAccountId
+      ? accounts.find((account) => account.id === input.taxPayableAccountId)
+      : null) ||
+    accountBySubtype(accounts, "tax") ||
+    accountByCode(accounts, "2100");
   const fallbackDebit = accounts.find((a) => a.type === "revenue");
 
   if (!ar) throw new Error("Accounts Receivable is missing from the chart of accounts");
@@ -438,6 +445,7 @@ export async function voidCreditDocument(
   const entryIds = new Set((linkedEntries ?? []).map((e) => e.id as string));
   if (input.postedEntryId) entryIds.add(input.postedEntryId);
 
+  let taxReversalRecorded = false;
   for (const entryId of entryIds) {
     const { count } = await supabase
       .from("teller_journal_entries")
@@ -460,6 +468,16 @@ export async function voidCreditDocument(
       journalEntryId: reversalEntryId,
       linkKind: "reversal",
     });
+
+    if (input.kind === "credit_memo" && !taxReversalRecorded) {
+      await recordTaxSubledgerReversalForDocument(supabase, input.organizationId, {
+        documentId: input.documentId,
+        reversalJournalEntryId: reversalEntryId,
+        voidDate: input.voidDate,
+        originalTransactionType: "sales_tax_reversed",
+      });
+      taxReversalRecorded = true;
+    }
   }
 
   await supabase

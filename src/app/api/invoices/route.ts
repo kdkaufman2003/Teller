@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
 import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
-import { postInvoiceOpen, postInvoicePaid } from "@/lib/accounting/post";
+import { postInvoicePaid } from "@/lib/accounting/post";
+import { openInvoiceDocument } from "@/lib/accounting/tax/posting/open-document";
+import { taxLocationFromOrg } from "@/lib/accounting/tax/posting/location";
+import { TaxPostingBlockedError } from "@/lib/accounting/tax/posting/open-invoice";
 import {
   collectTaxEnabled,
   readOrgAccountingConfig,
@@ -187,16 +190,31 @@ export async function POST(request: Request) {
   }
 
   if (body.status === "open" || body.status === "paid") {
-    await postInvoiceOpen(supabase, {
-      organizationId,
-      documentId: doc.id,
-      partyId: body.partyId || null,
-      jobId: body.jobId || null,
-      issueDate,
-      number,
-      tax,
-      lines: built,
-    });
+    try {
+      await openInvoiceDocument(supabase, {
+        organizationId,
+        documentId: doc.id,
+        partyId: body.partyId || null,
+        jobId: body.jobId || null,
+        issueDate,
+        number,
+        tax,
+        location: taxLocationFromOrg(session.organization ?? {}),
+        lines: built.map((line, index) => ({
+          id: insertedLines?.[index]?.id,
+          amount: line.amount,
+          account_id: line.account_id,
+          description: line.description,
+          job_id: line.job_id,
+          cost_classification: line.cost_classification,
+          item_type: line.item_type,
+        })),
+        actorId: session.userId,
+      });
+    } catch (err) {
+      if (err instanceof TaxPostingBlockedError) return jsonError(err.message, 400);
+      throw err;
+    }
   }
   if (body.status === "paid") {
     await postInvoicePaid(supabase, {

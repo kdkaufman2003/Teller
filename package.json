@@ -87,6 +87,12 @@
     "setup:phase13-demo-org": "node scripts/setup-phase13-demo-org.mjs",
     "verify:phase13:controlled": "node scripts/verify-phase13-controlled.mjs",
     "verify:phase14:planning": "node scripts/verify-phase14-planning.mjs",
+    "verify:phase15:tax": "node scripts/verify-phase15-tax.mjs",
+    "verify:migration:035:controlled": "node scripts/verify-migration-035-controlled.mjs",
+    "verify:migration:037:controlled": "node scripts/verify-migration-037-controlled.mjs",
+    "verify:migration:038:controlled": "node scripts/verify-migration-038-controlled.mjs",
+    "setup:phase15-demo-org": "node scripts/setup-phase15-demo-org.mjs",
+    "accept:phase15:controlled": "node scripts/run-controlled-phase15-db-acceptance.mjs",
     "verify:migration:032:controlled": "node scripts/verify-migration-032-controlled.mjs",
     "setup:phase14-demo-org": "node scripts/setup-phase14-demo-org.mjs",
     "accept:phase14:controlled": "node scripts/run-controlled-phase14-db-acceptance.mjs",
@@ -105,10 +111,12 @@
     "legacy:payment-audit": "tsx scripts/legacy-payment-audit.ts",
     "legacy:payment-backfill": "tsx scripts/legacy-payment-backfill.ts",
     "hfac:integration-report": "node scripts/hfac-integration-report.mjs",
+    "hfac:set-mapping": "node scripts/set-hfac-mapping.mjs",
     "verify:phase06": "node scripts/verify-phase06.mjs",
     "phase1:backfill": "tsx scripts/phase1-backfill.ts",
     "reconstruct:historical-payments": "tsx scripts/reconstruct-historical-payments.ts",
-    "tax-rules:load": "node scripts/load-tax-rules.mjs"
+    "tax-rules:load": "node scripts/load-tax-rules.mjs",
+    "tax-rules:load-state-packs": "node scripts/load-state-tax-packs.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

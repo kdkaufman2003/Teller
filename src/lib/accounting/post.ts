@@ -26,6 +26,7 @@ import {
 } from "./payment-fees";
 import { recordTellerPayment } from "./payments";
 import { assertEntryDateOpen } from "./periods";
+import { recordTaxSubledgerReversalForDocument } from "./tax/posting/reverse-transactions";
 
 export type JournalLineInput = {
   account_id: string;
@@ -270,6 +271,7 @@ export async function voidInvoice(
 
   await assertOrgPeriodOpen(supabase, input.organizationId, input.voidDate);
 
+  let taxReversalRecorded = false;
   for (const entryId of entryIds) {
     const { count } = await supabase
       .from("teller_journal_entries")
@@ -293,6 +295,16 @@ export async function voidInvoice(
       journalEntryId: reversalEntryId,
       linkKind: "reversal",
     });
+
+    if (!taxReversalRecorded) {
+      await recordTaxSubledgerReversalForDocument(supabase, input.organizationId, {
+        documentId: input.documentId,
+        reversalJournalEntryId: reversalEntryId,
+        voidDate: input.voidDate,
+        originalTransactionType: "sales_tax_collected",
+      });
+      taxReversalRecorded = true;
+    }
   }
 
   const { error: docError } = await supabase
@@ -356,6 +368,7 @@ export async function postInvoiceOpen(
     issueDate: string;
     number: string;
     tax: number;
+    taxPayableAccountId?: string | null;
     lines: {
       amount: number;
       account_id: string | null;
@@ -367,7 +380,12 @@ export async function postInvoiceOpen(
 ) {
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
-  const taxPayable = accountBySubtype(accounts, "tax") || accountByCode(accounts, "2100");
+  const taxPayable =
+    (input.taxPayableAccountId
+      ? accounts.find((account) => account.id === input.taxPayableAccountId)
+      : null) ||
+    accountBySubtype(accounts, "tax") ||
+    accountByCode(accounts, "2100");
   const fallbackRevenue = accounts.find((account) => account.type === "revenue");
 
   if (!ar) throw new Error("Accounts Receivable is missing from the chart of accounts");

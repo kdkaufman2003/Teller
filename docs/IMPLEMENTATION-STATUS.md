@@ -6,6 +6,23 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 | Flag | Value | Verified |
 |------|-------|----------|
+| `PHASE_15_STARTED` | **true** | Migrations 035/037/038 + patches 036/039 manually applied |
+| `PHASE_15A_COMPLETE` | **true** | Tax accounting foundation + jurisdiction model; settings UI at `/app/settings/tax` |
+| `PHASE_15B_COMPLETE` | **true** | Generic tax calculation engine (preview, no posting) |
+| `PHASE_15C_COMPLETE` | **true** | Exemptions + certificate review |
+| `PHASE_15D_COMPLETE` | **true** | Sales tax posting on invoices/credits |
+| `PHASE_15E_COMPLETE` | **true** | Purchase / use tax |
+| `PHASE_15F_COMPLETE` | **true** | Filing periods + reconciliation |
+| `PHASE_15G_COMPLETE` | **true** | Tax authority payments + adjustments |
+| `PHASE_15H_COMPLETE` | **true** | MO/KS state configuration packs (`MO-2026.1`, `KS-2026.1`); 0 journals on pack activation |
+| `PHASE_15I_COMPLETE` | **true** | Tax reports + accountant package; subledger-derived; `accept:phase15:controlled` 87/87; 0 journals on report generation |
+| `PHASE_15_COMPLETE` | **true** | 15K acceptance 111/111; `test:full` green; Phase 6 demo 32/32 (bill-approval line select fix) |
+| `PHASE_15J_COMPLETE` | **true** | Owner tax dashboard + UX (2026-09-11) |
+| `PHASE_15K_COMPLETE` | **true** | Release candidate validated: static verify, 111/111 acceptance, affected + full gates, 0 unbalanced production journals |
+| `PHASE_15K_CODE_COMPLETE` | **true** | |
+| `PHASE_15K_DB_VERIFIED` | **true** | Migrations 035/037/038 + patches 036/039 manually applied |
+| `PHASE_15L_STARTED` | **false** | |
+| `PRODUCTION_DEPLOYED_FOR_PHASE15` | **false** | RC commit only — deploy deferred |
 | `PHASE_14_COMPLETE` | **true** | Migration 032 + patches 032d/033f/034h manually applied; deploy `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` → `https://teller-indol.vercel.app` (commit `ca0ac38`); controlled prod 106/106 DB acceptance; fast 207/207; full 689/689; HFAC unchanged (8 docs, 16 journals, 0 HFAC planning); production journals balanced; planning writes 0 journals |
 | `PHASE_13_COMPLETE` | **true** | Migration 031 manually applied; deploy `dpl_Du2Lfjuwh8hRcWYE7PT3fppmPawZ` → `https://teller-indol.vercel.app`; controlled prod 70/70 DB acceptance; HFAC unchanged; production journals balanced |
 | `PHASE_12_COMPLETE` | **true** | Migrations 029+030 manually applied; deploy `dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV` → `https://teller-indol.vercel.app`; controlled prod 110/110 logic + 52/52 DB acceptance; claim-before-post concurrency; `ORPHAN_PAYROLL_JOURNALS=0`; HFAC unchanged; production journals balanced; scheduler disabled |
@@ -180,7 +197,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 
 **Controlled production acceptance (2026-09-09):** migration `032` + patches `032d`/`033f`/`034h` manually applied; `accept:phase14:controlled` **106/106**; full suite **689/689** + build; HFAC baseline unchanged; production journals balanced. Deploy: `https://teller-indol.vercel.app` (`dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44`, commit `ca0ac38`). Details: [PHASE-14-IMPLEMENTATION.md](./PHASE-14-IMPLEMENTATION.md).
 
-**Phase 15:** not started.
+**Phase 15:** 15A complete (DB verified). Next slice: 15B calculation engine.
 
 ### Phase 8 invariants (fixed assets)
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DepositSettlementActions } from "@/components/InvoiceSettlementActions";
+import { TaxExemptionsPanel } from "@/components/TaxExemptionsPanel";
 import { authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { batchDepositRemainingForPayments } from "@/lib/accounting/deposits";
 import { computeCustomerNetPosition } from "@/lib/accounting/deposit-reconciliation";
@@ -147,6 +148,8 @@ export default async function CustomerDetailPage({
           </tbody>
         </table>
       </div>
+
+      <TaxExemptionsPanel partyId={id} />
 
       <div className="card overflow-hidden">
         <div className="border-b border-rule px-4 py-3 font-medium">Deposits</div>

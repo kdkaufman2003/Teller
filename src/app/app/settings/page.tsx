@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PartnerPanel } from "@/components/PartnerPanel";
 import { SettingsForm } from "@/components/SettingsForm";
 import { getIndustryPack } from "@/lib/industries/registry";
-import { getSessionContext } from "@/lib/session";
 import { routes } from "@/lib/routes";
+import { getSessionContext } from "@/lib/session";
 import type { OrganizationSource, TellerOrganization } from "@/types";
 
 function defaultOrganization(org: TellerOrganization): TellerOrganization {
@@ -44,6 +45,14 @@ export default async function SettingsPage() {
         industryName={pack.name}
         modules={session.settings?.modules ?? []}
       />
+
+      <section className="card p-4">
+        <h2 className="font-medium">Tax accounting</h2>
+        <p className="text-muted mb-3 text-sm">Sales tax setup, liability account, and registration readiness.</p>
+        <Link href={routes.taxSettings} className="btn btn-secondary">
+          Tax
+        </Link>
+      </section>
     </div>
   );
 }

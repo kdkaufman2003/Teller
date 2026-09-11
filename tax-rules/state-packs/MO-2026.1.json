@@ -1,0 +1,126 @@
+{
+  "packId": "MO-2026.1",
+  "slug": "us-mo-sales-tax-v1",
+  "name": "Missouri Sales & Use Tax (V1 reference pack)",
+  "state": "MO",
+  "version": "MO-2026.1",
+  "status": "reviewed",
+  "effectiveFrom": "2026-01-01",
+  "effectiveTo": null,
+  "sourceReviewedAt": "2026-09-11",
+  "sourceDocumentation": "docs/tax/MO-TAX-SOURCES.md",
+  "sourcingModel": "origin_seller",
+  "unknownLocalRateHandling": "needs_review",
+  "filingFrequencyOptions": ["monthly", "quarterly", "annual", "other"],
+  "sourceReferences": [
+    {
+      "agency": "Missouri Department of Revenue",
+      "document": "Sales/Use Tax overview",
+      "url": "https://dor.mo.gov/taxation/business/tax-types/sales-use/",
+      "retrievedAt": "2026-09-11",
+      "notes": "State rate 4.225%; local rates vary; retail sales tax generally based on seller location."
+    }
+  ],
+  "authorities": [
+    {
+      "authorityKey": "US-MO-DOR",
+      "name": "Missouri Department of Revenue",
+      "jurisdictionKey": "US-MO",
+      "adminLevel": "state"
+    }
+  ],
+  "jurisdictions": [
+    {
+      "jurisdictionKey": "US-MO",
+      "name": "Missouri",
+      "jurisdictionType": "state",
+      "country": "US",
+      "state": "MO",
+      "parentJurisdictionKey": "US"
+    }
+  ],
+  "rateComponents": [
+    {
+      "jurisdictionKey": "US-MO",
+      "componentType": "state",
+      "ratePercent": 4.225,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "authorityKey": "US-MO-DOR",
+      "sourceCitation": "Missouri DOR Sales/Use Tax — state rate 4.225% (https://dor.mo.gov/taxation/business/tax-types/sales-use/)"
+    }
+  ],
+  "taxabilityRules": [
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "general_merchandise",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "MO DOR — retail TPP generally presumed taxable unless exempt"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "equipment",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "MO DOR — tangible personal property retail sales"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "materials",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "MO DOR — tangible personal property retail sales"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "labor",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — service/labor taxability requires transaction facts not modeled in V1"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "installation",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — real property vs TPP installation requires facts"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "service",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — taxable service classification requires facts"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "maintenance_agreement",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — maintenance/service agreement treatment"
+    },
+    {
+      "jurisdictionKey": "US-MO",
+      "taxCategoryKey": "shipping",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — delivery/shipping treatment varies by sale structure"
+    }
+  ],
+  "exemptionTypes": [
+    {
+      "certificateType": "mo_resale",
+      "label": "Missouri resale certificate",
+      "sourceCitation": "MO DOR resale/exemption certificate framework — org must maintain valid certificate"
+    }
+  ]
+}

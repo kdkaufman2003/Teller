@@ -1,0 +1,151 @@
+{
+  "packId": "KS-2026.1",
+  "slug": "us-ks-sales-tax-v1",
+  "name": "Kansas Sales & Compensating Use Tax (V1 reference pack)",
+  "state": "KS",
+  "version": "KS-2026.1",
+  "status": "reviewed",
+  "effectiveFrom": "2026-01-01",
+  "effectiveTo": null,
+  "sourceReviewedAt": "2026-09-11",
+  "sourceDocumentation": "docs/tax/KS-TAX-SOURCES.md",
+  "sourcingModel": "destination",
+  "unknownLocalRateHandling": "needs_review",
+  "filingFrequencyOptions": ["monthly", "quarterly", "annual", "other"],
+  "sourceReferences": [
+    {
+      "agency": "Kansas Department of Revenue",
+      "document": "Pub. KS-1510 Sales Tax and Compensating Use Tax",
+      "url": "https://www.ksrevenue.gov/pub1510.html",
+      "retrievedAt": "2026-09-11",
+      "notes": "State rate 6.50%; destination-based sourcing; local rates via Pub. KS-1700 / rate locator."
+    },
+    {
+      "agency": "Kansas Legislature",
+      "document": "K.S.A. 79-3603",
+      "url": "https://www.kslegislature.gov/b2025_26/laws/079_000_0000_chapter/079_036_0000_article/079_036_0003_section/079_036_0003_k/",
+      "retrievedAt": "2026-09-11",
+      "notes": "Statutory state retailers sales tax rate 6.5%."
+    }
+  ],
+  "authorities": [
+    {
+      "authorityKey": "US-KS-DOR",
+      "name": "Kansas Department of Revenue",
+      "jurisdictionKey": "US-KS",
+      "adminLevel": "state"
+    }
+  ],
+  "jurisdictions": [
+    {
+      "jurisdictionKey": "US-KS",
+      "name": "Kansas",
+      "jurisdictionType": "state",
+      "country": "US",
+      "state": "KS",
+      "parentJurisdictionKey": "US"
+    },
+    {
+      "jurisdictionKey": "US-KS-FINNEY",
+      "name": "Finney County, Kansas",
+      "jurisdictionType": "county",
+      "country": "US",
+      "state": "KS",
+      "county": "FINNEY",
+      "parentJurisdictionKey": "US-KS"
+    }
+  ],
+  "rateComponents": [
+    {
+      "jurisdictionKey": "US-KS",
+      "componentType": "state",
+      "ratePercent": 6.5,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "authorityKey": "US-KS-DOR",
+      "sourceCitation": "K.S.A. 79-3603 / Pub. KS-1510 — state rate 6.50%"
+    },
+    {
+      "jurisdictionKey": "US-KS-FINNEY",
+      "componentType": "county",
+      "ratePercent": 1.45,
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "authorityKey": "US-KS-DOR",
+      "sourceCitation": "Pub. KS-1510 training example — Finney County combined 7.95% outside Garden City (6.50% + 1.45%)"
+    }
+  ],
+  "taxabilityRules": [
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "general_merchandise",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "KS retailers sales tax on TPP at retail — Pub. KS-1510"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "equipment",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "KS retailers sales tax on TPP at retail"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "materials",
+      "treatment": "taxable",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "KS retailers sales tax on TPP at retail"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "labor",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — labor/service taxability requires transaction facts"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "installation",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — installation/real property improvement facts required"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "service",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — taxable service classification"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "maintenance_agreement",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — maintenance agreement treatment"
+    },
+    {
+      "jurisdictionKey": "US-KS",
+      "taxCategoryKey": "shipping",
+      "treatment": "needs_review",
+      "priority": 100,
+      "effectiveFrom": "2026-01-01",
+      "sourceCitation": "Fact-dependent — delivery charge treatment"
+    }
+  ],
+  "exemptionTypes": [
+    {
+      "certificateType": "ks_resale",
+      "label": "Kansas resale exemption certificate",
+      "sourceCitation": "KS DOR exemption/resale certificate framework — org must maintain valid certificate"
+    }
+  ]
+}

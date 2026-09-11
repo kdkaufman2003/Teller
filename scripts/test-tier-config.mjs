@@ -20,6 +20,7 @@ export const PHASE_DEMOS = {
 };
 
 export const PHASE_VERIFY = {
+  15: "verify:migration:035:controlled",
   14: "verify:migration:032:controlled",
   13: "verify:phase13:controlled",
   12: "verify:phase12:controlled",
@@ -59,6 +60,16 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/planning/reports/phase14h.test.ts",
   "src/lib/planning/reports/phase14i.test.ts",
   "src/lib/planning/reports/phase14j.test.ts",
+  "src/lib/accounting/tax/phase15a.test.ts",
+  "src/lib/accounting/tax/phase15b.test.ts",
+  "src/lib/accounting/tax/phase15c.test.ts",
+  "src/lib/accounting/tax/phase15d.test.ts",
+  "src/lib/accounting/tax/phase15e.test.ts",
+  "src/lib/accounting/tax/phase15f.test.ts",
+  "src/lib/accounting/tax/phase15g.test.ts",
+  "src/lib/accounting/tax/phase15h.test.ts",
+  "src/lib/accounting/tax/phase15i.test.ts",
+  "src/lib/accounting/tax/phase15j.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -74,6 +85,18 @@ export const PHASE_UNIT_TESTS = {
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
   14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts", "src/lib/planning/reports/phase14d.test.ts", "src/lib/planning/reports/phase14e.test.ts", "src/lib/planning/reports/phase14f.test.ts", "src/lib/planning/reports/phase14g.test.ts", "src/lib/planning/reports/phase14h.test.ts", "src/lib/planning/reports/phase14i.test.ts", "src/lib/planning/reports/phase14j.test.ts"],
+  15: [
+    "src/lib/accounting/tax/phase15a.test.ts",
+    "src/lib/accounting/tax/phase15b.test.ts",
+  "src/lib/accounting/tax/phase15c.test.ts",
+    "src/lib/accounting/tax/phase15d.test.ts",
+    "src/lib/accounting/tax/phase15e.test.ts",
+    "src/lib/accounting/tax/phase15f.test.ts",
+    "src/lib/accounting/tax/phase15g.test.ts",
+  "src/lib/accounting/tax/phase15h.test.ts",
+  "src/lib/accounting/tax/phase15i.test.ts",
+  "src/lib/accounting/tax/phase15j.test.ts",
+  ],
 };
 
 /**
@@ -136,6 +159,19 @@ export const MODULE_DEPENDENCIES = {
     demoPhases: [9, 10],
     unitPatterns: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts"],
   },
+  sales_tax: {
+    description: "Phase 15 tax domain — no journal posting in 15A",
+    demoPhases: [10, 9],
+    unitPatterns: [
+      "src/lib/accounting/tax/phase15a.test.ts",
+      "src/lib/accounting/tax/phase15b.test.ts",
+  "src/lib/accounting/tax/phase15c.test.ts",
+      "src/lib/accounting/tax/phase15d.test.ts",
+      "src/lib/accounting/tax/phase15i.test.ts",
+      "src/lib/tax/engine.test.ts",
+      "src/lib/tax/determine.test.ts",
+    ],
+  },
 };
 
 /** Primary modules touched per phase — drives test:affected. */
@@ -151,6 +187,7 @@ export const PHASE_PRIMARY_MODULES = {
   12: ["payroll", "job_costing"],
   13: ["inventory_grni", "ap_purchasing", "job_costing", "period_lock_close", "financial_reporting"],
   14: ["planning", "period_lock_close", "financial_reporting"],
+  15: ["sales_tax", "shared_journal_engine", "financial_reporting"],
 };
 
 export function demoPhaseKey(phase) {
@@ -183,6 +220,7 @@ export function resolveAffectedUnitPatterns(phase = CURRENT_PHASE) {
 export const ALL_DEMO_PHASES = [5, 6, 7, 8, 9, 10, 11, "11.1", 12, 13];
 
 export const DB_ACCEPTANCE_SCRIPTS = {
+  15: "accept:phase15:controlled",
   11: "accept:phase11:controlled",
   "11.1": "accept:phase11-1:controlled",
   12: "accept:phase12:controlled",

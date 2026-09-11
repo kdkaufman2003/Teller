@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  applyDocumentCredit,
-  voidCreditDocument,
-  postCreditMemoOpen,
-} from "@/lib/accounting/credits";
+import { applyDocumentCredit, voidCreditDocument } from "@/lib/accounting/credits";
+import { openCreditMemoDocument } from "@/lib/accounting/tax/posting/open-document";
+import { taxLocationFromOrg } from "@/lib/accounting/tax/posting/location";
+import { TaxPostingBlockedError } from "@/lib/accounting/tax/posting/open-invoice";
 import { refundCustomerCredit, reverseDocumentAllocation } from "@/lib/accounting/settlements";
 import { sumCreditsAppliedFromDocument } from "@/lib/accounting/document-allocations";
 import { authoritativeDocumentRemaining } from "@/lib/accounting/balances";
@@ -77,11 +76,11 @@ export async function POST(request: Request, { params }: Params) {
     if (creditMemo.status !== "draft") return jsonError("Only draft credit memos can be posted", 400);
     const { data: lines } = await supabase
       .from("teller_document_lines")
-      .select("amount, account_id, description")
+      .select("id, amount, account_id, description, item_type")
       .eq("document_id", id);
-    const meta = (creditMemo.metadata ?? {}) as { reason?: string };
+    const meta = (creditMemo.metadata ?? {}) as { reason?: string; originalDocumentId?: string };
     try {
-      await postCreditMemoOpen(supabase, {
+      await openCreditMemoDocument(supabase, {
         organizationId,
         documentId: id,
         partyId: creditMemo.party_id,
@@ -90,14 +89,19 @@ export async function POST(request: Request, { params }: Params) {
         number: creditMemo.number,
         tax: asNumber(creditMemo.tax),
         reason: meta.reason,
+        location: taxLocationFromOrg(session.organization ?? {}),
+        originalDocumentId: meta.originalDocumentId ?? null,
         lines: (lines ?? []).map((line) => ({
+          id: line.id,
           amount: asNumber(line.amount),
           account_id: line.account_id,
           description: line.description,
+          item_type: line.item_type,
         })),
         actorId: session.userId,
       });
     } catch (err) {
+      if (err instanceof TaxPostingBlockedError) return jsonError(err.message, 400);
       return jsonError(err instanceof Error ? err.message : "Could not post credit memo", 400);
     }
     return NextResponse.json({ ok: true });

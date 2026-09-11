@@ -153,8 +153,25 @@ Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**)
 | 12 | payroll, job_costing | 7, 12, 13, 6, 9, 10, 11.1 |
 | 13 | inventory_grni, ap, job_costing, close, reporting | **6, 7, 9, 10, 11.1, 13** |
 | 14 | planning, period_lock_close, financial_reporting | **9, 10** |
+| 15 | sales_tax | 15 (15A foundation + 15B calculation engine) |
 
 Configuration source: `scripts/test-tier-config.mjs`
+
+### Phase 15 sales tax (15A–15H)
+
+**Code:** `src/lib/accounting/tax/**`, `tax-rules/state-packs/*.json`, `POST /api/tax/calculate`, `POST /api/tax/state-packs/activate`.
+
+**Unit tests:** `phase15a.test.ts` … `phase15h.test.ts`
+
+**Verify:** `verify:phase15:tax`, `verify:migration:035:controlled`, `verify:migration:037:controlled`, `verify:migration:038:controlled`
+
+**DB acceptance:** `accept:phase15:controlled` (111 scenarios — 15A–15J baseline + 12×15K final E2E + HFAC baseline)
+
+**Tax reports (15I):** `src/lib/accounting/tax/reports/**`, `GET /api/reports/tax/*` — read-only; depends on subledger + filing + payments schema (035/037/038).
+
+**Owner tax overview (15J):** `src/lib/accounting/tax/owner/**`, `GET /api/tax/overview`, `TaxOverviewView` — read-only; depends on 15F filing periods, 15G payments, 15I reports (no new schema).
+
+**Manual reference data (15H):** `npm run tax-rules:load-state-packs` — loads global rate components; org activation is separate via API/acceptance.
 
 ## Parallelization policy
 
