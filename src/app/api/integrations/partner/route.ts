@@ -61,6 +61,7 @@ export async function POST(request: Request) {
         return jsonError("This integration is not available yet.");
       }
       await attachPartner(supabase, organizationId, "hasslefreeac");
+      await setHfacExternalMapping(supabase, organizationId, defaultHfacCompanyId());
       return NextResponse.json({ ok: true, mode: "attached", partnerId: "hasslefreeac" });
     }
 

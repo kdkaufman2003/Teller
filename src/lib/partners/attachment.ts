@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { IndustryAnswers } from "@/lib/industries/types";
 import { HFAC_INTEGRATION_MODULE } from "@/lib/integrations/constants";
-import { setHfacExternalMapping } from "@/lib/integrations/hfac-org";
 import { organizationSourceFromPartner } from "@/lib/org/config";
 import { getPartner } from "@/lib/partners/registry";
 import type { PartnerId } from "@/lib/partners/types";
@@ -91,8 +90,6 @@ export async function attachPartner(
     enabled: true,
     updated_at: new Date().toISOString(),
   });
-
-  await setHfacExternalMapping(supabase, organizationId, defaultHfacCompanyId());
 
   const { data: settings } = await supabase
     .from("teller_industry_settings")
