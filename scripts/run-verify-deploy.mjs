@@ -31,6 +31,13 @@ if (phase === 13) {
   steps.push(run("verify_grni_patch", "npm", ["run", "verify:grni-settle-rpc-patch:controlled"]));
 }
 
+if (phase === 15) {
+  steps.push(run("verify_phase15_tax", "npm", ["run", "verify:phase15:tax"]));
+  steps.push(run("verify_migration_035", "npm", ["run", "verify:migration:035:controlled"]));
+  steps.push(run("verify_migration_037", "npm", ["run", "verify:migration:037:controlled"]));
+  steps.push(run("verify_migration_038", "npm", ["run", "verify:migration:038:controlled"]));
+}
+
 if (process.env.TELLER_INCLUDE_DB_ACCEPTANCE === "1") {
   const accept = DB_ACCEPTANCE_SCRIPTS[phase] ?? DB_ACCEPTANCE_SCRIPTS[13];
   if (accept) steps.push(run("db_acceptance", "npm", ["run", accept]));

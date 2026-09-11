@@ -575,8 +575,44 @@ PHASE_15K_DB_VERIFIED = true
 PHASE_15K_COMPLETE = true
 PHASE_15_COMPLETE = true
 PHASE15_CONTROLLED_ACCEPTANCE = PASS (111/111)
-MO_KS_PRODUCTION_REFERENCE_DATA_LOADED = false
+MO_KS_PRODUCTION_REFERENCE_DATA_LOADED = true
 NEW_MIGRATION_REQUIRED = false
+```
+
+### 15L scope (production deploy + post-deploy verification)
+
+**Completed:** 2026-09-11  
+**Release commit:** `71942a41e743e706273e316274946b8921b80b60`  
+**Production URL:** `https://teller-indol.vercel.app`  
+**Vercel deployment:** `HhrjMrgJBizfyMjzcMTRfsddCrmy` (GitHub status success on release SHA)
+
+| Gate | Result |
+|------|--------|
+| Pre-deploy snapshot | PASS — `artifacts/controlled-prod-snapshots/pre-phase15-deploy-2026-09-11T23-32-23-590Z.json` |
+| Push release commit to `main` | PASS — auto-deploy triggered |
+| Deployed SHA = release SHA | PASS |
+| Production smoke (tax routes + APIs) | PASS — `npm run verify:phase15:production-smoke` |
+| Post-deploy schema probes (035/037/038) | PASS |
+| Post-deploy snapshot | PASS — `artifacts/controlled-prod-snapshots/post-phase15-deploy-2026-09-11T23-36-36-950Z.json` |
+| Pre/post HFAC diff | **0** (8 docs, 17 journals, 0 HFAC tax rows) |
+| Global journals balanced | PASS (1487 entries, 0 unbalanced) |
+| MO/KS reference loader | PASS — `us-mo-sales-tax-v1@MO-2026.1`, `us-ks-sales-tax-v1@KS-2026.1` |
+| Deploy accounting writes | 0 on HFAC |
+| Migrations/SQL auto-applied | **false** |
+
+**Rollback criteria:** revert Vercel to prior SHA if HFAC counts change, journals unbalanced, tax smoke fails, or schema probes fail. DB is forward-only (manual migrations only).
+
+See [PHASE-15-COMPLETION.md](./PHASE-15-COMPLETION.md).
+
+### 15L close gate (2026-09-11)
+
+```
+PHASE_15L_STARTED = true
+PHASE_15L_COMPLETE = true
+PRODUCTION_DEPLOYED_FOR_PHASE15 = true
+MO_KS_PRODUCTION_REFERENCE_DATA_LOADED = true
+HFAC_BASELINE = 8 documents / 17 journals
+UNBALANCED_PRODUCTION_JOURNALS = 0
 ```
 
 ### 15I close gate (2026-09-11)

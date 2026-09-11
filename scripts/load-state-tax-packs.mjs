@@ -58,21 +58,59 @@ async function loadPack(supabase, filePath) {
     ruleSetId = data.id;
   }
 
-  for (const jurisdiction of spec.jurisdictions ?? []) {
-    const { error } = await supabase.from("teller_tax_jurisdictions").upsert(
+  const { data: existingJurisdictions } = await supabase
+    .from("teller_tax_jurisdictions")
+    .select("jurisdiction_key");
+  const pending = [...(spec.jurisdictions ?? [])];
+  const inserted = new Set((existingJurisdictions ?? []).map((row) => row.jurisdiction_key));
+
+  if (!inserted.has("US")) {
+    const { error: usError } = await supabase.from("teller_tax_jurisdictions").upsert(
       {
-        jurisdiction_key: jurisdiction.jurisdictionKey,
-        name: jurisdiction.name,
-        jurisdiction_type: jurisdiction.jurisdictionType ?? "state",
-        country: jurisdiction.country ?? "US",
-        state: jurisdiction.state ?? null,
-        county: jurisdiction.county ?? null,
-        city: jurisdiction.city ?? null,
-        parent_jurisdiction_key: jurisdiction.parentJurisdictionKey ?? null,
+        jurisdiction_key: "US",
+        name: "United States",
+        jurisdiction_type: "country",
+        country: "US",
+        state: null,
+        county: null,
+        city: null,
+        parent_jurisdiction_key: null,
       },
       { onConflict: "jurisdiction_key" },
     );
-    if (error) throw new Error(error.message);
+    if (usError) throw new Error(usError.message);
+    inserted.add("US");
+  }
+  while (pending.length) {
+    let progress = false;
+    for (let index = pending.length - 1; index >= 0; index -= 1) {
+      const jurisdiction = pending[index];
+      const parentKey = jurisdiction.parentJurisdictionKey ?? null;
+      if (parentKey && !inserted.has(parentKey)) continue;
+
+      const { error } = await supabase.from("teller_tax_jurisdictions").upsert(
+        {
+          jurisdiction_key: jurisdiction.jurisdictionKey,
+          name: jurisdiction.name,
+          jurisdiction_type: jurisdiction.jurisdictionType ?? "state",
+          country: jurisdiction.country ?? "US",
+          state: jurisdiction.state ?? null,
+          county: jurisdiction.county ?? null,
+          city: jurisdiction.city ?? null,
+          parent_jurisdiction_key: parentKey,
+        },
+        { onConflict: "jurisdiction_key" },
+      );
+      if (error) throw new Error(error.message);
+      inserted.add(jurisdiction.jurisdictionKey);
+      pending.splice(index, 1);
+      progress = true;
+    }
+    if (!progress) {
+      throw new Error(
+        `Could not resolve jurisdiction parent order for ${spec.packId}: ${pending.map((row) => row.jurisdictionKey).join(", ")}`,
+      );
+    }
   }
 
   const authorityIds = new Map();
@@ -138,6 +176,9 @@ async function loadPack(supabase, filePath) {
 }
 
 async function main() {
+  if (!process.env.SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
+    process.env.SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL.trim();
+  }
   const supabase = createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
