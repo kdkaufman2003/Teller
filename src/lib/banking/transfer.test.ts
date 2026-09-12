@@ -71,7 +71,39 @@ describe("createBankTransfer", () => {
       data: { transfer_id: "xfer-1", journal_entry_id: "je-1", duplicate: false },
       error: null,
     });
-    const from = vi.fn().mockReturnValue({ insert: vi.fn().mockResolvedValue({ error: null }) });
+    const from = vi.fn((table: string) => {
+      if (table === "teller_bank_transactions") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({
+                data: [
+                  { id: "txn-out", bank_account_id: "ba-1" },
+                  { id: "txn-in", bank_account_id: "ba-2" },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "teller_bank_accounts") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({
+                data: [
+                  { id: "ba-1", legal_entity_id: "entity-1" },
+                  { id: "ba-2", legal_entity_id: "entity-1" },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return { insert: vi.fn().mockResolvedValue({ error: null }) };
+    });
     const supabase = { rpc, from } as unknown as Parameters<typeof createBankTransfer>[0];
 
     const result = await createBankTransfer(supabase, {

@@ -1,3 +1,5 @@
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
 import { routes } from "@/lib/routes";
@@ -9,11 +11,17 @@ export default async function LedgerPage() {
   if (!session?.organization) redirect(routes.setup);
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
   const { data: entries } = await supabase
     .from("teller_journal_entries")
     .select("id, entry_date, memo, source_kind")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .order("entry_date", { ascending: false })
     .limit(40);
 
@@ -28,7 +36,8 @@ export default async function LedgerPage() {
     supabase
       .from("teller_accounts")
       .select("id, code, name")
-      .eq("organization_id", organizationId),
+      .eq("organization_id", organizationId)
+      .eq("legal_entity_id", legalEntityId),
   ]);
 
   const accountMap = new Map(
@@ -61,8 +70,9 @@ export default async function LedgerPage() {
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
       <header className="page-header">
-        <h1>Ledger</h1>
+        <h1>General ledger</h1>
         <p>The general journal — every debit has its credit, ruled and dated.</p>
       </header>
       <LedgerBook entries={ledgerEntries} />

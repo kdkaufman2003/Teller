@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { ConsolidatedReportsView } from "@/components/ConsolidatedReportsView";
 import {
   buildConsolidatedBalanceSheet,
@@ -160,6 +161,11 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader
+        scope="consolidated"
+        consolidatedLabel="All Companies"
+        subtitle={`${reportMode === "post" ? "Post-elimination" : "Pre-elimination"} · ${periodStart} – ${periodEnd}`}
+      />
       <header className="page-header">
         <h1>Consolidated reports</h1>
         <p>

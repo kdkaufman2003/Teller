@@ -25,6 +25,7 @@ import {
   resolvePaymentAmounts,
 } from "./payment-fees";
 import { recordTellerPayment } from "./payments";
+import { resolvePostingLegalEntityId } from "./entity-books/document-context";
 import { assertEntryDateOpen } from "./periods";
 import { recordTaxSubledgerReversalForDocument } from "./tax/posting/reverse-transactions";
 
@@ -421,7 +422,11 @@ export async function postInvoiceOpen(
     }[];
   },
 ) {
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+  });
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, legalEntityId);
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
   const taxPayable =
     (input.taxPayableAccountId
@@ -433,7 +438,7 @@ export async function postInvoiceOpen(
 
   if (!ar) throw new Error("Accounts Receivable is missing from the chart of accounts");
 
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate, legalEntityId);
 
   const journal: JournalLineInput[] = [];
   const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
@@ -473,6 +478,7 @@ export async function postInvoiceOpen(
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.issueDate,
     memo: `Invoice ${input.number}`,
     sourceKind: "invoice",
@@ -547,7 +553,11 @@ export async function postInvoicePaid(
     paymentMetadata?: Record<string, unknown>;
   },
 ) {
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+  });
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, legalEntityId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
   const ar = accountBySubtype(accounts, "receivable") || accountByCode(accounts, "1100");
   if (!cash || !ar) throw new Error("Cash or AR account is missing");
@@ -560,7 +570,7 @@ export async function postInvoicePaid(
     paymentAmount: input.total,
   });
 
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate, legalEntityId);
 
   const { feeAmount, netAmount } = resolvePaymentAmounts({
     grossAmount,
@@ -582,6 +592,7 @@ export async function postInvoicePaid(
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.issueDate,
     memo,
     sourceKind: "invoice-payment",
@@ -643,6 +654,7 @@ export async function postInvoicePaid(
 
   const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     documentId: input.documentId,
     documentKind: "invoice",
     partyId: input.partyId,
@@ -846,8 +858,12 @@ export async function postExpense(
     jobCostCategoryId?: string | null;
   },
 ) {
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+  });
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate, legalEntityId);
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, legalEntityId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
   const creditAccount = input.paid ? cash : ap;
@@ -855,6 +871,7 @@ export async function postExpense(
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.issueDate,
     memo: `Expense ${input.number}`,
     sourceKind: "expense",
@@ -1037,7 +1054,11 @@ export async function postExpensePaid(
     actorId?: string | null;
   },
 ) {
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+  });
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, legalEntityId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
   if (!cash || !ap) throw new Error("Cash or AP account is missing");
@@ -1051,7 +1072,7 @@ export async function postExpensePaid(
     paymentAmount: input.paymentAmount,
   });
 
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate, legalEntityId);
 
   const { amountPaid, fullyPaid } = invoicePaymentProgress(
     priorPaid,
@@ -1065,6 +1086,7 @@ export async function postExpensePaid(
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.issueDate,
     memo,
     sourceKind: documentKind === "bill" ? "bill-payment" : "expense-payment",
@@ -1102,6 +1124,7 @@ export async function postExpensePaid(
 
   const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     documentId: input.documentId,
     documentKind,
     partyId: input.partyId,

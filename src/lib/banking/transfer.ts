@@ -95,6 +95,38 @@ export function detectTransferPairs(
   return pairs.sort((a, b) => b.confidence - a.confidence);
 }
 
+export async function assertSameEntityBankTransfer(
+  supabase: SupabaseClient,
+  organizationId: string,
+  sourceBankTransactionId: string,
+  destinationBankTransactionId: string,
+): Promise<void> {
+  const { data: txns, error: txnError } = await supabase
+    .from("teller_bank_transactions")
+    .select("id, bank_account_id")
+    .eq("organization_id", organizationId)
+    .in("id", [sourceBankTransactionId, destinationBankTransactionId]);
+  if (txnError) throw new Error(txnError.message);
+  if ((txns ?? []).length !== 2) {
+    throw new Error("Both bank transactions must belong to your organization");
+  }
+
+  const accountIds = [...new Set((txns ?? []).map((row) => row.bank_account_id as string))];
+  const { data: accounts, error: accountError } = await supabase
+    .from("teller_bank_accounts")
+    .select("id, legal_entity_id")
+    .eq("organization_id", organizationId)
+    .in("id", accountIds);
+  if (accountError) throw new Error(accountError.message);
+
+  const entities = new Set((accounts ?? []).map((row) => row.legal_entity_id as string));
+  if (entities.size > 1) {
+    throw new Error(
+      "Transfers between different companies must use Intercompany under Accounting — not bank transfer.",
+    );
+  }
+}
+
 export async function createBankTransfer(
   supabase: SupabaseClient,
   input: {
@@ -107,6 +139,13 @@ export async function createBankTransfer(
     actorId?: string | null;
   },
 ): Promise<{ duplicate: boolean; transferId?: string; journalEntryId?: string }> {
+  await assertSameEntityBankTransfer(
+    supabase,
+    input.organizationId,
+    input.sourceBankTransactionId,
+    input.destinationBankTransactionId,
+  );
+
   const eventId = normalizeBankingEventId(input.idempotencyEventId);
   const { data, error } = await supabase.rpc("teller_create_bank_transfer", {
     p_organization_id: input.organizationId,
@@ -161,5 +200,37 @@ export async function suggestTransferPairsForOrg(
 
   const { data, error } = await query.limit(500);
   if (error) throw new Error(error.message);
-  return detectTransferPairs((data ?? []) as TransferCandidateRow[]);
+
+  const rows = (data ?? []) as TransferCandidateRow[];
+  const accountIds = [...new Set(rows.map((row) => row.bank_account_id))];
+  const entityByAccount = new Map<string, string>();
+  if (accountIds.length) {
+    const { data: accounts, error: accountError } = await supabase
+      .from("teller_bank_accounts")
+      .select("id, legal_entity_id")
+      .eq("organization_id", organizationId)
+      .in("id", accountIds);
+    if (accountError) throw new Error(accountError.message);
+    for (const account of accounts ?? []) {
+      entityByAccount.set(account.id as string, account.legal_entity_id as string);
+    }
+  }
+
+  const pairs = detectTransferPairs(rows);
+  return pairs.map((pair) => {
+    const sourceTxn = rows.find((row) => row.id === pair.sourceTransactionId);
+    const destTxn = rows.find((row) => row.id === pair.destinationTransactionId);
+    const sourceEntity = sourceTxn ? entityByAccount.get(sourceTxn.bank_account_id) : undefined;
+    const destEntity = destTxn ? entityByAccount.get(destTxn.bank_account_id) : undefined;
+    const crossEntity = Boolean(
+      sourceEntity && destEntity && sourceEntity !== destEntity,
+    );
+    return {
+      ...pair,
+      crossEntity,
+      reason: crossEntity
+        ? "Different companies — use Intercompany instead of bank transfer"
+        : pair.reason,
+    };
+  });
 }

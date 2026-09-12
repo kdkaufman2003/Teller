@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { loadCustomerBalanceDetails } from "@/lib/accounting/party-balance-detail";
 import { money } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
@@ -25,8 +27,13 @@ export default async function CustomerBalancesPage({ searchParams }: PageProps) 
   const asOf = params.asOf?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
-  const rows = await loadCustomerBalanceDetails(supabase, organizationId, asOf);
+  const rows = await loadCustomerBalanceDetails(supabase, organizationId, asOf, legalEntityId);
   const totals = rows.reduce(
     (acc, row) => ({
       documentBalance: acc.documentBalance + row.documentBalance,
@@ -38,6 +45,7 @@ export default async function CustomerBalancesPage({ searchParams }: PageProps) 
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
       <header className="page-header">
         <Link href={routes.reports} className="text-sm text-muted">
           ← Reports

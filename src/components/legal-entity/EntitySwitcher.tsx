@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { routes } from "@/lib/routes";
 import type { ActiveLegalEntitySummary } from "@/types";
 
 export function EntitySwitcher({
@@ -17,16 +19,24 @@ export function EntitySwitcher({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!activeLegalEntity || !showEntitySwitcher || (accessibleEntities?.length ?? 0) <= 1) {
-    if (activeLegalEntity) {
-      return (
-        <p className="mt-2 text-[11px] text-white/55">
+  if (!activeLegalEntity) return null;
+
+  const entityCount = accessibleEntities?.length ?? 0;
+
+  if (!showEntitySwitcher || entityCount <= 1) {
+    return (
+      <div className="mt-2 space-y-2">
+        <p className="text-[11px] text-white/55">
           Books for: {activeLegalEntity.name}
           {activeLegalEntity.entityCode ? ` (${activeLegalEntity.entityCode})` : ""}
         </p>
-      );
-    }
-    return null;
+        {entityCount <= 1 ? (
+          <p className="text-[10px] text-white/40">
+            Your books are set up for one company.
+          </p>
+        ) : null}
+      </div>
+    );
   }
 
   async function onChange(nextId: string) {
@@ -52,15 +62,16 @@ export function EntitySwitcher({
   }
 
   return (
-    <div className="mt-3 space-y-1">
+    <div className="mt-3 space-y-2">
       <label htmlFor="entity-switcher" className="text-[10px] uppercase tracking-[0.14em] text-white/45">
-        Active company
+        Switch company
       </label>
       <select
         id="entity-switcher"
-        className="w-full rounded-md border border-white/15 bg-white/10 px-2 py-1.5 text-xs text-white"
+        className="w-full rounded-md border border-white/15 bg-white/10 px-2 py-1.5 text-xs text-white disabled:opacity-60"
         value={activeLegalEntity.id}
         disabled={pending}
+        aria-busy={pending}
         onChange={(event) => void onChange(event.target.value)}
       >
         {accessibleEntities?.map((entity) => (
@@ -69,6 +80,17 @@ export function EntitySwitcher({
           </option>
         ))}
       </select>
+      <div className="space-y-1 border-t border-white/10 pt-2 text-[11px]">
+        <Link href={routes.companiesOverview} className="block text-sky-200 hover:underline">
+          All Companies overview
+        </Link>
+        <Link href={routes.reportsConsolidated} className="block text-sky-200 hover:underline">
+          Consolidated reports
+        </Link>
+        <Link href={routes.entitySettings} className="block text-white/55 hover:text-white/80">
+          Manage companies
+        </Link>
+      </div>
       {error ? <p className="text-[11px] text-rose-200">{error}</p> : null}
     </div>
   );

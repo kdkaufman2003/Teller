@@ -57,7 +57,10 @@ import {
   CONTROLLED_PHASE8_FOREIGN_ORG_NAME,
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
-import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
+import {
+  insertDemoPeriodClose,
+  resetDemoBooksOpen,
+} from "./lib/reopen-demo-period-closes";
 
 const HFAC_ORG_ID = TELLER_HFAC_ORG_ID;
 const TODAY = "2026-10-01";
@@ -175,7 +178,7 @@ async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: st
   if (entryIds.length) await supabase.from("teller_journal_lines").delete().in("entry_id", entryIds);
   await supabase.from("teller_journal_entries").delete().eq("organization_id", orgId);
   await supabase.from("teller_parties").delete().eq("organization_id", orgId);
-  await reopenAllPeriodCloses(supabase, orgId);
+  await resetDemoBooksOpen(supabase, orgId);
 }
 
 async function ensureVendor(supabase: SupabaseClient, orgId: string) {
@@ -323,7 +326,7 @@ async function main() {
   const results: Array<{ name: string; pass: boolean; detail?: string }> = [];
 
   async function ensureBooksOpen() {
-    await reopenAllPeriodCloses(supabase, orgId);
+    await resetDemoBooksOpen(supabase, orgId);
   }
 
   async function run(name: string, fn: () => Promise<void>) {
@@ -559,11 +562,7 @@ async function main() {
   });
 
   await run("15. Period lock blocks depreciation", async () => {
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: CLOSED_PERIOD_END,
-      closed_at: new Date().toISOString(),
-    });
+    await insertDemoPeriodClose(supabase, orgId, CLOSED_PERIOD_END, "Phase 8 period lock");
     let blocked = false;
     try {
       await assertOrgPeriodOpen(supabase, orgId, CLOSED_PERIOD_DATE);
@@ -571,7 +570,7 @@ async function main() {
       blocked = err instanceof Error && err.message.toLowerCase().includes("closed");
     }
     if (!blocked) throw new Error("closed period should block posting");
-    await reopenAllPeriodCloses(supabase, orgId);
+    await resetDemoBooksOpen(supabase, orgId);
   });
 
   await run("16. Depreciation reversal", async () => {
@@ -990,11 +989,7 @@ async function main() {
       usefulLifeMonths: 36,
       placedInServiceDate: "2026-01-01",
     });
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: CLOSED_PERIOD_END,
-      closed_at: new Date().toISOString(),
-    });
+    await insertDemoPeriodClose(supabase, orgId, CLOSED_PERIOD_END, "Phase 8 closed disposal");
     try {
       let blocked = false;
       try {
@@ -1010,7 +1005,7 @@ async function main() {
       }
       if (!blocked) throw new Error("closed period should block disposal");
     } finally {
-      await reopenAllPeriodCloses(supabase, orgId);
+      await resetDemoBooksOpen(supabase, orgId);
     }
   });
 

@@ -63,6 +63,7 @@ export async function evaluateCloseReadiness(
     asOfDate,
     periodYear: periodDate.getFullYear(),
     periodMonth: periodDate.getMonth() + 1,
+    legalEntityId,
   });
 
   for (const item of reconciliations) {

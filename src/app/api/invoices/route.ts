@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
-import { nextNumber, revenueCodeForItemType } from "@/lib/accounting/accounts";
+import { revenueCodeForItemType } from "@/lib/accounting/accounts";
+import { nextEntityDocumentNumber } from "@/lib/accounting/entity-books";
 import { postInvoicePaid } from "@/lib/accounting/post";
 import { openInvoiceDocument } from "@/lib/accounting/tax/posting/open-document";
 import { taxLocationFromOrg } from "@/lib/accounting/tax/posting/location";
@@ -11,24 +12,25 @@ import {
   resolveOrgTaxRate,
 } from "@/lib/org/config";
 import { asNumber, addDaysISO, todayISO } from "@/lib/format";
-import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
+import { jsonError, requireAccountingBooks, requireAccountingWriteBooks } from "@/lib/api";
 import { buildTaxContextFromOrg } from "@/lib/tax/context";
 import { determineInvoiceTax, persistTaxDeterminations } from "@/lib/tax/determine";
 import type { TaxTransactionLine } from "@/lib/tax/types";
 
 export async function GET() {
-  const ctx = await requireBooks();
+  const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, legalEntityId } = ctx;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("teller_documents")
     .select(
       "id, number, status, total, amount_paid, issue_date, due_date, memo, party_id, job_id, external_source",
     )
     .eq("organization_id", organizationId)
-    .eq("kind", "invoice")
-    .order("created_at", { ascending: false });
+    .eq("kind", "invoice");
+  if (legalEntityId) query = query.eq("legal_entity_id", legalEntityId);
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) return jsonError(error.message, 500);
 
@@ -58,9 +60,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const ctx = await requireWriteBooks();
+  const ctx = await requireAccountingWriteBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId, session } = ctx;
+  const { supabase, organizationId, legalEntityId, session } = ctx;
+  if (!legalEntityId) return jsonError("Select a company before creating invoices", 409);
 
   const body = (await request.json()) as {
     partyId?: string;
@@ -88,7 +91,8 @@ export async function POST(request: Request) {
   const { data: accounts } = await supabase
     .from("teller_accounts")
     .select("id, code, type")
-    .eq("organization_id", organizationId);
+    .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId);
 
   const accountByCode = new Map((accounts ?? []).map((row) => [row.code, row.id]));
 
@@ -143,20 +147,18 @@ export async function POST(request: Request) {
 
   const total = subtotal + tax;
 
-  const { data: existing } = await supabase
-    .from("teller_documents")
-    .select("number")
-    .eq("organization_id", organizationId)
-    .eq("kind", "invoice");
-  const number = nextNumber(
-    "INV",
-    (existing ?? []).map((row) => row.number),
-  );
+  const number = await nextEntityDocumentNumber(supabase, {
+    organizationId,
+    legalEntityId,
+    kind: "invoice",
+    prefix: "INV",
+  });
 
   const { data: doc, error } = await supabase
     .from("teller_documents")
     .insert({
       organization_id: organizationId,
+      legal_entity_id: legalEntityId,
       kind: "invoice",
       number,
       party_id: body.partyId || null,

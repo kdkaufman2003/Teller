@@ -23,6 +23,7 @@ import {
   reverseJournalEntry,
   assertOrgPeriodOpen,
 } from "./post";
+import { resolvePostingLegalEntityId } from "./entity-books/document-context";
 import { recordPurchaseTaxReversalForDocument } from "./tax/posting/reverse-transactions";
 
 type JournalLineInput = {
@@ -76,7 +77,11 @@ export async function postBillOpen(
   }
   const fromStatus = (currentDoc?.status as BillStatus) || "draft";
   assertBillStatusTransition(fromStatus, "open");
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate);
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+  });
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.issueDate, legalEntityId);
 
   const subtotal = input.lines.reduce((sum, line) => sum + asNumber(line.amount), 0);
   const tax = asNumber(input.tax);
@@ -165,7 +170,7 @@ export async function postBillOpen(
     return settlement.journalEntryId;
   }
 
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, legalEntityId);
   const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
   const fallbackDebit = accounts.find((a) => a.type === "expense" || a.type === "cogs");
 
@@ -235,6 +240,7 @@ export async function postBillOpen(
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.issueDate,
     memo: `Bill ${input.number}`,
     sourceKind: "bill",

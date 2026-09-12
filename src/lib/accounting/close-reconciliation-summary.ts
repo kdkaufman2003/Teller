@@ -18,14 +18,20 @@ export type CloseReconciliationItem = {
 export async function buildCloseReconciliationSummary(
   supabase: SupabaseClient,
   organizationId: string,
-  input: { asOfDate: string; periodYear?: number; periodMonth?: number },
+  input: {
+    asOfDate: string;
+    periodYear?: number;
+    periodMonth?: number;
+    legalEntityId?: string | null;
+  },
 ): Promise<CloseReconciliationItem[]> {
   const asOfDate = input.asOfDate.slice(0, 10);
   const periodYear = input.periodYear ?? new Date(asOfDate + "T12:00:00").getFullYear();
   const periodMonth = input.periodMonth ?? new Date(asOfDate + "T12:00:00").getMonth() + 1;
+  const legalEntityId = input.legalEntityId?.trim() ?? null;
   const items: CloseReconciliationItem[] = [];
 
-  const arAp = await reconcileSubledgersToGl(supabase, organizationId);
+  const arAp = await reconcileSubledgersToGl(supabase, organizationId, legalEntityId);
   for (const side of arAp) {
     items.push({
       key: side.side,
@@ -94,11 +100,15 @@ export async function buildCloseReconciliationSummary(
     });
   }
 
-  const { data: bankAccounts } = await supabase
+  let bankAccountQuery = supabase
     .from("teller_bank_accounts")
     .select("id, name")
     .eq("organization_id", organizationId)
     .eq("is_active", true);
+  if (legalEntityId) {
+    bankAccountQuery = bankAccountQuery.eq("legal_entity_id", legalEntityId);
+  }
+  const { data: bankAccounts } = await bankAccountQuery;
 
   const { data: closeSettings } = await supabase
     .from("teller_close_settings")

@@ -42,8 +42,13 @@ export async function loadCustomerBalanceDetails(
   supabase: SupabaseClient,
   organizationId: string,
   asOf: string,
+  legalEntityId?: string | null,
 ): Promise<PartyBalanceDetailRow[]> {
-  const breakdown = await computeArControlSubledgerTotal(supabase, organizationId);
+  const breakdown = await computeArControlSubledgerTotal(
+    supabase,
+    organizationId,
+    legalEntityId,
+  );
   const { data: parties } = await supabase
     .from("teller_parties")
     .select("id, name")
@@ -171,8 +176,13 @@ export async function loadVendorBalanceDetails(
   supabase: SupabaseClient,
   organizationId: string,
   asOf: string,
+  legalEntityId?: string | null,
 ): Promise<PartyBalanceDetailRow[]> {
-  const breakdown = await computeApControlSubledgerTotal(supabase, organizationId);
+  const breakdown = await computeApControlSubledgerTotal(
+    supabase,
+    organizationId,
+    legalEntityId,
+  );
   const { data: parties } = await supabase
     .from("teller_parties")
     .select("id, name")
@@ -185,21 +195,28 @@ export async function loadVendorBalanceDetails(
     ...(parties ?? []).map((p) => p.id as string),
   ]);
 
-  const { data: bills } = await supabase
+  let billsQuery = supabase
     .from("teller_documents")
     .select("id, number, total, party_id, status, issue_date, due_date, kind, posted_entry_id")
     .eq("organization_id", organizationId)
     .in("kind", ["bill", "expense"])
     .in("status", ["open", "partially_paid"])
     .not("posted_entry_id", "is", null);
-
-  const { data: vendorCredits } = await supabase
+  let vendorCreditsQuery = supabase
     .from("teller_documents")
     .select("id, number, total, party_id, status, issue_date, due_date, posted_entry_id")
     .eq("organization_id", organizationId)
     .eq("kind", "vendor_credit")
     .in("status", ["open", "partially_applied"])
     .not("posted_entry_id", "is", null);
+  if (legalEntityId?.trim()) {
+    billsQuery = billsQuery.eq("legal_entity_id", legalEntityId.trim());
+    vendorCreditsQuery = vendorCreditsQuery.eq("legal_entity_id", legalEntityId.trim());
+  }
+  const [{ data: bills }, { data: vendorCredits }] = await Promise.all([
+    billsQuery,
+    vendorCreditsQuery,
+  ]);
 
   const billIds = (bills ?? []).map((d) => d.id as string);
   const creditIds = (vendorCredits ?? []).map((d) => d.id as string);

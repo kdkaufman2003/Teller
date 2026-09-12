@@ -14,6 +14,7 @@ import {
   closeAccountingPeriod,
   reopenAccountingPeriod,
 } from "../src/lib/accounting/period-close";
+import { resetDemoBooksOpen } from "./lib/reopen-demo-period-closes";
 import {
   assertEntryDateOpen,
   booksClosedThrough,
@@ -137,11 +138,21 @@ async function booksClosedThroughRpc(
   return (data as string | null)?.slice(0, 10) ?? null;
 }
 
+async function resolveDefaultLegalEntityId(supabase: SupabaseClient, orgId: string) {
+  const { data, error } = await supabase.rpc("teller_default_legal_entity_id", {
+    p_org_id: orgId,
+  });
+  if (error || !data) throw new Error(error?.message || "Default legal entity missing");
+  return data as string;
+}
+
 async function seedCloseAnchor(supabase: SupabaseClient, orgId: string, through: string) {
   const closed = await booksClosedThroughRpc(supabase, orgId);
   if (closed) return;
+  const legalEntityId = await resolveDefaultLegalEntityId(supabase, orgId);
   const { error } = await supabase.from("teller_period_closes").insert({
     organization_id: orgId,
+    legal_entity_id: legalEntityId,
     period_end: through,
     notes: "Phase 9 demo close anchor",
     event_type: "close",
@@ -184,21 +195,18 @@ async function clearDemoTransactions(
 
 async function resetBooks(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
   assertMutationScope(orgId, allowedOrgId, "resetBooks");
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    const closed = await booksClosedThroughRpc(supabase, orgId);
-    if (!closed) break;
-    await reopenAccountingPeriod(supabase, {
-      organizationId: orgId,
-      periodEnd: closed,
-      reason: "Phase 9 demo reset",
-    });
-  }
+  await resetDemoBooksOpen(supabase, orgId, "Phase 9 demo reset");
   await clearDemoTransactions(supabase, orgId, allowedOrgId);
-  await supabase
-    .from("teller_accounting_state_versions")
-    .upsert({ organization_id: orgId, accounting_version: 0, close_state_version: 0 });
+  const legalEntityId = await resolveDefaultLegalEntityId(supabase, orgId);
+  await supabase.from("teller_accounting_state_versions").upsert({
+    organization_id: orgId,
+    legal_entity_id: legalEntityId,
+    accounting_version: 0,
+    close_state_version: 0,
+  });
   await supabase.from("teller_close_settings").upsert({
     organization_id: orgId,
+    legal_entity_id: legalEntityId,
     adjustment_approval_required: false,
     warnings_require_acknowledgment: false,
     required_bank_account_ids: [],
@@ -206,15 +214,18 @@ async function resetBooks(supabase: SupabaseClient, orgId: string, allowedOrgId:
 }
 
 async function accountMap(supabase: SupabaseClient, orgId: string) {
+  const legalEntityId = await resolveDefaultLegalEntityId(supabase, orgId);
   const { data } = await supabase
     .from("teller_accounts")
     .select("id, code, type, subtype")
-    .eq("organization_id", orgId);
+    .eq("organization_id", orgId)
+    .eq("legal_entity_id", legalEntityId);
   return Object.fromEntries((data ?? []).map((row) => [row.code, row.id as string]));
 }
 
 async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: string) {
   assertMutationScope(orgId, allowedOrgId, "cleanup");
+  await resetDemoBooksOpen(supabase, orgId, "Phase 9 demo cleanup");
   for (const table of [
     "teller_recurring_journal_runs",
     "teller_adjusting_journal_entries",
@@ -222,7 +233,6 @@ async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: st
     "teller_close_checklist_items",
     "teller_period_close_reviews",
     "teller_close_settings",
-    "teller_period_closes",
     "teller_audit_events",
     "teller_payment_allocations",
     "teller_payments",

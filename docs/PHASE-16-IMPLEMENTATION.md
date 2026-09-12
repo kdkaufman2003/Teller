@@ -9,7 +9,11 @@
 | **16C** | Entity-specific books, COA, periods | **Complete — 25/25 acceptance × 2 reruns (2026-09-11)** |
 | **16D** | Intercompany + due-to/due-from | **Complete — migration 044 applied; 19/19 acceptance × 2** |
 | **16E** | Intercompany settlement + reconciliation | **Complete — migration 045 + patch 045 applied; 28/28 acceptance × 2** |
-| 16F–16J | Consolidation, UX, deploy | Not started |
+| **16F** | Pre-elimination consolidated reporting | **Complete** |
+| **16G** | Consolidation eliminations | **Complete — migration 046 applied** |
+| **16H** | Entity-level accounting controls | **Complete — migration 047 applied; 39/39 acceptance** |
+| **16I** | Multi-entity UX & accountant workflows | **Complete — no migration; 39/39 acceptance (2026-09-12)** |
+| 16J | Final Phase 16 acceptance / deploy | Not started |
 
 Full architecture: [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md)
 
@@ -621,6 +625,114 @@ npm run accept:phase16g:controlled
 | `PHASE_16G_CODE_COMPLETE` | true |
 | `PHASE_16G_DB_VERIFIED` | true |
 | `PHASE_16G_COMPLETE` | true |
+
+---
+
+## Phase 16H — entity-level accounting controls
+
+**Purpose:** Control and integrity phase — ensure accounting configuration, posting, periods, numbering, close readiness, and RLS are correctly isolated per legal entity. Not a major feature expansion.
+
+### Preflight audit summary
+
+| Area | Current scope | Gap addressed in 16H |
+|------|---------------|----------------------|
+| Core economic tables RLS | Org-only (005) until 047 | Entity-aware policies via `teller_can_access_legal_entity` |
+| Document/payment inserts | Often omitted `legal_entity_id` | Invoice API + payments persist entity; entity-scoped numbering |
+| Posting | Default entity COA | `resolvePostingLegalEntityId` from document |
+| AR/AP reconciliation | Org-wide subledger totals | Entity-scoped `reconcileSubledgersToGl(org, entityId)` |
+| Close readiness | Partial entity filter | Passes `legalEntityId` to reconciliation + bank accounts |
+| Zero membership access | All org entities (16B compat) | **Retained** — hardening deferred pending explicit backfill approval |
+
+### Deliverables (code)
+
+- `docs/PHASE-16-ENTITY-SCOPE.md` — canonical scope registry
+- `src/lib/accounting/entity-books/` — settings, validation, document context, user-safe errors
+- `src/lib/accounting/post.ts`, `payments.ts`, `bills.ts`, `bill-pay.ts` — entity resolution + guards
+- `src/app/api/invoices/route.ts` — entity-aware guards + numbering
+- Entity-scoped AR/AP in `party-balances.ts`, `subledger.ts`, `close-reconciliation-summary.ts`
+- Migration **047** — entity-aware RLS on accounts, documents, journals, payments, bank accounts
+- Tests: `phase16h.test.ts`; verify: `verify-phase16h-entity-controls.mjs`, `verify-migration-047-static.mjs`
+- Acceptance: `controlled-phase16h-db-acceptance.ts` (40 scenarios; requires migration 047 + `SUPABASE_DB_URL`)
+
+### Verification commands
+
+```bash
+npm run verify:migration:047:static
+npm run verify:phase16h:entity-controls
+TELLER_TEST_PHASE=16 npm run test:phase
+# After manual migration 047 apply:
+npm run accept:phase16h:controlled
+```
+
+### 16H close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_047_STATIC_VERIFY` | PASS |
+| `PHASE16H_ENTITY_CONTROLS_VERIFY` | PASS |
+| `PHASE_16H_CONTROLLED_ACCEPTANCE` | PASS — 39/39 |
+| `ENTITY_RLS_POLICY_AUDIT` | PASS |
+| `CROSS_ENTITY_ACCOUNT_POSTING` | false |
+| `ENTITY_AR_CONTROL_RECONCILES` | true |
+| `ENTITY_AP_CONTROL_RECONCILES` | true |
+| `HFAC_MODIFIED` | false |
+| `UNBALANCED_DEMO_JOURNALS` | 0 |
+| `CONSOLIDATED_16F_16G_INTACT` | true |
+| `LEGACY_ZERO_MEMBERSHIP_ACCESS` | RETAIN_WITH_JUSTIFICATION |
+| `MANUAL_MIGRATION_047_APPLIED` | true |
+| `MIGRATIONS_AUTO_APPLIED` | false |
+| `PHASE_16H_CODE_COMPLETE` | true |
+| `PHASE_16H_DB_VERIFIED` | true |
+| `PHASE_16H_COMPLETE` | true |
+
+---
+
+## Phase 16I (multi-entity UX)
+
+### Delivered (code)
+
+| Area | Path |
+|------|------|
+| Owner terminology | `src/lib/legal-entity/ux.ts` |
+| All Companies loader | `src/lib/legal-entity/companies-overview.ts` |
+| Context headers | `src/components/legal-entity/CompanyContextHeader.tsx`, `FinancialReportScopeHeader.tsx` |
+| Entity switcher | `src/components/legal-entity/EntitySwitcher.tsx` (All Companies + consolidated links) |
+| All Companies page | `src/app/app/companies/page.tsx` |
+| Accountant workspace | `src/app/app/accounting/workspace/page.tsx` |
+| Entity-scoped SSR | Dashboard, invoices, bills, reports, party balances, accounting hub, close, banking |
+| Report engine scope | `src/lib/accounting/report-engine.ts` — optional `legalEntityId` |
+| Tests | `src/lib/accounting/phase16i.test.ts` |
+| Static verify | `scripts/verify-phase16i-multi-entity-ux.mjs` |
+| Acceptance | `scripts/controlled-phase16i-ux-acceptance.ts` (~36 static + optional read-only DB) |
+
+### Verification commands
+
+```bash
+npm run verify:phase16i:multi-entity-ux
+TELLER_TEST_PHASE=16 npm run test:phase
+npm run accept:phase16i:controlled   # optional: TELLER_CONTROLLED_PROD_TEST=1 + demo org
+```
+
+### 16I invariants
+
+- `NEW_MIGRATION_REQUIRED = false`
+- `ACCOUNTING_SEMANTICS_CHANGED_IN_16I = false`
+- `ALL_COMPANIES_POSTING_CONTEXT = false`
+- `LEGACY_ZERO_MEMBERSHIP_ACCESS` unchanged from 16H
+
+### 16I close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `PHASE16I_MULTI_ENTITY_UX_VERIFY` | PASS |
+| `PHASE_16I_CONTROLLED_ACCEPTANCE` | PASS — 39/39 |
+| `HFAC_MODIFIED` | false |
+| `UNBALANCED_DEMO_JOURNALS` | 0 |
+| `NEW_MIGRATION_REQUIRED` | false |
+| `MIGRATIONS_AUTO_APPLIED` | false |
+| `PHASE_16I_CODE_COMPLETE` | true |
+| `PHASE_16I_DB_VERIFIED` | true |
+| `PHASE_16I_COMPLETE` | true |
 
 ---
 

@@ -41,7 +41,10 @@ import {
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
 import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
-import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
+import {
+  insertDemoPeriodClose,
+  resetDemoBooksOpen,
+} from "./lib/reopen-demo-period-closes";
 
 const HFAC_ORG_ID = TELLER_HFAC_ORG_ID;
 const TODAY = "2026-10-01";
@@ -140,7 +143,7 @@ async function cleanup(supabase: SupabaseClient, orgId: string, allowedOrgId: st
   await supabase.from("teller_journal_entries").delete().eq("organization_id", orgId);
   await supabase.from("teller_jobs").delete().eq("organization_id", orgId);
   await supabase.from("teller_parties").delete().eq("organization_id", orgId);
-  await reopenAllPeriodCloses(supabase, orgId);
+  await resetDemoBooksOpen(supabase, orgId);
 }
 
 async function ensureVendor(supabase: SupabaseClient, orgId: string) {
@@ -765,11 +768,7 @@ async function main() {
   });
 
   await run("35. Period lock blocks new expense posting", async () => {
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: CLOSED_PERIOD_END,
-      closed_at: new Date().toISOString(),
-    });
+    await insertDemoPeriodClose(supabase, orgId, CLOSED_PERIOD_END, "Phase 7 period lock");
     let blocked = false;
     try {
       await assertOrgPeriodOpen(supabase, orgId, CLOSED_PERIOD_DATE);
@@ -777,7 +776,7 @@ async function main() {
       blocked = err instanceof Error && err.message.toLowerCase().includes("closed");
     }
     if (!blocked) throw new Error("closed period should block posting");
-    await reopenAllPeriodCloses(supabase, orgId);
+    await resetDemoBooksOpen(supabase, orgId);
   });
 
   await run("36. Lifecycle events create audit trail", async () => {

@@ -195,6 +195,12 @@ export function EntityAdminPanel({
 
       <section className="card p-4">
         <h2 className="font-medium">Add company</h2>
+        <p className="mt-2 text-sm text-muted">
+          After creating a company, complete setup: chart of accounts, fiscal settings, tax
+          settings, opening balances (if needed), bank accounts, user access, and period readiness.
+          Copying a chart of accounts from another company copies structure only — never balances or
+          history.
+        </p>
         <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={(event) => void createEntity(event)}>
           <label className="block text-sm">
             Name

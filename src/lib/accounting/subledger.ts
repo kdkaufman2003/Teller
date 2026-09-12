@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountByCode, accountBySubtype } from "./accounts";
+import { loadEntityAccountingSettings } from "./entity-books/settings";
 import { authoritativeAmountPaidByDocuments } from "./allocations";
 import { batchCreditsAppliedToDocuments } from "./document-allocations";
 import { documentRemainingBalance, batchWriteOffsForDocuments } from "./balances";
@@ -111,13 +112,18 @@ function isArOpenDocument(row: { status: string; posted_entry_id?: string | null
 export async function computeArOpenSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<{ total: number; documentCount: number }> {
-  const { data: documents, error } = await supabase
+  let query = supabase
     .from("teller_documents")
     .select("id, total, status, posted_entry_id")
     .eq("organization_id", organizationId)
     .eq("kind", "invoice")
     .in("status", ["open", "partially_paid"]);
+  if (legalEntityId?.trim()) {
+    query = query.eq("legal_entity_id", legalEntityId.trim());
+  }
+  const { data: documents, error } = await query;
 
   if (error) throw new Error(error.message);
 
@@ -148,13 +154,18 @@ export async function computeArOpenSubledgerTotal(
 export async function computeApOpenSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<{ total: number; documentCount: number }> {
-  const { data: documents, error } = await supabase
+  let query = supabase
     .from("teller_documents")
     .select("id, total, status, kind")
     .eq("organization_id", organizationId)
     .in("kind", ["expense", "bill"])
     .in("status", ["open", "partially_paid"]);
+  if (legalEntityId?.trim()) {
+    query = query.eq("legal_entity_id", legalEntityId.trim());
+  }
+  const { data: documents, error } = await query;
 
   if (error) throw new Error(error.message);
 
@@ -179,23 +190,52 @@ export async function computeApOpenSubledgerTotal(
 export async function reconcileSubledgersToGl(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<SubledgerReconciliationResult[]> {
-  const { data: accounts, error } = await supabase
-    .from("teller_accounts")
-    .select("id, code, subtype, type")
-    .eq("organization_id", organizationId);
+  const entityId = legalEntityId?.trim() ?? null;
+  let accountRows: ControlAccountRow[] = [];
+  let arAccount: ControlAccountRow | null = null;
+  let apAccount: ControlAccountRow | null = null;
 
-  if (error) throw new Error(error.message);
-
-  const accountRows = (accounts ?? []) as ControlAccountRow[];
-  const arAccount =
-    accountBySubtype(accountRows, "receivable") || accountByCode(accountRows, "1100");
-  const apAccount =
-    accountBySubtype(accountRows, "payable") || accountByCode(accountRows, "2000");
+  if (entityId) {
+    const settings = await loadEntityAccountingSettings(supabase, organizationId, entityId);
+    const { data: accounts, error } = await supabase
+      .from("teller_accounts")
+      .select("id, code, subtype, type")
+      .eq("organization_id", organizationId)
+      .eq("legal_entity_id", entityId);
+    if (error) throw new Error(error.message);
+    accountRows = (accounts ?? []) as ControlAccountRow[];
+    arAccount =
+      accountRows.find((row) => row.id === settings?.defaultArAccountId) ??
+      accountBySubtype(accountRows, "receivable") ??
+      accountByCode(accountRows, "1100") ??
+      null;
+    apAccount =
+      accountRows.find((row) => row.id === settings?.defaultApAccountId) ??
+      accountBySubtype(accountRows, "payable") ??
+      accountByCode(accountRows, "2000") ??
+      null;
+  } else {
+    const { data: accounts, error } = await supabase
+      .from("teller_accounts")
+      .select("id, code, subtype, type")
+      .eq("organization_id", organizationId);
+    if (error) throw new Error(error.message);
+    accountRows = (accounts ?? []) as ControlAccountRow[];
+    arAccount =
+      accountBySubtype(accountRows, "receivable") ||
+      accountByCode(accountRows, "1100") ||
+      null;
+    apAccount =
+      accountBySubtype(accountRows, "payable") ||
+      accountByCode(accountRows, "2000") ||
+      null;
+  }
 
   const [arControl, apControl] = await Promise.all([
-    computeArControlSubledgerTotal(supabase, organizationId),
-    computeApControlSubledgerTotal(supabase, organizationId),
+    computeArControlSubledgerTotal(supabase, organizationId, entityId),
+    computeApControlSubledgerTotal(supabase, organizationId, entityId),
   ]);
 
   const results: SubledgerReconciliationResult[] = [];

@@ -140,7 +140,9 @@ export function AppShell({
         </button>
       </aside>
       <div className="min-w-0 flex-1">
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <main key={activeLegalEntity?.id ?? "default-entity"} className="mx-auto max-w-6xl px-6 py-8">
+          {children}
+        </main>
       </div>
     </div>
   );

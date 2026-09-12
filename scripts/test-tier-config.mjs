@@ -20,7 +20,7 @@ export const PHASE_DEMOS = {
 };
 
 export const PHASE_VERIFY = {
-  16: "verify:phase16g:eliminations",
+  16: "verify:phase16j:production",
   15: "verify:migration:035:controlled",
   14: "verify:migration:032:controlled",
   13: "verify:phase13:controlled",
@@ -96,6 +96,9 @@ export const PHASE_UNIT_TESTS = {
     "src/lib/accounting/phase16e.test.ts",
     "src/lib/accounting/phase16f.test.ts",
     "src/lib/accounting/phase16g.test.ts",
+    "src/lib/accounting/phase16h.test.ts",
+    "src/lib/accounting/phase16i.test.ts",
+    "src/lib/accounting/phase16j.test.ts",
   ],
   15: [
     "src/lib/accounting/tax/phase15a.test.ts",

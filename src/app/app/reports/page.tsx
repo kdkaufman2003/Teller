@@ -1,5 +1,8 @@
 import { Suspense } from "react";
+import Link from "next/link";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { ReportsView } from "@/components/ReportsView";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { parseReportTab } from "@/lib/accounting/financial-reports";
 import {
   buildSalesSummary,
@@ -58,6 +61,11 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
   const reportCtx = buildReportContextFromParams({
     organizationId,
@@ -73,6 +81,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     organizationId,
     asOf,
     reportCtx.startDate,
+    { legalEntityId },
   );
   const reports = await buildReportsFromEngine(supabase, reportCtx, engineData);
 
@@ -109,17 +118,27 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader
+        activeLegalEntity={session.activeLegalEntity}
+        subtitle="Company reports for the active company"
+        showAllCompaniesLink={(session.accessibleLegalEntities?.length ?? 0) > 1}
+      />
       <header className="page-header">
-        <h1>Reports</h1>
+        <h1>Company reports</h1>
         <p>
           Financial statements and sales analysis ·{" "}
           {basis === "cash" ? "Cash basis" : "Accrual basis"}
           {comparison !== "none" ? ` · Compared to ${comparison.replace(/_/g, " ")}` : ""}
           {presentationMode === "owner" ? " · Owner view" : ""}
         </p>
+        <Link href={routes.reportsConsolidated} className="mt-2 inline-block text-sm text-sky">
+          Consolidated reports →
+        </Link>
       </header>
       <Suspense fallback={<p className="text-sm text-muted">Loading reports…</p>}>
         <ReportsView
+          companyName={session.activeLegalEntity?.name}
+          companyEntityCode={session.activeLegalEntity?.entityCode}
           period={period}
           periodLabel={range.label}
           periodStart={reportCtx.startDate}

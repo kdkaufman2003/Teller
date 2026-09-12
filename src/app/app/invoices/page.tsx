@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { StatusBadge } from "@/components/StatusBadge";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -10,22 +12,30 @@ export default async function InvoicesPage() {
   const session = await getSessionContext();
   if (!session?.organization) redirect(routes.setup);
   const supabase = await createClient();
+  const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
   const { data } = await supabase
     .from("teller_documents")
     .select("id, number, status, total, issue_date, party_id, external_source")
-    .eq("organization_id", session.organization.id)
+    .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .eq("kind", "invoice")
     .order("created_at", { ascending: false });
 
   const { data: parties } = await supabase
     .from("teller_parties")
     .select("id, name")
-    .eq("organization_id", session.organization.id);
+    .eq("organization_id", organizationId);
   const names = new Map((parties ?? []).map((row) => [row.id, row.name]));
 
   return (
     <div>
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
       <div className="flex items-center justify-between">
         <header className="page-header mb-0">
           <h1>Invoices</h1>
@@ -49,7 +59,7 @@ export default async function InvoicesPage() {
             {(data ?? []).length === 0 ? (
               <tr>
                 <td colSpan={5} className="text-muted">
-                  No invoices yet.
+                  No invoices yet for this company.
                 </td>
               </tr>
             ) : (

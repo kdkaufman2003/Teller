@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { IntercompanyPanel } from "@/components/intercompany/IntercompanyPanel";
 import { listIntercompanyTransactions } from "@/lib/accounting/intercompany";
 import { listIntercompanySettlements } from "@/lib/accounting/intercompany/settlement";
@@ -66,11 +67,15 @@ export default async function IntercompanyPage() {
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader
+        activeLegalEntity={session.activeLegalEntity}
+        subtitle="Intercompany transactions between your companies"
+      />
       <header className="page-header">
         <Link href={routes.accounting} className="text-sm text-muted">
           ← Accounting
         </Link>
-        <h1 className="mt-2">Between companies</h1>
+        <h1 className="mt-2">Intercompany</h1>
         <p className="text-muted">
           Pay expenses, receive cash, or transfer money between companies in your organization. Each company gets its own balanced journal entry.
         </p>

@@ -33,6 +33,7 @@ import type {
   CashBasisPayment,
 } from "./cash-basis-pl";
 import { fiscalYearStartDate, parseFiscalYearStart } from "@/lib/org/config";
+import { resolveLegalEntityId } from "./post";
 
 export type ReportEngineData = {
   accounts: AccountRow[];
@@ -48,6 +49,19 @@ export type ReportEngineData = {
 };
 
 const EPOCH_START = "1970-01-01";
+
+export type ReportEngineOptions = {
+  legalEntityId?: string | null;
+};
+
+function totalsForAccounts(
+  totals: GlAccountTotalRow[] | null,
+  accounts: AccountRow[],
+): GlAccountTotalRow[] | null {
+  if (!totals) return null;
+  const ids = new Set(accounts.map((account) => account.id));
+  return totals.filter((row) => ids.has(row.account_id));
+}
 
 async function priorTotalsForRetainedEarnings(
   supabase: SupabaseClient,
@@ -73,19 +87,28 @@ export async function loadReportEngineData(
   organizationId: string,
   asOfDate: string,
   periodStart: string | null,
+  options?: ReportEngineOptions,
 ): Promise<ReportEngineData> {
   const asOf = asOfDate.slice(0, 10);
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    options?.legalEntityId,
+  );
+
   const [{ data: accounts }, subledger] = await Promise.all([
     supabase
       .from("teller_accounts")
       .select("id, code, name, type, subtype, cash_flow_category")
       .eq("organization_id", organizationId)
+      .eq("legal_entity_id", legalEntityId)
       .order("code"),
-    loadSubledgerData(supabase, organizationId),
+    loadSubledgerData(supabase, organizationId, legalEntityId),
   ]);
 
   const accountRows = (accounts ?? []) as AccountRow[];
-  const cumulativeTotals = await loadCumulativeTotalsThrough(supabase, organizationId, asOf);
+  const cumulativeTotalsRaw = await loadCumulativeTotalsThrough(supabase, organizationId, asOf);
+  const cumulativeTotals = totalsForAccounts(cumulativeTotalsRaw, accountRows);
 
   if (cumulativeTotals) {
     const { lines: cashFlowPeriodLines, entrySourceKinds } = await loadCashFlowPeriodLines(
@@ -94,6 +117,7 @@ export async function loadReportEngineData(
       accountRows,
       periodStart,
       asOf,
+      legalEntityId,
     );
     return {
       accounts: accountRows,
@@ -105,7 +129,7 @@ export async function loadReportEngineData(
     };
   }
 
-  const legacy = await loadLegacyDatedLines(supabase, organizationId, asOf);
+  const legacy = await loadLegacyDatedLines(supabase, organizationId, asOf, legalEntityId);
   return {
     accounts: accountRows,
     datedLines: legacy.datedLines,
@@ -116,17 +140,23 @@ export async function loadReportEngineData(
   };
 }
 
-async function loadSubledgerData(supabase: SupabaseClient, organizationId: string) {
+async function loadSubledgerData(
+  supabase: SupabaseClient,
+  organizationId: string,
+  legalEntityId: string,
+) {
   const [{ data: documents }, { data: payments }, { data: allocations }, { data: parties }] =
     await Promise.all([
       supabase
         .from("teller_documents")
         .select("id, kind, status, total, issue_date, posted_entry_id")
-        .eq("organization_id", organizationId),
+        .eq("organization_id", organizationId)
+        .eq("legal_entity_id", legalEntityId),
       supabase
         .from("teller_payments")
         .select("id, payment_date, payment_type, payment_method, status, amount")
         .eq("organization_id", organizationId)
+        .eq("legal_entity_id", legalEntityId)
         .eq("status", "posted"),
       supabase
         .from("teller_payment_allocations")
@@ -206,17 +236,18 @@ export async function buildReportsFromEngine(
   let cashFlow: ReturnType<typeof buildCashFlowStatement>;
 
   if (data.usesGlAccountTotalsRpc && data.cumulativeTotals) {
-    const periodTotals = await loadPeriodTotals(
-      supabase,
-      ctx.organizationId,
-      ctx.startDate,
-      endDate,
+    const periodTotals = totalsForAccounts(
+      await loadPeriodTotals(supabase, ctx.organizationId, ctx.startDate, endDate),
+      data.accounts,
     );
-    const priorTotals = await priorTotalsForRetainedEarnings(
-      supabase,
-      ctx.organizationId,
-      ctx.asOfDate,
-      ctx.fiscalYearStart,
+    const priorTotals = totalsForAccounts(
+      await priorTotalsForRetainedEarnings(
+        supabase,
+        ctx.organizationId,
+        ctx.asOfDate,
+        ctx.fiscalYearStart,
+      ),
+      data.accounts,
     );
     const periodLines =
       periodTotals && periodTotals.length
@@ -234,14 +265,20 @@ export async function buildReportsFromEngine(
 
     const cashFlowStart = ctx.startDate ?? endDate;
     const [startBoundaryTotals, endBoundaryTotals, periodDepreciationTotals] = await Promise.all([
-      fetchGlAccountTotals(
-        supabase,
-        ctx.organizationId,
-        EPOCH_START,
-        dayBefore(cashFlowStart).slice(0, 10),
+      totalsForAccounts(
+        await fetchGlAccountTotals(
+          supabase,
+          ctx.organizationId,
+          EPOCH_START,
+          dayBefore(cashFlowStart).slice(0, 10),
+        ),
+        data.accounts,
       ),
       data.cumulativeTotals,
-      loadPeriodTotals(supabase, ctx.organizationId, cashFlowStart, endDate),
+      totalsForAccounts(
+        await loadPeriodTotals(supabase, ctx.organizationId, cashFlowStart, endDate),
+        data.accounts,
+      ),
     ]);
 
     cashFlow = buildCashFlowStatement({

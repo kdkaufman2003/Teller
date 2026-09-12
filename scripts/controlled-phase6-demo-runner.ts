@@ -34,7 +34,10 @@ import {
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
 import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
-import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
+import {
+  insertDemoPeriodClose,
+  resetDemoBooksOpen,
+} from "./lib/reopen-demo-period-closes";
 
 type ScenarioResult = { name: string; pass: boolean; detail?: string };
 
@@ -296,7 +299,7 @@ async function cleanupDemoOrg(supabase: SupabaseClient, orgId: string, allowedOr
   await supabase.from("teller_bank_transfers").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_transaction_splits").delete().eq("organization_id", orgId);
   await supabase.from("teller_bank_transactions").delete().eq("organization_id", orgId);
-  await reopenAllPeriodCloses(supabase, orgId);
+  await resetDemoBooksOpen(supabase, orgId);
   await supabase.from("teller_document_allocations").delete().eq("organization_id", orgId);
   await supabase.from("teller_payment_allocations").delete().eq("organization_id", orgId);
   await supabase.from("teller_payments").delete().eq("organization_id", orgId);
@@ -831,11 +834,7 @@ async function main() {
   });
 
   await run("C6. Closed-period bill posting rejection", async () => {
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: CLOSED_PERIOD_END,
-      notes: "Phase 6 control close",
-    });
+    await insertDemoPeriodClose(supabase, orgId, CLOSED_PERIOD_END, "Phase 6 control close");
     const draft = await createDraftBill(supabase, {
       orgId,
       vendorId,
@@ -871,15 +870,11 @@ async function main() {
     if (bill?.status !== "draft" || bill?.posted_entry_id) {
       throw new Error("Bill status changed after rejected post");
     }
-    await reopenAllPeriodCloses(supabase, orgId);
+    await resetDemoBooksOpen(supabase, orgId);
   });
 
   await run("C7. Closed-period payment rejection", async () => {
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: CLOSED_PERIOD_END,
-      notes: "Phase 6 payment close",
-    });
+    await insertDemoPeriodClose(supabase, orgId, CLOSED_PERIOD_END, "Phase 6 payment close");
     const snap = await economicSnapshot(supabase, orgId);
     const remaining = await authoritativeDocumentRemaining(
       supabase,
@@ -902,7 +897,7 @@ async function main() {
     if (JSON.stringify(snap) !== JSON.stringify(after)) {
       throw new Error("Closed-period payment caused side effects");
     }
-    await reopenAllPeriodCloses(supabase, orgId);
+    await resetDemoBooksOpen(supabase, orgId);
   });
 
   await run("C8. Tenant isolation", async () => {

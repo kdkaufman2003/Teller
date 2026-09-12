@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HealthPanel } from "@/components/HealthPanel";
 import { IntelligencePanel } from "@/components/IntelligencePanel";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { computeHealthReport } from "@/lib/health/engine";
 import { gatherHealthSignals } from "@/lib/health/signals";
 import { buildIntelligenceReport } from "@/lib/intelligence/engine";
@@ -15,7 +16,9 @@ import {
   computeApOpenSubledgerTotal,
   computeArOpenSubledgerTotal,
 } from "@/lib/accounting/subledger";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { dashboardMetricsForIndustry } from "@/lib/dashboard/metrics";
+import { companyBooksLabel } from "@/lib/legal-entity/ux";
 import { label } from "@/lib/session";
 import { routes, jobPath } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
@@ -28,40 +31,49 @@ export default async function DashboardPage() {
   if (!session?.organization) redirect(routes.setup);
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
+  const companyName = session.activeLegalEntity?.name ?? session.organization.name;
+  const showAllCompaniesLink = (session.accessibleLegalEntities?.length ?? 0) > 1;
 
   const [invoices, expenses, jobs, parties, integration, arSubledger, apSubledger] =
     await Promise.all([
-    supabase
-      .from("teller_documents")
-      .select("id, number, status, total, amount_paid, issue_date, party_id, posted_entry_id")
-      .eq("organization_id", organizationId)
-      .eq("kind", "invoice")
-      .order("created_at", { ascending: false })
-      .limit(8),
-    supabase
-      .from("teller_documents")
-      .select("status, total")
-      .eq("organization_id", organizationId)
-      .eq("kind", "expense"),
-    supabase
-      .from("teller_jobs")
-      .select("id, job_number, name, status, quoted_amount")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false })
-      .limit(6),
-    supabase
-      .from("teller_parties")
-      .select("id, name")
-      .eq("organization_id", organizationId),
-    supabase
-      .from("teller_integrations")
-      .select("enabled, last_synced_at, last_sync_summary")
-      .eq("organization_id", organizationId)
-      .eq("provider", "hfac")
-      .maybeSingle(),
-    computeArOpenSubledgerTotal(supabase, organizationId),
-    computeApOpenSubledgerTotal(supabase, organizationId),
-  ]);
+      supabase
+        .from("teller_documents")
+        .select("id, number, status, total, amount_paid, issue_date, party_id, posted_entry_id")
+        .eq("organization_id", organizationId)
+        .eq("legal_entity_id", legalEntityId)
+        .eq("kind", "invoice")
+        .order("created_at", { ascending: false })
+        .limit(8),
+      supabase
+        .from("teller_documents")
+        .select("status, total")
+        .eq("organization_id", organizationId)
+        .eq("legal_entity_id", legalEntityId)
+        .eq("kind", "expense"),
+      supabase
+        .from("teller_jobs")
+        .select("id, job_number, name, status, quoted_amount")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(6),
+      supabase
+        .from("teller_parties")
+        .select("id, name")
+        .eq("organization_id", organizationId),
+      supabase
+        .from("teller_integrations")
+        .select("enabled, last_synced_at, last_sync_summary")
+        .eq("organization_id", organizationId)
+        .eq("provider", "hfac")
+        .maybeSingle(),
+      computeArOpenSubledgerTotal(supabase, organizationId, legalEntityId),
+      computeApOpenSubledgerTotal(supabase, organizationId, legalEntityId),
+    ]);
 
   const invoiceRows = invoices.data ?? [];
   const partyNames = new Map((parties.data ?? []).map((row) => [row.id, row.name]));
@@ -128,14 +140,28 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      <CompanyContextHeader
+        activeLegalEntity={session.activeLegalEntity}
+        subtitle="Dashboard for the active company"
+        showAllCompaniesLink={showAllCompaniesLink}
+      />
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm text-muted">Books for</p>
-          <h1 className="font-ledger text-4xl text-navy">{session.organization.name}</h1>
+          <h1 className="font-ledger text-4xl text-navy">
+            {companyBooksLabel(companyName, session.activeLegalEntity?.entityCode)}
+          </h1>
         </div>
-        <Link href={routes.reports} className="btn btn-secondary text-sm">
-          View reports
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {showAllCompaniesLink ? (
+            <Link href={routes.companiesOverview} className="btn btn-ghost text-sm">
+              All Companies
+            </Link>
+          ) : null}
+          <Link href={routes.reports} className="btn btn-secondary text-sm">
+            View reports
+          </Link>
+        </div>
       </header>
 
       <HealthPanel report={healthReport} />

@@ -192,6 +192,8 @@ export type TransferPairCandidate = {
   transferDate: string;
   confidence: number;
   reason: string;
+  /** True when source/destination bank accounts belong to different companies. */
+  crossEntity?: boolean;
 };
 
 export type ReconciliationSummary = {

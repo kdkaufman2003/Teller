@@ -259,17 +259,22 @@ export async function loadCashFlowPeriodLines(
   accounts: AccountRow[],
   periodStart: string | null,
   periodEnd: string,
+  legalEntityId?: string | null,
 ): Promise<{ lines: ReportEngineLine[]; entrySourceKinds: Map<string, string | null> }> {
   const start = (periodStart ?? periodEnd).slice(0, 10);
   const end = periodEnd.slice(0, 10);
   const cashAccountIds = new Set(accounts.filter(isCashAccount).map((a) => a.id));
 
-  const { data: entries, error: entriesError } = await supabase
+  let entriesQuery = supabase
     .from("teller_journal_entries")
     .select("id, entry_date, source_kind")
     .eq("organization_id", organizationId)
     .gte("entry_date", start)
     .lte("entry_date", end);
+  if (legalEntityId?.trim()) {
+    entriesQuery = entriesQuery.eq("legal_entity_id", legalEntityId.trim());
+  }
+  const { data: entries, error: entriesError } = await entriesQuery;
   if (entriesError) throw new Error(entriesError.message);
 
   const entryIds = (entries ?? []).map((e) => e.id as string);
@@ -319,15 +324,20 @@ export async function loadLegacyDatedLines(
   supabase: SupabaseClient,
   organizationId: string,
   asOfDate: string,
+  legalEntityId?: string | null,
 ): Promise<{
   datedLines: ReportEngineLine[];
   entrySourceKinds: Map<string, string | null>;
 }> {
-  const { data: entries } = await supabase
+  let entriesQuery = supabase
     .from("teller_journal_entries")
     .select("id, entry_date, source_kind")
     .eq("organization_id", organizationId)
     .lte("entry_date", asOfDate);
+  if (legalEntityId?.trim()) {
+    entriesQuery = entriesQuery.eq("legal_entity_id", legalEntityId.trim());
+  }
+  const { data: entries } = await entriesQuery;
 
   const entryIds = (entries ?? []).map((e) => e.id as string);
   const entrySourceKinds = new Map(

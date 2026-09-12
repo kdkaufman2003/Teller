@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { recordAuditEvent } from "./audit";
 import { createAdjustingJournal, type AdjustmentLine } from "./adjusting-journals";
 import { endOfMonth } from "./periods";
+import { resolveLegalEntityId } from "./post";
 
 export type RecurringFrequency = "monthly" | "quarterly" | "annually";
 
@@ -19,10 +20,13 @@ export async function createRecurringJournalTemplate(
     actorId?: string | null;
   },
 ) {
+  const legalEntityId = await resolveLegalEntityId(supabase, input.organizationId);
+
   const { data, error } = await supabase
     .from("teller_recurring_journal_templates")
     .insert({
       organization_id: input.organizationId,
+      legal_entity_id: legalEntityId,
       name: input.name,
       memo: input.memo ?? input.name,
       frequency: input.frequency,

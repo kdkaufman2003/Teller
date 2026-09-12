@@ -208,6 +208,48 @@ Post-elimination consolidated reports
 
 `CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations never touch legal-entity books or subledgers.
 
+### Phase 16H (entity-level controls)
+
+```
+Organization
+  ├── Legal Entity A (independent books)
+  │     COA, journals, periods, settings, bank accounts, subledgers
+  └── Legal Entity B (independent books)
+        same isolation guarantees
+```
+
+- **Scope registry:** [PHASE-16-ENTITY-SCOPE.md](./PHASE-16-ENTITY-SCOPE.md)
+- **Canonical services:** `loadEntityAccountingSettings`, `assertAccountBelongsToEntity`, `resolvePostingLegalEntityId`, `nextEntityDocumentNumber`
+- **Migration 047:** replaces org-only RLS on core economic tables with entity-aware policies
+- **Posting invariant:** `journal.legal_entity_id` must match every line account's entity (enforced in `teller_post_journal` + app validation)
+- **Close isolation:** period close, readiness, AR/AP reconciliation scoped per entity
+- **Consolidation vs entity close:** independent — entity close does not lock consolidation; consolidation lock does not close entity periods
+- **Legacy access:** users with zero membership rows retain all-org-entity access until first grant (16B backward compatibility)
+
+| Control | Scope |
+|---------|-------|
+| COA, journals, periods, bank accounts | Legal entity |
+| Parties (customers/vendors) | Organization (balances entity-scoped) |
+| Eliminations, consolidation locks | Consolidation |
+| Active entity switcher | User UX only — server revalidates |
+
+### Phase 16I (multi-entity UX)
+
+Owner-facing language uses **Company**, **Switch company**, **All Companies**, and **Consolidated reports**. Technical identifiers (`legal_entity_id`, UUIDs) stay in diagnostics only.
+
+| Surface | Behavior |
+|---------|----------|
+| **Global company switcher** | Sidebar select for authorized companies; single-company orgs see “Books for {name}” without extra chrome |
+| **Company context header** | Subtle banner on accounting screens showing active company |
+| **Dashboard** | Metrics scoped to active company; link to All Companies when multiple exist |
+| **All Companies overview** | `/app/companies` — per-company cash/AR/AP/revenue/net income (pre-elimination); not a posting context |
+| **Company reports** | `/app/reports` — entity-scoped P&L/BS/etc.; consolidated reports remain separate |
+| **Accountant workspace** | `/app/accounting/workspace` — TB, AR/AP recon, close readiness, quick actions for active company |
+| **Archived companies** | Visible in admin as archived; excluded from normal switcher targets |
+| **Entity switch safety** | Server-owned active entity via API; `AppShell` remounts main on switch to prevent stale UI |
+
+`ALL_COMPANIES_POSTING_CONTEXT = false` — consolidation and overview surfaces are read-only over entity books.
+
 ---
 
 ## SECURITY / RLS strategy

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { resolveLegalEntityId } from "@/lib/accounting/post";
+import { closeReadinessUserMessage } from "@/lib/legal-entity/ux";
 import { evaluateCloseReadiness } from "@/lib/accounting/close-readiness";
 import {
   booksClosedThrough,
@@ -46,6 +48,7 @@ export default async function CloseDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
       <header className="page-header">
         <Link href={routes.accounting} className="text-sm text-muted">
           ← Accounting
@@ -83,6 +86,19 @@ export default async function CloseDashboardPage() {
           </div>
         )}
       </div>
+
+      {readiness?.findings.some((finding) => finding.severity === "blocker") ? (
+        <section className="card p-5">
+          <h2 className="font-ledger text-xl text-navy">Issues to resolve</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {readiness.findings
+              .filter((finding) => finding.severity === "blocker")
+              .map((finding) => (
+                <li key={finding.key}>{closeReadinessUserMessage(finding)}</li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
 
       {nextClose ? (
         <div className="flex flex-wrap gap-3">

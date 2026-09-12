@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { BillPanel } from "@/components/BillPanel";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { StatusBadge } from "@/components/StatusBadge";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import {
   authoritativeDocumentRemaining,
   enrichDocumentsWithAuthoritativePaid,
@@ -17,18 +19,25 @@ export default async function BillsPage() {
   if (!session?.organization) redirect(routes.setup);
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
   const [{ data }, { data: accounts }, { data: parties }] = await Promise.all([
     supabase
       .from("teller_documents")
       .select("id, number, status, total, issue_date, due_date, memo, party_id, reference_number")
       .eq("organization_id", organizationId)
+      .eq("legal_entity_id", legalEntityId)
       .eq("kind", "bill")
       .order("issue_date", { ascending: false }),
     supabase
       .from("teller_accounts")
       .select("id, code, name, type")
       .eq("organization_id", organizationId)
+      .eq("legal_entity_id", legalEntityId)
       .in("type", ["expense", "cogs", "asset"])
       .order("code"),
     supabase
@@ -49,6 +58,7 @@ export default async function BillsPage() {
 
   return (
     <div className="space-y-6">
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
       <header className="page-header flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1>Bills</h1>

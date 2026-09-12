@@ -11,7 +11,10 @@ import {
   TELLER_HFAC_ORG_ID,
 } from "../src/lib/integration/controlled-prod-test";
 import { assertMutationScope, loadControlledDemoOrgId } from "../src/lib/integration/controlled-phase-isolation";
-import { reopenAllPeriodCloses } from "./lib/reopen-demo-period-closes";
+import {
+  insertDemoPeriodClose,
+  resetDemoBooksOpen,
+} from "./lib/reopen-demo-period-closes";
 import { parseBankCsv } from "../src/lib/banking/csv";
 import { importBankTransactionsBatch } from "../src/lib/banking/ingest";
 import {
@@ -68,11 +71,24 @@ async function assertDemoOrg(supabase: SupabaseClient, orgId: string) {
   if (data.id === HFAC_ORG_ID) throw new Error("Refusing HFAC org");
 }
 
-async function accountMap(supabase: SupabaseClient, orgId: string) {
+async function resolveDefaultLegalEntityId(supabase: SupabaseClient, orgId: string) {
+  const { data, error } = await supabase.rpc("teller_default_legal_entity_id", {
+    p_org_id: orgId,
+  });
+  if (error || !data) throw new Error(error?.message || "Default legal entity missing");
+  return data as string;
+}
+
+async function accountMap(
+  supabase: SupabaseClient,
+  orgId: string,
+  legalEntityId: string,
+) {
   const { data, error } = await supabase
     .from("teller_accounts")
     .select("id, code")
-    .eq("organization_id", orgId);
+    .eq("organization_id", orgId)
+    .eq("legal_entity_id", legalEntityId);
   if (error) throw new Error(error.message);
   return Object.fromEntries((data ?? []).map((row) => [row.code, row.id as string]));
 }
@@ -176,7 +192,8 @@ async function main() {
   const results: ScenarioResult[] = [];
   const { orgId, supabase } = loadEnv();
   await assertDemoOrg(supabase, orgId);
-  const accounts = await accountMap(supabase, orgId);
+  const defaultLegalEntityId = await resolveDefaultLegalEntityId(supabase, orgId);
+  const accounts = await accountMap(supabase, orgId, defaultLegalEntityId);
 
   const hfacBefore = await hfacBaseline(supabase);
 
@@ -214,13 +231,13 @@ async function main() {
 
   await run("reset: clear prior demo bank activity", async () => {
     assertMutationScope(orgId, orgId, "reset");
+    await resetDemoBooksOpen(supabase, orgId);
     await supabase.from("teller_bank_reconciliation_items").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_reconciliations").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_matches").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_transfers").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_transaction_splits").delete().eq("organization_id", orgId);
     await supabase.from("teller_bank_transactions").delete().eq("organization_id", orgId);
-    await reopenAllPeriodCloses(supabase, orgId);
     await supabase.from("teller_payment_allocations").delete().eq("organization_id", orgId);
     await supabase.from("teller_payments").delete().eq("organization_id", orgId);
     await supabase.from("teller_document_journal_links").delete().eq("organization_id", orgId);
@@ -281,6 +298,7 @@ async function main() {
       .from("teller_documents")
       .insert({
         organization_id: orgId,
+        legal_entity_id: defaultLegalEntityId,
         kind: "invoice",
         number: `P5-DEMO-${Date.now()}`,
         status: "draft",
@@ -670,11 +688,7 @@ async function main() {
       accountSubtype: "checking",
     });
 
-    await supabase.from("teller_period_closes").insert({
-      organization_id: orgId,
-      period_end: "2026-09-30",
-      notes: "Phase 5 demo close",
-    });
+    await insertDemoPeriodClose(supabase, orgId, "2026-09-30", "Phase 5 demo close");
 
     const txn = await findTxnByDescription(
       supabase,

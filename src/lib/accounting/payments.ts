@@ -7,6 +7,7 @@ import {
   type PaymentType,
 } from "./allocations";
 import { roundMoney } from "./payment-fees";
+import { resolvePostingLegalEntityId } from "./entity-books/document-context";
 
 export type RecordPaymentResult = {
   paymentId: string | null;
@@ -17,6 +18,7 @@ export async function recordTellerPayment(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     documentId?: string | null;
     documentKind?: string;
     partyId: string | null;
@@ -40,11 +42,17 @@ export async function recordTellerPayment(
   const paymentType =
     input.paymentType ??
     (input.documentKind ? paymentTypeForDocumentKind(input.documentKind) : "customer_payment");
+  const legalEntityId = await resolvePostingLegalEntityId(supabase, {
+    organizationId: input.organizationId,
+    documentId: input.documentId,
+    legalEntityId: input.legalEntityId,
+  });
 
   const { data, error } = await supabase
     .from("teller_payments")
     .insert({
       organization_id: input.organizationId,
+      legal_entity_id: legalEntityId,
       document_id: input.documentId,
       party_id: input.partyId,
       job_id: input.jobId,

@@ -25,7 +25,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_15L_COMPLETE` | **true** | Deploy `71942a4` → `https://teller-indol.vercel.app`; smoke + schema probes PASS; HFAC 8/17 unchanged |
 | `PRODUCTION_DEPLOYED_FOR_PHASE15` | **true** | Vercel deployment `HhrjMrgJBizfyMjzcMTRfsddCrmy`; MO/KS reference packs at MO-2026.1 / KS-2026.1 |
 | `PHASE_16_STARTED` | **true** | Slice 16A foundation |
-| `PHASE_16_SLICE` | **16G** | Consolidation eliminations (code complete; DB pending migration 046) |
+| `PHASE_16_SLICE` | **16J** | Final acceptance & release — complete |
 | `PHASE_16A_CODE_COMPLETE` | **true** | Legal entity table, resolver, AccountingContext, migration 040 |
 | `PHASE_16A_DB_VERIFIED` | **true** | Migration 040 manually applied; controlled prod verification 2026-09-11 |
 | `PHASE_16A_COMPLETE` | **true** | 11/11 acceptance; 22 org backfill; 0 economic mutations; HFAC 8/17 unchanged |
@@ -59,6 +59,22 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_16G_COMPLETE` | **true** | Entity books unchanged; HFAC unchanged; post-elimination reports + reversal verified |
 | `NEW_MIGRATION_046_REQUIRED` | **false** | Migration 046 applied manually |
 | `MANUAL_MIGRATION_046_APPLIED` | **true** | `supabase/migrations/046_phase16g_consolidation_eliminations.sql` |
+| `PHASE_16H_STARTED` | **true** | Entity-level controls / integrity slice |
+| `PHASE_16H_CODE_COMPLETE` | **true** | Scope registry, canonical settings/validation, entity RLS migration 047 |
+| `PHASE_16H_DB_VERIFIED` | **true** | Migration 047 applied manually; 39/39 controlled acceptance PASS |
+| `PHASE_16H_COMPLETE` | **true** | HFAC unchanged; 0 unbalanced demo journals; 16F/16G intact |
+| `PHASE_16I_STARTED` | **true** | Multi-entity UX & accountant workflows |
+| `PHASE_16I_CODE_COMPLETE` | **true** | Company switcher/context headers, All Companies overview, accountant workspace, entity-scoped SSR pages |
+| `PHASE_16I_DB_VERIFIED` | **true** | No migration; 39/39 controlled UX acceptance PASS (2026-09-12) |
+| `PHASE_16I_COMPLETE` | **true** | HFAC unchanged; 0 unbalanced demo journals; accounting semantics unchanged |
+| `PHASE_16J_STARTED` | **true** | Final Phase 16 acceptance & release |
+| `PHASE_16J_CODE_COMPLETE` | **true** | Cross-entity transfer guard, closeout harness, build fixes |
+| `PHASE_16J_DB_VERIFIED` | **true** | Production verify PASS; 46/46 acceptance ×2 |
+| `PHASE_16J_COMPLETE` | **true** | Patches 048–050 applied; `test:full` PASS; deploy pending commit/push |
+| `PHASE_16_COMPLETE` | **true** | Migrations 040–047 + patches 048–050; see `docs/PHASE-16-CLOSEOUT.md` |
+| `NEW_SQL_PATCH_REQUIRED` | **none** | 048–050 manually applied in production |
+| `NEW_MIGRATION_047_REQUIRED` | **false** | Migration 047 applied manually |
+| `MANUAL_MIGRATION_047_APPLIED` | **true** | `supabase/migrations/047_phase16h_entity_controls.sql` |
 | `NEW_MIGRATION_045_REQUIRED` | **false** | |
 | `PHASE_14_COMPLETE` | **true** | Migration 032 + patches 032d/033f/034h manually applied; deploy `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` → `https://teller-indol.vercel.app` (commit `ca0ac38`); controlled prod 106/106 DB acceptance; fast 207/207; full 689/689; HFAC unchanged (8 docs, 16 journals, 0 HFAC planning); production journals balanced; planning writes 0 journals |
 | `PHASE_13_COMPLETE` | **true** | Migration 031 manually applied; deploy `dpl_Du2Lfjuwh8hRcWYE7PT3fppmPawZ` → `https://teller-indol.vercel.app`; controlled prod 70/70 DB acceptance; HFAC unchanged; production journals balanced |

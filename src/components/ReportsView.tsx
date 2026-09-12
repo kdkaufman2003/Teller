@@ -20,6 +20,7 @@ import type {
 import type { ComparativeProfitAndLoss } from "@/lib/accounting/comparative-reports";
 import type { AccountantPlanningPackage } from "@/lib/planning/accountant-package/types";
 import { AccountantPlanningPackagePanel } from "@/components/planning/AccountantPlanningPackagePanel";
+import { FinancialReportScopeHeader } from "@/components/legal-entity/FinancialReportScopeHeader";
 
 const PERIODS: { id: ReportPeriod; label: string }[] = [
   { id: "month", label: "This month" },
@@ -37,7 +38,18 @@ const TABS: { id: ReportTab; label: string }[] = [
   { id: "planning", label: "Planning" },
 ];
 
+const TAB_REPORT_NAMES: Record<ReportTab, string> = {
+  overview: "Overview",
+  balance_sheet: "Balance sheet",
+  cash_flow: "Cash flow",
+  ar_aging: "Accounts receivable aging",
+  ap_aging: "Accounts payable aging",
+  planning: "Planning package",
+};
+
 export function ReportsView({
+  companyName,
+  companyEntityCode,
   period,
   periodLabel,
   periodStart,
@@ -58,6 +70,8 @@ export function ReportsView({
   comparativeBalanceSheet = null,
   planningPackage = null,
 }: {
+  companyName?: string;
+  companyEntityCode?: string | null;
   period: ReportPeriod;
   periodLabel: string;
   periodStart: string | null;
@@ -111,6 +125,12 @@ export function ReportsView({
 
   return (
     <div className="space-y-8">
+      <FinancialReportScopeHeader
+        companyName={companyName}
+        entityCode={companyEntityCode}
+        reportName={TAB_REPORT_NAMES[tab]}
+        periodLabel={periodLabel}
+      />
       <div className="flex flex-wrap gap-3 text-sm">
         <Link href={routes.reportsCustomerBalances} className="text-sky hover:underline">
           Customer balances

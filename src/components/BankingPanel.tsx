@@ -58,7 +58,7 @@ const TABS: Array<{ id: BankTransactionTab; label: string }> = [
   { id: "reconciled", label: "Reconciled" },
 ];
 
-export function BankingPanel() {
+export function BankingPanel({ companyLabel }: { companyLabel?: string }) {
   const router = useRouter();
   const [state, setState] = useState<BankingState | null>(null);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
@@ -230,6 +230,7 @@ export function BankingPanel() {
           <h2 className="text-lg font-medium">Banking</h2>
           <p className="text-sm text-muted">
             Review imported bank activity, match payments, categorize, and reconcile.
+            {companyLabel ? ` · ${companyLabel}` : ""}
           </p>
         </div>
         {state.configured && state.serviceRoleConfigured ? (

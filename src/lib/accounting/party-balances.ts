@@ -138,24 +138,29 @@ export async function authoritativeVendorApBalance(
 export async function computeArControlSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<ArControlSubledgerBreakdown> {
+  let invoiceQuery = supabase
+    .from("teller_documents")
+    .select("id, total, party_id, status, posted_entry_id")
+    .eq("organization_id", organizationId)
+    .eq("kind", "invoice")
+    .in("status", ["open", "partially_paid", "paid"])
+    .not("posted_entry_id", "is", null);
+  let creditQuery = supabase
+    .from("teller_documents")
+    .select("id, total, party_id, status, posted_entry_id")
+    .eq("organization_id", organizationId)
+    .eq("kind", "credit_memo")
+    .in("status", ["open", "partially_applied", "applied"])
+    .not("posted_entry_id", "is", null);
+  if (legalEntityId?.trim()) {
+    invoiceQuery = invoiceQuery.eq("legal_entity_id", legalEntityId.trim());
+    creditQuery = creditQuery.eq("legal_entity_id", legalEntityId.trim());
+  }
+
   const [{ data: invoices, error: invoiceError }, { data: creditMemos, error: creditError }] =
-    await Promise.all([
-      supabase
-        .from("teller_documents")
-        .select("id, total, party_id, status, posted_entry_id")
-        .eq("organization_id", organizationId)
-        .eq("kind", "invoice")
-        .in("status", ["open", "partially_paid", "paid"])
-        .not("posted_entry_id", "is", null),
-      supabase
-        .from("teller_documents")
-        .select("id, total, party_id, status, posted_entry_id")
-        .eq("organization_id", organizationId)
-        .eq("kind", "credit_memo")
-        .in("status", ["open", "partially_applied", "applied"])
-        .not("posted_entry_id", "is", null),
-    ]);
+    await Promise.all([invoiceQuery, creditQuery]);
 
   if (invoiceError) throw new Error(invoiceError.message);
   if (creditError) throw new Error(creditError.message);
@@ -259,23 +264,28 @@ function isApObligationDocument(row: { status: string; kind: string }): boolean 
 export async function computeApControlSubledgerTotal(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<ApControlSubledgerBreakdown> {
+  let billQuery = supabase
+    .from("teller_documents")
+    .select("id, total, party_id, status, kind, posted_entry_id")
+    .eq("organization_id", organizationId)
+    .in("kind", ["bill", "expense"])
+    .in("status", ["open", "partially_paid"]);
+  let creditQuery = supabase
+    .from("teller_documents")
+    .select("id, total, party_id, status, posted_entry_id")
+    .eq("organization_id", organizationId)
+    .eq("kind", "vendor_credit")
+    .in("status", ["open", "partially_applied", "applied"])
+    .not("posted_entry_id", "is", null);
+  if (legalEntityId?.trim()) {
+    billQuery = billQuery.eq("legal_entity_id", legalEntityId.trim());
+    creditQuery = creditQuery.eq("legal_entity_id", legalEntityId.trim());
+  }
+
   const [{ data: bills, error: billError }, { data: vendorCredits, error: creditError }] =
-    await Promise.all([
-      supabase
-        .from("teller_documents")
-        .select("id, total, party_id, status, kind, posted_entry_id")
-        .eq("organization_id", organizationId)
-        .in("kind", ["bill", "expense"])
-        .in("status", ["open", "partially_paid"]),
-      supabase
-        .from("teller_documents")
-        .select("id, total, party_id, status, posted_entry_id")
-        .eq("organization_id", organizationId)
-        .eq("kind", "vendor_credit")
-        .in("status", ["open", "partially_applied", "applied"])
-        .not("posted_entry_id", "is", null),
-    ]);
+    await Promise.all([billQuery, creditQuery]);
 
   if (billError) throw new Error(billError.message);
   if (creditError) throw new Error(creditError.message);

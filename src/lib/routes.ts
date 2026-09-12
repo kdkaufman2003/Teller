@@ -57,6 +57,8 @@ export const routes = {
   accountingSchedulesNew: "/app/accounting/schedules/new",
   reports: "/app/reports",
   reportsConsolidated: "/app/reports/consolidated",
+  companiesOverview: "/app/companies",
+  accountingWorkspace: "/app/accounting/workspace",
   banking: "/app/banking",
   bankingReconcile: "/app/banking/reconcile",
   bankingReconciliations: "/app/banking/reconciliations",

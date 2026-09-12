@@ -8,6 +8,7 @@ import { recordDocumentJournalLink } from "./journal-links";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import { loadOrgAccounts, postJournal, assertOrgPeriodOpen } from "./post";
+import { EntityControlError, ENTITY_CONTROL_MESSAGES } from "./entity-books/errors";
 import { recordTellerPayment } from "./payments";
 import { roundMoney } from "./payment-fees";
 
@@ -32,12 +33,8 @@ export async function postMultiBillPayment(
   },
 ) {
   if (!input.allocations.length) throw new Error("Select at least one bill to pay");
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.paymentDate);
 
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
-  const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
-  const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
-  if (!cash || !ap) throw new Error("Cash or AP account is missing");
+  let paymentLegalEntityId: string | null = null;
 
   let cashTotal = 0;
   const validated: Array<{ documentId: string; amount: number; number: string; jobId: string | null }> =
@@ -49,12 +46,17 @@ export async function postMultiBillPayment(
 
     const { data: bill, error } = await supabase
       .from("teller_documents")
-      .select("id, number, total, status, party_id, job_id")
+      .select("id, number, total, status, party_id, job_id, legal_entity_id")
       .eq("organization_id", input.organizationId)
       .eq("kind", "bill")
       .eq("id", allocation.documentId)
       .maybeSingle();
     if (error || !bill) throw new Error("Bill not found");
+    const billEntityId = bill.legal_entity_id as string;
+    if (!paymentLegalEntityId) paymentLegalEntityId = billEntityId;
+    if (billEntityId !== paymentLegalEntityId) {
+      throw new EntityControlError(ENTITY_CONTROL_MESSAGES.crossEntityAllocation);
+    }
     if (bill.party_id !== input.partyId) throw new Error("All bills must belong to the selected vendor");
     if (bill.status === "draft" || bill.status === "void" || bill.status === "pending_approval") {
       throw new Error(`Bill ${bill.number} is not payable`);
@@ -81,9 +83,17 @@ export async function postMultiBillPayment(
 
   cashTotal = roundMoney(cashTotal);
   if (cashTotal <= 0) throw new Error("Payment total must be greater than zero");
+  if (!paymentLegalEntityId) throw new Error("Payment legal entity could not be resolved");
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.paymentDate, paymentLegalEntityId);
+  const accounts = await loadOrgAccounts(supabase, input.organizationId, paymentLegalEntityId);
+  const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
+  const ap = accountBySubtype(accounts, "payable") || accountByCode(accounts, "2000");
+  if (!cash || !ap) throw new Error("Cash or AP account is missing");
 
   const entryId = await postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId: paymentLegalEntityId,
     entryDate: input.paymentDate,
     memo: input.memo || `Vendor payment (${validated.length} bills)`,
     sourceKind: "bill-payment",
@@ -107,6 +117,7 @@ export async function postMultiBillPayment(
 
   const { paymentId } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
+    legalEntityId: paymentLegalEntityId,
     documentId: null,
     documentKind: "bill",
     partyId: input.partyId,
