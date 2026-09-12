@@ -64,6 +64,12 @@ Canonical classification of settings and controls by scope. Use this when adding
 3. **Intercompany RLS OR** → user may read IC row if they can access either payer or payee entity (16D/16E reconciliation).
 4. **Consolidation eliminations** → require access to all entities in scope when restricted.
 
+## Phase 16J closeout
+
+Phase 16 production release: commit `edc0dc6`, Vercel deployment `DnSbrrRVaY63RCN27tKZQrXagnLW`. See [PHASE-16-CLOSEOUT.md](./PHASE-16-CLOSEOUT.md).
+
+---
+
 ## Deferred (not 16H)
 
 - Multicurrency / FX translation

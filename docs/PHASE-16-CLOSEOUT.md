@@ -1,6 +1,6 @@
 # Phase 16 — Multi-Entity Closeout
 
-**Status:** Phase 16J final acceptance and release gate  
+**Status:** **Phase 16 complete** (2026-09-12)  
 **Production project:** `ypixbxicdecwfafculha`  
 **Production URL:** https://teller-indol.vercel.app
 
@@ -89,23 +89,23 @@ npm run build
 | Gate | Result |
 |------|--------|
 | Phase16J controlled acceptance | **46/46 ×2 PASS** |
-| Production verify (read-only) | **PASS** |
-| Unit tests | **935/935 PASS** |
+| `npm run test:full` | **PASS** |
 | Production build | **PASS** |
-| HFAC baseline | **8 docs / 17 journals unchanged** |
-| `npm run test:full` | **FAIL** — legacy Phase 5 demo scripts omit `legal_entity_id` on document fixtures |
+| Git release commit | **`edc0dc6a1f27cf824f2c7cc357cfa6b89e1b86d3`** |
+| Vercel production deployment | **`DnSbrrRVaY63RCN27tKZQrXagnLW`** (success) |
+| Production URL | https://teller-indol.vercel.app |
+| Post-deploy production verify | **PASS** |
+| Production smoke | **PASS** |
+| HFAC post-deploy | **8 docs / 17 journals unchanged** |
+| Unbalanced production journals | **0** |
 
-**Release patches (manual apply only):**
+**SQL patches (manual apply only — all applied in production):**
 
-| Patch | Status | File |
-|-------|--------|------|
-| **048** | Applied | `supabase/patches/048_phase16j_books_closed_through_overload_fix.sql` |
-| **049** | Applied | `supabase/patches/049_phase16j_legacy_posting_entity_fix.sql` |
-| **050** | Applied | `supabase/patches/050_phase16j_payments_entity_default.sql` |
-
-Demo runner fixes (in-repo): `forceOpenDemoBooks` O(1) reset, entity-scoped close fixtures, recurring template + close settings entity keys.
-
-**Full release gate:** `npm run test:full` — **PASS** (unit 935+, build, demos 5–13, deploy audit).
+| Patch | File |
+|-------|------|
+| 048 | `supabase/patches/048_phase16j_books_closed_through_overload_fix.sql` |
+| 049 | `supabase/patches/049_phase16j_legacy_posting_entity_fix.sql` |
+| 050 | `supabase/patches/050_phase16j_payments_entity_default.sql` |
 
 ---
 

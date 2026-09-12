@@ -37,7 +37,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_16C_DB_VERIFIED` | **true** | Migration 042 + patch 043 manually applied |
 | `PHASE_16C_COMPLETE` | **true** | 25/25 controlled acceptance × 2 idempotent reruns |
 | `MANUAL_PATCH_043_REQUIRED` | **false** | Patch 043 applied (`043_phase16c_accounting_state_entity.sql`) |
-| `PHASE_16_COMPLETE` | **false** | |
+| `PHASE_16_COMPLETE` | **true** | Deploy `edc0dc6`; see `docs/PHASE-16-CLOSEOUT.md` |
 | `PHASE_16B_STARTED` | **true** | |
 | `PHASE_16D_STARTED` | **true** | |
 | `PHASE_16D_CODE_COMPLETE` | **true** | Migration 044, atomic RPCs, UI, API, acceptance |
@@ -70,8 +70,8 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_16J_STARTED` | **true** | Final Phase 16 acceptance & release |
 | `PHASE_16J_CODE_COMPLETE` | **true** | Cross-entity transfer guard, closeout harness, build fixes |
 | `PHASE_16J_DB_VERIFIED` | **true** | Production verify PASS; 46/46 acceptance ×2 |
-| `PHASE_16J_COMPLETE` | **true** | Patches 048–050 applied; `test:full` PASS; deploy pending commit/push |
-| `PHASE_16_COMPLETE` | **true** | Migrations 040–047 + patches 048–050; see `docs/PHASE-16-CLOSEOUT.md` |
+| `PHASE_16J_COMPLETE` | **true** | Deploy `edc0dc6` → Vercel `DnSbrrRVaY63RCN27tKZQrXagnLW`; post-deploy gates PASS |
+| `PRODUCTION_DEPLOYED_FOR_PHASE16` | **true** | https://teller-indol.vercel.app · HFAC 8 docs / 17 journals unchanged |
 | `NEW_SQL_PATCH_REQUIRED` | **none** | 048–050 manually applied in production |
 | `NEW_MIGRATION_047_REQUIRED` | **false** | Migration 047 applied manually |
 | `MANUAL_MIGRATION_047_APPLIED` | **true** | `supabase/migrations/047_phase16h_entity_controls.sql` |

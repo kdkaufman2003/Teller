@@ -13,7 +13,7 @@
 | **16G** | Consolidation eliminations | **Complete — migration 046 applied** |
 | **16H** | Entity-level accounting controls | **Complete — migration 047 applied; 39/39 acceptance** |
 | **16I** | Multi-entity UX & accountant workflows | **Complete — no migration; 39/39 acceptance (2026-09-12)** |
-| 16J | Final Phase 16 acceptance / deploy | Not started |
+| **16J** | Final Phase 16 acceptance / deploy | **Complete — commit `edc0dc6`; Vercel `DnSbrrRVaY63RCN27tKZQrXagnLW`; patches 048–050 applied; 46/46 acceptance ×2; `test:full` PASS** |
 
 Full architecture: [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md)
 
