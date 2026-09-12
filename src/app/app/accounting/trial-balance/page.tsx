@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { buildTrialBalance } from "@/lib/accounting/trial-balance";
 import { endOfMonth } from "@/lib/accounting/periods";
 import { money } from "@/lib/format";
@@ -22,7 +23,14 @@ export default async function TrialBalancePage({ searchParams }: PageProps) {
   const periodStart = params.periodStart?.slice(0, 10) ?? `${periodEnd.slice(0, 8)}01`;
 
   const supabase = await createClient();
-  const report = await buildTrialBalance(supabase, session.organization.id, {
+  const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
+  const report = await buildTrialBalance(supabase, organizationId, {
+    legalEntityId,
     periodStart,
     periodEnd,
   });

@@ -5,12 +5,14 @@ import {
   loadAccountingStateVersions,
 } from "./accounting-state";
 import { evaluateCloseReadiness } from "./close-readiness";
+import { resolveLegalEntityId } from "./post";
 import { buildTrialBalance } from "./trial-balance";
 
 export async function closeAccountingPeriod(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     periodEnd: string;
     notes?: string;
     warningsAcknowledged?: unknown[];
@@ -21,8 +23,18 @@ export async function closeAccountingPeriod(
   },
 ) {
   const periodEnd = input.periodEnd.slice(0, 10);
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    input.organizationId,
+    input.legalEntityId,
+  );
 
-  const readiness = await evaluateCloseReadiness(supabase, input.organizationId, periodEnd);
+  const readiness = await evaluateCloseReadiness(
+    supabase,
+    input.organizationId,
+    legalEntityId,
+    periodEnd,
+  );
   if (!input.skipReadiness && !readiness.ready) {
     throw new Error(`Period not ready to close: ${readiness.blockerCount} blocker(s)`);
   }
@@ -33,6 +45,7 @@ export async function closeAccountingPeriod(
     input.expectedCloseStateVersion ?? readiness.closeStateVersion;
 
   const tb = await buildTrialBalance(supabase, input.organizationId, {
+    legalEntityId,
     periodStart: periodEnd.slice(0, 8) + "01",
     periodEnd,
   });
@@ -48,6 +61,7 @@ export async function closeAccountingPeriod(
 
   const { data: eventId, error } = await supabase.rpc("teller_close_accounting_period", {
     p_organization_id: input.organizationId,
+    p_legal_entity_id: legalEntityId,
     p_period_end: periodEnd,
     p_notes: input.notes ?? "",
     p_readiness_snapshot: snapshot,
@@ -80,6 +94,7 @@ export async function reopenAccountingPeriod(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     periodEnd: string;
     reason: string;
     actorId?: string | null;
@@ -87,9 +102,15 @@ export async function reopenAccountingPeriod(
 ) {
   const periodEnd = input.periodEnd.slice(0, 10);
   if (!input.reason.trim()) throw new Error("Reopen reason is required");
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    input.organizationId,
+    input.legalEntityId,
+  );
 
   const { data: eventId, error } = await supabase.rpc("teller_reopen_accounting_period", {
     p_organization_id: input.organizationId,
+    p_legal_entity_id: legalEntityId,
     p_period_end: periodEnd,
     p_reason: input.reason.trim(),
     p_actor_id: input.actorId ?? null,
@@ -112,18 +133,30 @@ export async function startPeriodReview(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     periodEnd: string;
     actorId?: string | null;
   },
 ) {
   const periodEnd = input.periodEnd.slice(0, 10);
-  const readiness = await evaluateCloseReadiness(supabase, input.organizationId, periodEnd);
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    input.organizationId,
+    input.legalEntityId,
+  );
+  const readiness = await evaluateCloseReadiness(
+    supabase,
+    input.organizationId,
+    legalEntityId,
+    periodEnd,
+  );
 
   const { data, error } = await supabase
     .from("teller_period_close_reviews")
     .upsert(
       {
         organization_id: input.organizationId,
+        legal_entity_id: legalEntityId,
         period_end: periodEnd,
         status: "in_review",
         started_at: new Date().toISOString(),
@@ -131,7 +164,7 @@ export async function startPeriodReview(
         readiness_snapshot: readiness,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "organization_id,period_end" },
+      { onConflict: "legal_entity_id,period_end" },
     )
     .select("*")
     .single();

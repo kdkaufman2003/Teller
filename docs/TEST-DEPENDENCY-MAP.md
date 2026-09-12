@@ -154,6 +154,7 @@ Set active phase: `TELLER_TEST_PHASE=14 npm run test:phase` (defaults to **13**)
 | 13 | inventory_grni, ap, job_costing, close, reporting | **6, 7, 9, 10, 11.1, 13** |
 | 14 | planning, period_lock_close, financial_reporting | **9, 10** |
 | 15 | sales_tax | 15 (15A foundation + 15B calculation engine) |
+| 16 | shared_journal_engine | 16 (16A legal entity foundation — no demo yet) |
 
 Configuration source: `scripts/test-tier-config.mjs`
 
@@ -172,6 +173,26 @@ Configuration source: `scripts/test-tier-config.mjs`
 **Owner tax overview (15J):** `src/lib/accounting/tax/owner/**`, `GET /api/tax/overview`, `TaxOverviewView` — read-only; depends on 15F filing periods, 15G payments, 15I reports (no new schema).
 
 **Manual reference data (15H):** `npm run tax-rules:load-state-packs` — loads global rate components; org activation is separate via API/acceptance.
+
+### Phase 16 multi-entity (16A + 16B)
+
+**Code:** `src/lib/accounting/legal-entity/**`
+
+**Migrations (manual apply):**
+- `040_phase16a_legal_entity_foundation.sql` — applied
+- `041_phase16b_entity_access.sql` — applied
+
+**Unit tests:** `phase16a.test.ts`, `phase16b.test.ts`
+
+**Static verify:** `verify:phase16:multi-entity`
+
+**Production schema probes (after manual apply):**
+- `verify:migration:040:controlled`
+- `verify:migration:041:controlled`
+
+**DB acceptance:**
+- `accept:phase16:controlled` (11 × 16A)
+- `accept:phase16b:controlled` (11 × 16B — requires `setup:phase16-demo-org` for controlled profile fixture)
 
 ## Parallelization policy
 

@@ -12,14 +12,18 @@ import { buildArAging, buildApAging } from "@/lib/accounting/aging-service";
 import { recordAuditEvent } from "@/lib/accounting/audit";
 import { buildPlanningPackageExportFiles } from "@/lib/planning/accountant-package/export";
 import { loadAccountantPlanningPackage } from "@/lib/planning/accountant-package/load-accountant-planning-package";
-import { jsonError, requireBooks } from "@/lib/api";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
+import { jsonError, requireAccountingBooks } from "@/lib/api";
 import { canExportBooks, parseCpaMode } from "@/lib/accounting/cpa";
 import { parseFiscalYearStart, parseAccountingBasis } from "@/lib/org/config";
 import { getSessionContext } from "@/lib/session";
 
 export async function GET(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
+  const entityId =
+    ctx.legalEntityId ??
+    (await resolveLegalEntityId(ctx.supabase, ctx.organizationId, null));
 
   const session = await getSessionContext();
   const exportAllowed = canExportBooks(session?.profile?.role, parseCpaMode(session?.settings?.answers?.cpaMode));
@@ -43,6 +47,7 @@ export async function GET(request: Request) {
   const data = await loadReportEngineData(ctx.supabase, ctx.organizationId, periodEnd, periodStart);
   const reports = await buildReportsFromEngine(ctx.supabase, reportCtx, data);
   const trialBalance = await buildTrialBalance(ctx.supabase, ctx.organizationId, {
+    legalEntityId: entityId,
     periodStart,
     periodEnd,
   });
@@ -50,7 +55,8 @@ export async function GET(request: Request) {
   const { data: entries } = await ctx.supabase
     .from("teller_journal_entries")
     .select("id, entry_date, memo, source_kind, source_id, reverses_entry_id")
-    .eq("organization_id", ctx.organizationId);
+    .eq("organization_id", ctx.organizationId)
+    .eq("legal_entity_id", entityId);
   const entryIds = (entries ?? []).map((e) => e.id as string);
   const { data: lines } = entryIds.length
     ? await ctx.supabase

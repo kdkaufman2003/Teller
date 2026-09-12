@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireBooks } from "@/lib/api";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
+import { requireAccountingBooks } from "@/lib/api";
 import { bankingConfigured } from "@/lib/banking/provider";
 import {
   computeBookBalanceForBankAccount,
@@ -9,9 +10,11 @@ import { TAB_STATUS_MAP } from "@/lib/banking/types";
 import { hasServiceRole } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, legalEntityId } = ctx;
+  const entityId =
+    legalEntityId ?? (await resolveLegalEntityId(supabase, organizationId, null));
 
   const url = new URL(request.url);
   const bankAccountId = url.searchParams.get("bankAccountId");
@@ -26,6 +29,7 @@ export async function GET(request: Request) {
       .from("teller_bank_accounts")
       .select("id, connection_id, name, mask, account_type, account_subtype, current_balance, gl_account_id, teller_account_id, last_synced_at")
       .eq("organization_id", organizationId)
+      .eq("legal_entity_id", entityId)
       .order("name"),
     supabase
       .from("teller_integrations")

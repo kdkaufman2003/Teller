@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { evaluateCloseReadiness } from "@/lib/accounting/close-readiness";
 import {
   booksClosedThrough,
@@ -20,11 +21,17 @@ export default async function CloseDashboardPage() {
 
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
 
   const { data: closes } = await supabase
     .from("teller_period_closes")
     .select("id, period_end, notes, closed_at, closed_by, effective_closed_through")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .order("period_end", { ascending: false })
     .limit(24);
 
@@ -34,7 +41,7 @@ export default async function CloseDashboardPage() {
   const periods = recentMonthPeriods(12, new Date(), closedThrough);
 
   const readiness = nextClose
-    ? await evaluateCloseReadiness(supabase, organizationId, nextClose)
+    ? await evaluateCloseReadiness(supabase, organizationId, legalEntityId, nextClose)
     : null;
 
   return (

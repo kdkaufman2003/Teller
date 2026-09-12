@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { canManagePeriodClose } from "@/lib/accounting/cpa";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { evaluateCloseReadiness } from "@/lib/accounting/close-readiness";
 import {
   booksClosedThrough,
@@ -39,6 +40,11 @@ export default async function ClosePeriodDetailPage({ params }: PageProps) {
   const periodEnd = endOfMonth(parsed.year, parsed.month);
   const supabase = await createClient();
   const organizationId = session.organization.id;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    session.profile?.active_legal_entity_id ?? null,
+  );
   const role = session.profile?.role ?? "viewer";
   const canManageClose = canManagePeriodClose(role);
 
@@ -47,9 +53,10 @@ export default async function ClosePeriodDetailPage({ params }: PageProps) {
       .from("teller_period_closes")
       .select("id, period_end, notes, closed_at, closed_by, effective_closed_through")
       .eq("organization_id", organizationId)
+      .eq("legal_entity_id", legalEntityId)
       .order("closed_at", { ascending: false })
       .limit(24),
-    evaluateCloseReadiness(supabase, organizationId, periodEnd),
+    evaluateCloseReadiness(supabase, organizationId, legalEntityId, periodEnd),
   ]);
 
   const closeRows = (closes ?? []) as PeriodCloseRow[];

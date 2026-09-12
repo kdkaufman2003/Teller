@@ -20,6 +20,7 @@ export const PHASE_DEMOS = {
 };
 
 export const PHASE_VERIFY = {
+  16: "verify:phase16:multi-entity",
   15: "verify:migration:035:controlled",
   14: "verify:migration:032:controlled",
   13: "verify:phase13:controlled",
@@ -70,6 +71,8 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/accounting/tax/phase15h.test.ts",
   "src/lib/accounting/tax/phase15i.test.ts",
   "src/lib/accounting/tax/phase15j.test.ts",
+  "src/lib/accounting/phase16a.test.ts",
+  "src/lib/accounting/phase16b.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -85,6 +88,11 @@ export const PHASE_UNIT_TESTS = {
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
   14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts", "src/lib/planning/reports/phase14d.test.ts", "src/lib/planning/reports/phase14e.test.ts", "src/lib/planning/reports/phase14f.test.ts", "src/lib/planning/reports/phase14g.test.ts", "src/lib/planning/reports/phase14h.test.ts", "src/lib/planning/reports/phase14i.test.ts", "src/lib/planning/reports/phase14j.test.ts"],
+  16: [
+    "src/lib/accounting/phase16a.test.ts",
+    "src/lib/accounting/phase16b.test.ts",
+    "src/lib/accounting/phase16c.test.ts",
+  ],
   15: [
     "src/lib/accounting/tax/phase15a.test.ts",
     "src/lib/accounting/tax/phase15b.test.ts",
@@ -188,6 +196,7 @@ export const PHASE_PRIMARY_MODULES = {
   13: ["inventory_grni", "ap_purchasing", "job_costing", "period_lock_close", "financial_reporting"],
   14: ["planning", "period_lock_close", "financial_reporting"],
   15: ["sales_tax", "shared_journal_engine", "financial_reporting"],
+  16: ["shared_journal_engine"],
 };
 
 export function demoPhaseKey(phase) {
@@ -220,6 +229,7 @@ export function resolveAffectedUnitPatterns(phase = CURRENT_PHASE) {
 export const ALL_DEMO_PHASES = [5, 6, 7, 8, 9, 10, 11, "11.1", 12, 13];
 
 export const DB_ACCEPTANCE_SCRIPTS = {
+  16: "accept:phase16:controlled",
   15: "accept:phase15:controlled",
   11: "accept:phase11:controlled",
   "11.1": "accept:phase11-1:controlled",

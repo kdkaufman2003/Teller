@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAccountingStateVersions } from "./accounting-state";
+import { resolveLegalEntityId } from "./post";
 import { buildCloseReconciliationSummary } from "./close-reconciliation-summary";
 import { buildTrialBalance } from "./trial-balance";
 import { listUnassignedJobActivity } from "./unassigned-job-activity";
@@ -46,12 +47,17 @@ export type CloseReadinessReport = {
 export async function evaluateCloseReadiness(
   supabase: SupabaseClient,
   organizationId: string,
-  periodEnd: string,
+  legalEntityIdOrPeriodEnd: string,
+  periodEndMaybe?: string,
 ): Promise<CloseReadinessReport> {
+  const periodEnd = periodEndMaybe ?? legalEntityIdOrPeriodEnd;
+  const legalEntityId = periodEndMaybe
+    ? legalEntityIdOrPeriodEnd
+    : await resolveLegalEntityId(supabase, organizationId, null);
   const asOfDate = periodEnd.slice(0, 10);
   const periodDate = new Date(asOfDate + "T12:00:00");
   const findings: CloseFinding[] = [];
-  const stateVersions = await loadAccountingStateVersions(supabase, organizationId);
+  const stateVersions = await loadAccountingStateVersions(supabase, organizationId, legalEntityId);
 
   const reconciliations = await buildCloseReconciliationSummary(supabase, organizationId, {
     asOfDate,
@@ -74,6 +80,7 @@ export async function evaluateCloseReadiness(
   }
 
   const tb = await buildTrialBalance(supabase, organizationId, {
+    legalEntityId,
     periodStart: asOfDate.slice(0, 8) + "01",
     periodEnd: asOfDate,
   });
@@ -93,6 +100,7 @@ export async function evaluateCloseReadiness(
     .from("teller_journal_entries")
     .select("id")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .lte("entry_date", asOfDate);
 
   for (const entry of entries ?? []) {

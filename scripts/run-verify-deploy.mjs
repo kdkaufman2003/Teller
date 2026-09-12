@@ -31,6 +31,11 @@ if (phase === 13) {
   steps.push(run("verify_grni_patch", "npm", ["run", "verify:grni-settle-rpc-patch:controlled"]));
 }
 
+if (phase === 16) {
+  steps.push(run("verify_phase16_multi_entity", "npm", ["run", "verify:phase16:multi-entity"]));
+  steps.push(run("verify_migration_040", "npm", ["run", "verify:migration:040:controlled"]));
+}
+
 if (phase === 15) {
   steps.push(run("verify_phase15_tax", "npm", ["run", "verify:phase15:tax"]));
   steps.push(run("verify_migration_035", "npm", ["run", "verify:migration:035:controlled"]));

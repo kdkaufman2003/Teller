@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { reopenAccountingPeriod } from "@/lib/accounting/period-close";
-import { jsonError, requireAdminBooks } from "@/lib/api";
+import { jsonError, requireAccountingAdminBooks } from "@/lib/api";
 
 export async function POST(request: Request) {
-  const ctx = await requireAdminBooks();
+  const ctx = await requireAccountingAdminBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId, session } = ctx;
+  const { supabase, organizationId, legalEntityId, session } = ctx;
 
   const body = (await request.json()) as { periodEnd?: string; reason?: string };
   const periodEnd = String(body.periodEnd ?? "").slice(0, 10);
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
   try {
     const result = await reopenAccountingPeriod(supabase, {
       organizationId,
+      legalEntityId,
       periodEnd,
       reason,
       actorId: session.userId,

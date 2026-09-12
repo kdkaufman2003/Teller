@@ -83,6 +83,7 @@ export const routes = {
   planningScenarios: "/app/planning/scenarios",
   planningScenarioNew: "/app/planning/scenarios/new",
   settings: "/app/settings",
+  entitySettings: "/app/settings/entities",
 } as const;
 
 export function invoicePath(id: string) {

@@ -1,6 +1,8 @@
+import { resolveActiveLegalEntityContext } from "@/lib/accounting/legal-entity";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type {
+  ProfileRole,
   SessionContext,
   TellerOrganization,
   TellerProfile,
@@ -15,11 +17,26 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await supabase
+  let profile: TellerProfile | null = null;
+  const profileWithActive = await supabase
     .from("teller_profiles")
-    .select("id, organization_id, email, full_name, role")
+    .select("id, organization_id, email, full_name, role, active_legal_entity_id")
     .eq("id", user.id)
     .maybeSingle();
+
+  if (
+    profileWithActive.error &&
+    /active_legal_entity_id|schema cache|does not exist/i.test(profileWithActive.error.message)
+  ) {
+    const fallback = await supabase
+      .from("teller_profiles")
+      .select("id, organization_id, email, full_name, role")
+      .eq("id", user.id)
+      .maybeSingle();
+    profile = (fallback.data as TellerProfile) ?? null;
+  } else {
+    profile = (profileWithActive.data as TellerProfile) ?? null;
+  }
 
   let organization: TellerOrganization | null = null;
   let settings: TellerSettings | null = null;
@@ -43,12 +60,46 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     settings = (industry as TellerSettings) ?? null;
   }
 
+  let activeLegalEntity = null;
+  let accessibleLegalEntities: SessionContext["accessibleLegalEntities"];
+  let showEntitySwitcher = false;
+
+  if (profile?.organization_id && profile.role) {
+    try {
+      const activeContext = await resolveActiveLegalEntityContext(supabase, {
+        organizationId: profile.organization_id,
+        auth: { userId: user.id, role: profile.role as ProfileRole },
+        persistedLegalEntityId: profile.active_legal_entity_id,
+      });
+      activeLegalEntity = {
+        id: activeContext.legalEntity.id,
+        name: activeContext.legalEntity.name,
+        entityCode: activeContext.legalEntity.entityCode,
+        isDefault: activeContext.legalEntity.isDefault,
+      };
+      accessibleLegalEntities = activeContext.accessibleEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.name,
+        entityCode: entity.entityCode,
+        isDefault: entity.isDefault,
+      }));
+      showEntitySwitcher = activeContext.showEntitySwitcher;
+    } catch {
+      activeLegalEntity = null;
+      accessibleLegalEntities = [];
+      showEntitySwitcher = false;
+    }
+  }
+
   return {
     userId: user.id,
     email: user.email || profile?.email || "",
     profile: (profile as TellerProfile) ?? null,
     organization,
     settings,
+    activeLegalEntity,
+    accessibleLegalEntities,
+    showEntitySwitcher,
   };
 }
 

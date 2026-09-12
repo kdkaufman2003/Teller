@@ -155,6 +155,14 @@ export type TellerProfile = {
   email: string;
   full_name: string;
   role: ProfileRole;
+  active_legal_entity_id?: string | null;
+};
+
+export type ActiveLegalEntitySummary = {
+  id: string;
+  name: string;
+  entityCode: string;
+  isDefault: boolean;
 };
 
 export type SessionContext = {
@@ -163,4 +171,7 @@ export type SessionContext = {
   profile: TellerProfile | null;
   organization: TellerOrganization | null;
   settings: TellerSettings | null;
+  activeLegalEntity?: ActiveLegalEntitySummary | null;
+  accessibleLegalEntities?: ActiveLegalEntitySummary[];
+  showEntitySwitcher?: boolean;
 };

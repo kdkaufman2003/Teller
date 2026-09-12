@@ -40,13 +40,31 @@ export type JournalLineInput = {
   memo?: string;
 };
 
+export async function resolveLegalEntityId(
+  supabase: SupabaseClient,
+  organizationId: string,
+  legalEntityId?: string | null,
+): Promise<string> {
+  if (legalEntityId?.trim()) return legalEntityId.trim();
+  const { data, error } = await supabase.rpc("teller_default_legal_entity_id", {
+    p_org_id: organizationId,
+  });
+  if (error || !data) {
+    throw new Error(error?.message || "Default legal entity missing for organization");
+  }
+  return data as string;
+}
+
 export async function assertOrgPeriodOpen(
   supabase: SupabaseClient,
   organizationId: string,
   entryDate: string,
+  legalEntityId?: string | null,
 ) {
+  const entityId = await resolveLegalEntityId(supabase, organizationId, legalEntityId);
   const { data: closedThrough, error } = await supabase.rpc("teller_books_closed_through", {
     p_org: organizationId,
+    p_legal_entity_id: entityId,
   });
   if (error) throw new Error(error.message);
   assertEntryDateOpen((closedThrough as string | null) ?? null, entryDate);
@@ -104,6 +122,7 @@ export async function postJournal(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     entryDate: string;
     memo: string;
     sourceKind?: string;
@@ -115,9 +134,15 @@ export async function postJournal(
   },
 ) {
   assertBalanced(input.lines);
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    input.organizationId,
+    input.legalEntityId,
+  );
 
   const { data: entryId, error } = await supabase.rpc("teller_post_journal", {
     p_organization_id: input.organizationId,
+    p_legal_entity_id: legalEntityId,
     p_entry_date: input.entryDate,
     p_memo: input.memo,
     p_source_kind: input.sourceKind ?? null,
@@ -174,6 +199,7 @@ export async function reverseJournalEntry(
   supabase: SupabaseClient,
   input: {
     organizationId: string;
+    legalEntityId?: string | null;
     entryId: string;
     entryDate: string;
     memo: string;
@@ -181,7 +207,20 @@ export async function reverseJournalEntry(
     actorId?: string | null;
   },
 ) {
-  await assertOrgPeriodOpen(supabase, input.organizationId, input.entryDate);
+  const { data: entry, error: entryError } = await supabase
+    .from("teller_journal_entries")
+    .select("legal_entity_id")
+    .eq("id", input.entryId)
+    .eq("organization_id", input.organizationId)
+    .maybeSingle();
+  if (entryError) throw new Error(entryError.message);
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    input.organizationId,
+    input.legalEntityId ?? (entry?.legal_entity_id as string | null | undefined),
+  );
+
+  await assertOrgPeriodOpen(supabase, input.organizationId, input.entryDate, legalEntityId);
   const { data: lines, error: linesError } = await supabase
     .from("teller_journal_lines")
     .select("account_id, debit, credit, party_id, job_id, fixed_asset_id, memo")
@@ -194,6 +233,7 @@ export async function reverseJournalEntry(
 
   return postJournal(supabase, {
     organizationId: input.organizationId,
+    legalEntityId,
     entryDate: input.entryDate,
     memo: input.memo,
     sourceKind: "reversal",
@@ -348,11 +388,14 @@ type AccountRow = {
 export async function loadOrgAccounts(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId?: string | null,
 ): Promise<AccountRow[]> {
+  const entityId = await resolveLegalEntityId(supabase, organizationId, legalEntityId);
   const { data, error } = await supabase
     .from("teller_accounts")
     .select("id, code, type, subtype, name")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", entityId)
     .eq("archived", false);
   if (error) throw new Error(error.message);
   return (data ?? []) as AccountRow[];

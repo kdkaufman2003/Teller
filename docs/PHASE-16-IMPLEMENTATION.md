@@ -1,0 +1,354 @@
+# Phase 16 — Multi-Entity Implementation
+
+## Roadmap
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| **16A** | Legal entity foundation + data model | **Complete** (migration 040 manually applied 2026-09-11) |
+| **16B** | Entity setup, switching, permissions | **Complete — migration 041 applied; 11/11 controlled acceptance (2026-09-11)** |
+| **16C** | Entity-specific books, COA, periods | **Complete — 25/25 acceptance × 2 reruns (2026-09-11)** |
+| 16D–16J | Intercompany, consolidation, UX, deploy | Not started |
+
+Full architecture: [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md)
+
+---
+
+## Phase 16A (2026-09-11)
+
+### Delivered (code)
+
+| Area | Path |
+|------|------|
+| Migration (manual) | `supabase/migrations/040_phase16a_legal_entity_foundation.sql` |
+| Types | `src/lib/accounting/legal-entity/types.ts` |
+| Validation | `src/lib/accounting/legal-entity/validation.ts` |
+| Resolver | `src/lib/accounting/legal-entity/resolver.ts` |
+| Accounting context | `src/lib/accounting/legal-entity/context.ts` |
+| Service | `src/lib/accounting/legal-entity/service.ts` |
+| Unit tests | `src/lib/accounting/phase16a.test.ts` |
+| Static verify | `scripts/verify-phase16-multi-entity.mjs` |
+| Migration probe | `scripts/verify-migration-040-controlled.mjs` |
+| Controlled acceptance | `scripts/controlled-phase16a-db-acceptance.ts` |
+| Demo org setup | `scripts/setup-phase16-demo-org.mjs` |
+
+### Migration 040 scope
+
+- `teller_legal_entities` table + RLS
+- Partial unique index: one active default per org
+- `teller_seed_default_legal_entity(org_id)` RPC (idempotent)
+- Backfill default entity for existing setup-completed orgs
+- Extend `teller_complete_setup` to seed default entity on new orgs
+- **Does not** add `legal_entity_id` to journals/documents/payments yet
+
+### Operator commands
+
+```bash
+# After manual migration 040 apply:
+npm run setup:phase16-demo-org
+npm run verify:migration:040:controlled
+npm run accept:phase16:controlled
+
+# Development (no DB):
+npm run verify:phase16:multi-entity
+TELLER_TEST_PHASE=16 npm run test:phase
+npm run test:fast
+```
+
+### 16A close gate (verified 2026-09-11)
+
+Migration `040_phase16a_legal_entity_foundation.sql` **manually applied** to production (`ypixbxicdecwfafculha`).
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_040_VERIFY` | PASS |
+| `EXISTING_ORG_DEFAULT_ENTITY_BACKFILL` | PASS — 22 orgs backfilled at apply; 0 zero-default; 0 multi-default |
+| `ONE_DEFAULT_LEGAL_ENTITY_PER_ORG` | PASS — partial unique index enforced (DB insert test) |
+| `LEGAL_ENTITY_ORG_INTEGRITY` | PASS |
+| `PHASE16A_RLS` | PASS — RLS enabled; 3 member-scoped policies; no DELETE policy |
+| `DEFAULT_ENTITY_RESOLVER` | PASS |
+| `ACCOUNTING_CONTEXT_VALIDATION` | PASS |
+| `NEW_ORG_DEFAULT_ENTITY` | PASS — `teller_complete_setup` seeds default entity |
+| `DEFAULT_ENTITY_SETUP_IDEMPOTENCY` | PASS |
+| `PHASE16_CONTROLLED_ACCEPTANCE` | PASS — 11/11 |
+| `MIGRATION_040_ECONOMIC_MUTATIONS` | 0 |
+| `UNBALANCED_PRODUCTION_JOURNALS` | 0 (1487 entries) |
+| `PHASE16A_JOURNALS_CREATED` | 0 |
+| `HFAC_ECONOMIC_DATA_MODIFIED` | false (8 docs / 17 journals / 4 payments unchanged) |
+| `HFAC_DEFAULT_ENTITY_COMPATIBILITY` | PASS — MAIN entity seeded; not an economic mutation |
+| `PHASE15_TAX_REGRESSION` | PASS |
+| `PHASE16_STATIC_VERIFY` | PASS |
+| `FAST_TESTS` | PASS — 363/363 |
+| `PHASE16_TESTS` | PASS — 10/10 |
+| `AFFECTED_TESTS` | PASS — 421 unit + Phase 6/7/9/10/11.1/13 demos |
+| `TARGETED_LINT` | PASS |
+| `PLACEHOLDER_TESTS` | 0 |
+
+**Backfill counts (at migration apply):** `ORGANIZATIONS_CHECKED=22`, `LEGAL_ENTITIES_CREATED=22`, `ORGS_WITH_ZERO_DEFAULT=0`, `ORGS_WITH_MULTIPLE_DEFAULTS=0`. Post-verification demo orgs add 2 controlled test tenants (not HFAC).
+
+**Demo org:** `PHASE16_DEMO_ORG_ID=7eea46b5-a65d-4c85-94da-70b1d00a2036` (`Teller Phase 16 Demo`).
+
+```
+PHASE_16_STARTED = true
+PHASE_16_SLICE = 16A
+
+MIGRATION_040_MANUALLY_APPLIED = true
+PHASE16_ARCHITECTURE_DOCUMENTED = true
+
+PHASE_16A_CODE_COMPLETE = true
+PHASE_16A_DB_VERIFIED = true
+PHASE_16A_COMPLETE = true
+PHASE_16_COMPLETE = false
+PHASE_16B_STARTED = false
+
+NEW_MIGRATION_REQUIRED = false
+MANUAL_PATCH_REQUIRED = false
+```
+
+---
+
+## Phase 16B pre-flight audit (2026-09-11)
+
+### CURRENT_MEMBERSHIP_MODEL
+
+- **Organization:** `teller_profiles.organization_id` — one org per user (V1).
+- **Roles:** `owner | admin | bookkeeper | viewer` via `teller_profiles.role`.
+- **Guards:** `requireBooks()`, `requireWriteBooks()`, `requireAdminBooks()` in `src/lib/api.ts`.
+- **RLS:** `teller_is_org_member(org_id)` on all tenant tables.
+
+### CURRENT_PERMISSION_MODEL
+
+- Org RBAC only (no entity dimension before 16B).
+- Write: `canWriteBooks(role)` → owner/admin/bookkeeper.
+- Admin: owner/admin for settings, period reopen, entity access management.
+
+### ENTITY_ACCESS_EXTENSION
+
+**Chosen model: B + explicit rows (hybrid)**
+
+| Role / state | Access |
+|--------------|--------|
+| owner, admin | All entities in org (canonical logic — no membership rows required) |
+| bookkeeper, viewer with **zero** membership rows | All entities (backward compatible for existing single-entity customers) |
+| Any role with **≥1** membership row | Only listed entities (restricted mode) |
+
+Table: `teller_legal_entity_memberships` (migration 041).
+
+New entities: owner/admin see immediately; restricted users do **not** gain access unless granted.
+
+### ENTITY_SELECTION_MODEL
+
+- **Active context:** `teller_profiles.active_legal_entity_id` (server-owned preference).
+- **Resolution:** `resolveActiveLegalEntityContext()` → validates access on every request.
+- **API guard:** `requireEntityBooks()` — never trusts client-supplied entity ID without reauthorization.
+- **Single entity:** auto-resolved; no switcher noise (`showEntitySwitcher = false`).
+- **Multi entity:** sidebar switcher lists authorized entities only.
+
+### SESSION_CONTEXT_STRATEGY
+
+- `getSessionContext()` extended with `activeLegalEntity`, `accessibleLegalEntities`, `showEntitySwitcher`.
+- **URL strategy (V1):** stable routes; active entity in session/profile — not route params (avoids route churn before 16C domain scoping).
+- **Persistence:** profile column + revalidation; not localStorage alone.
+- `PERSISTED_ENTITY_ID_IS_TRUSTED_WITHOUT_RECHECK = false`
+
+### HFAC_DEFAULT_CHANGE_STRATEGY
+
+- HFAC webhooks resolve org → **default legal entity** (unchanged).
+- **Block** default entity changes while `teller_integrations.provider = 'hfac'` is enabled (`teller_set_default_legal_entity` RPC + app guard).
+- No HFAC code changes in 16B.
+- Future: explicit integration → entity mapping table (16C+).
+
+### Phase 16B delivered (code)
+
+| Area | Path |
+|------|------|
+| Migration (manual) | `supabase/migrations/041_phase16b_entity_access.sql` |
+| Entity access | `src/lib/accounting/legal-entity/access.ts` |
+| Active context | `src/lib/accounting/legal-entity/active-context.ts` |
+| API guard | `requireEntityBooks()` in `src/lib/api.ts` |
+| Session | `src/lib/session.ts` |
+| REST API | `src/app/api/legal-entities/**` |
+| Settings UI | `/app/settings/entities` |
+| Switcher | `src/components/legal-entity/EntitySwitcher.tsx` |
+| Unit tests | `src/lib/accounting/phase16b.test.ts` |
+| Migration probe | `scripts/verify-migration-041-controlled.mjs` |
+| Controlled acceptance | `scripts/controlled-phase16b-db-acceptance.ts` |
+
+### Operator commands
+
+```bash
+# After manual migration 041 apply:
+npm run setup:phase16-demo-org   # creates controlled profile fixture (idempotent)
+npm run verify:migration:041:controlled
+npm run accept:phase16b:controlled
+
+# Development (no DB writes):
+npm run verify:phase16:multi-entity
+TELLER_TEST_PHASE=16 npm run test:phase
+npm run test:fast
+```
+
+### 16B verification (2026-09-11)
+
+Production ref `ypixbxicdecwfafculha` after manual migration 041 apply:
+
+| Object | Status |
+|--------|--------|
+| `teller_legal_entity_memberships` | OK |
+| `teller_profiles.active_legal_entity_id` | OK |
+| `teller_can_access_legal_entity()` | OK |
+| `teller_set_default_legal_entity()` | OK |
+| Economic baseline | 0 unbalanced production journals; HFAC 8 docs / 17 journals / 4 payments / 4 allocations / 0 tax unchanged |
+
+### 16B acceptance harness repair (2026-09-11)
+
+Initial controlled acceptance: **6/10** — four scenarios failed with `demo org has no profile`.
+
+**Root cause:** `setup-phase16-demo-org` seeded org + legal entities but never created the isolated `teller_profiles` row required for restricted-access tests. Not an authorization defect.
+
+**Fix (harness only — no accounting semantic changes, no schema change):**
+
+- `scripts/phase16-controlled-fixture.mjs` — deterministic controlled auth user + bookkeeper profile (`TELLER_PHASE16_RESTRICTED_PROFILE_ID`)
+- `scripts/setup-phase16-demo-org.mjs` — creates/resets controlled profile on setup
+- `scripts/controlled-phase16b-db-acceptance.ts` — idempotent entity/membership state; uses explicit `MAIN` vs `BR16B` entity codes (not default resolver) so prior default changes do not alias restriction tests; adds zero-membership backward-compat assertion
+
+**Final acceptance:** **11/11** × 3 consecutive idempotent reruns.
+
+### 16B close gate
+
+```
+PHASE_16_SLICE = 16B
+PHASE_16B_STARTED = true
+PHASE_16B_CODE_COMPLETE = true
+PHASE_16B_DB_VERIFIED = true
+PHASE_16B_COMPLETE = true
+
+MIGRATION_041_VERIFY = PASS
+NEW_MIGRATION_REQUIRED = false
+MANUAL_PATCH_REQUIRED = false
+```
+
+### Controlled acceptance scenarios (16B — 11)
+
+1. Owner sees all entities  
+2. Second legal entity (idempotent)  
+3. Zero membership backward compatibility  
+4. Grant restricted access to one entity (`MAIN`)  
+5. Same-org unauthorized entity denied (`BR16B`)  
+6. Cross-org entity denied  
+7. Active context resolves (`resolveActiveLegalEntityContext`)  
+8. Revoke access takes effect  
+9. Default change preserves history (0 journals)  
+10. Entity admin creates zero journals  
+11. HFAC default handling safe  
+
+---
+
+## Phase 16C preflight (2026-09-11)
+
+### Ownership matrix (16C scope)
+
+| Domain / table | Current owner | Target owner | Change in 16C? | Backfill | Risk |
+|----------------|---------------|--------------|----------------|----------|------|
+| `teller_accounts` | org | **legal entity** | Yes | default entity | Medium — unique constraint migration |
+| `teller_journal_entries` | org | **legal entity** | Yes | default entity | High — posting RPC signature change |
+| `teller_journal_lines` | via entry | inherit journal | No column | — | Low |
+| `teller_documents` | org | **legal entity** | Yes | default entity | Medium — posting coupling |
+| `teller_payments` | org | **legal entity** | Yes | default entity | Medium |
+| `teller_bank_connections` | org | org (provider auth) | No | — | Low |
+| `teller_bank_accounts` | org | **legal entity** | Yes | default entity | Medium |
+| `teller_period_closes` + close aux | org | **legal entity** | Yes | default entity | High — independent close per entity |
+| `teller_close_settings` | org PK | **org + entity PK** | Yes | default entity | Medium |
+| `teller_accounting_state_versions` | org PK | **org + entity PK** | Yes | default entity | Medium |
+| `teller_entity_accounting_settings` | — | **new** | Yes | seed rows | Low |
+| `teller_ap_settings` | org PK | entity (16C app) | Deferred app | default entity | Low — app layer in follow-up |
+| `teller_tax_settings` | org PK | entity (later) | Partial | reference packs stay global | Medium — Phase15 intact |
+| `teller_inventory_account_mappings` | org | entity (16C2) | Deferred | — | Low |
+| `teller_payroll_account_mappings` | org | entity (16C2) | Deferred | — | Low |
+| `teller_fixed_asset_settings` | org | entity (16C2) | Deferred | — | Low |
+| `teller_jobs` | org | entity (16D+) | No | — | Low |
+| `teller_parties` | org (shared) | org (shared) | No | — | Low |
+
+Production snapshot (`snapshot:phase16c:controlled`): 1487 journals, 156 accounts, 26 legal entities, 0 unbalanced, HFAC 8/17 unchanged.
+
+### Migration 042 (prepared — manual apply)
+
+Path: `supabase/migrations/042_phase16c_entity_books.sql`
+
+Static verify: `npm run verify:migration:042:static`
+
+**Not in 042 (application follow-up after apply):** thread `AccountingContext` through `post.ts` and domain APIs; entity-scoped `loadOrgAccounts`; AP/tax/inventory/payroll settings split; new-entity COA clone UX; HFAC resolver uses default entity; journal idempotency indexes extended with `legal_entity_id`.
+
+**Migration 042:** manually applied 2026-09-11 — `MIGRATION_042_VERIFY = PASS`.
+
+**Application wiring (16C):**
+
+- `requireAccountingBooks` / `requireEntityBooks` on ledger, trial balance, periods, banking, GL, reports, tax settings
+- Entity-scoped `buildTrialBalance`, `evaluateCloseReadiness`, `loadAccountingStateVersions`
+- `entity-books/`: COA setup (`initializeEntityCoa`), entity settings (`teller_entity_accounting_settings`), cross-entity validation
+- APIs: `/api/legal-entities/[id]/coa/setup`, `/api/accounting/entity-settings`
+- Payment allocation cross-entity guard in `recordPaymentAllocation`
+- Controlled acceptance: `scripts/controlled-phase16c-db-acceptance.ts` (25 scenarios)
+
+### Patch 043 — accounting state entity isolation (manual apply)
+
+Path: `supabase/patches/043_phase16c_accounting_state_entity.sql`
+
+**Why required:** Migration 042 moved `teller_accounting_state_versions` from organization-level identity to `(organization_id, legal_entity_id)`. Legacy Phase 9 RPCs still bumped versions with `ON CONFLICT (organization_id)`, which no longer matches the PK. Symptom: `postJournal` failed with an ON CONFLICT constraint error.
+
+**What 043 fixes (entity isolation only — not accounting semantics):**
+
+| Component | Change |
+|-----------|--------|
+| `teller_get_accounting_state` | Optional `p_legal_entity_id`; reads entity row |
+| `teller_increment_accounting_version` | Conflicts on `(organization_id, legal_entity_id)` |
+| `teller_increment_close_state_version` | Same |
+| `teller_journal_entries_bump_accounting_version` trigger | Passes `NEW.legal_entity_id` |
+| Checklist/reconciliation bump triggers | Entity-scoped close-state bumps |
+
+Static verify: `npm run verify:migration:043:static`
+
+**Applied:** 2026-09-11 (production `ypixbxicdecwfafculha`, manual operator apply)
+
+### 16C close gate (verified 2026-09-11)
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_042_VERIFY` | PASS |
+| `PATCH_043_APPLIED` | PASS (manual) |
+| `PHASE16C_CONTROLLED_ACCEPTANCE` | PASS — 25/25 |
+| Idempotent rerun ×2 | PASS |
+| `UNBALANCED_PRODUCTION_JOURNALS` | 0 |
+| `HFAC_ECONOMIC_DATA_MODIFIED` | false |
+| `PHASE16_STATIC_VERIFY` | PASS |
+| `FAST_TESTS` | PASS — 373/373 |
+| `PHASE16_TESTS` | PASS — 31/31 |
+| `PHASE_16D_STARTED` | false |
+
+**Delivered in 16C:**
+
+- Entity-scoped COA, journals, documents, payments, bank accounts, periods
+- Entity-scoped ledger, trial balance, close readiness, period close/reopen
+- Entity accounting settings (`teller_entity_accounting_settings`) for AP/tax/inventory GL refs
+- New-entity COA setup (standard template or copy structure — no balances/history)
+- Cross-entity posting, allocation, and default-account guards
+- Single-entity backward compatibility via default entity resolver
+- HFAC continues org → default entity (no client-controlled entity)
+
+**Operator commands:**
+
+```bash
+npm run accept:phase16c:controlled   # run twice for idempotency
+npm run verify:phase16:multi-entity
+npm run verify:migration:043:static
+TELLER_TEST_PHASE=16 npm run test:phase
+```
+
+---
+
+## Table inventory (organization_id audit)
+
+**100 org-scoped tables** across: core tenant (16), accounting (29), master data (4), banking (9), inventory/FA/payroll (22), planning (6), tax (14).
+
+**11 without organization_id:** org root, child lines, bank connection secrets, global tax reference (6).
+
+See [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md) for entity-scope classification.

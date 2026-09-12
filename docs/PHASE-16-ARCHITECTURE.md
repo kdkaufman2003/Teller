@@ -1,0 +1,281 @@
+# Phase 16 — Multi-Entity Architecture
+
+**Slice 16A:** Legal entity foundation (tenant vs books separation)  
+**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043 manually applied). **16D not started.**
+
+## Canonical terminology
+
+| Term | Meaning |
+|------|---------|
+| **Organization** | Teller tenant/workspace — subscription boundary, membership, top-level RLS |
+| **Legal entity** | Accounting company whose books belong to one organization |
+
+```
+Organization (tenant)
+├── Legal Entity A → independent books
+├── Legal Entity B → independent books
+└── Legal Entity C → independent books
+        ↓ (future 16F–16G)
+Consolidated reporting (elimination layer — does not rewrite entity books)
+```
+
+**Do not rename `organization_id`.** Tenant isolation remains org-scoped.
+
+---
+
+## CURRENT_ORGANIZATION_MODEL
+
+Today, **one organization = one set of books**:
+
+- `teller_profiles.organization_id` — single org per user (V1)
+- `requireBooks()` → `{ organizationId }` — no entity dimension
+- `teller_is_org_member(organization_id)` — all RLS policies
+- Economic tables (~100) keyed directly on `organization_id`
+- HFAC webhooks resolve → `organizationId` → all writes
+
+Closest precursors (not legal entities):
+
+- `teller_organizations.legal_name` — display/legal name of the tenant
+- `teller_locations` — branch/location stub (org-scoped)
+- `teller_inventory_locations` — warehouse sites (org-scoped)
+
+---
+
+## TABLES_USING_ORGANIZATION_ID
+
+**100 tables** carry `organization_id` directly. **11 tables** inherit org via parent join (`teller_document_lines`, `teller_journal_lines`, etc.) or are global reference data.
+
+See Phase 16A audit categories in [PHASE-16-IMPLEMENTATION.md](./PHASE-16-IMPLEMENTATION.md).
+
+---
+
+## TABLES_REQUIRING_LEGAL_ENTITY_ID
+
+Future slices will add `legal_entity_id` to **entity-scoped economic data**:
+
+| Domain | Tables (representative) |
+|--------|-------------------------|
+| GL / journals | `teller_journal_entries`, `teller_adjusting_journal_entries`, recurring journal templates/runs |
+| Documents | `teller_documents`, sequences, allocations, write-offs |
+| Payments | `teller_payments`, `teller_payment_allocations` |
+| Banking | `teller_bank_accounts`, transactions, matches, reconciliations |
+| AP/PO | `teller_purchase_orders`, receipts, recurring bills |
+| COA | `teller_accounts` (see COA recommendation below) |
+| Periods | `teller_period_closes`, close reviews, checklist |
+| Jobs | `teller_jobs`, job budgets (accounting ownership) |
+| Inventory | items, locations, balances, movements, counts |
+| Fixed assets | assets, depreciation batches/entries |
+| Payroll | runs, components, labor entries, settlements |
+| Tax (Phase 15) | `teller_tax_settings`, registrations, transactions, filing periods, authority payments |
+| Planning | budgets, forecasts, versions, lines |
+
+**Child lines** (`teller_journal_lines`, `teller_document_lines`) inherit entity from header — no separate `legal_entity_id` on lines.
+
+---
+
+## TABLES_THAT_SHOULD_REMAIN_ORG_SCOPED
+
+| Domain | Tables / concepts |
+|--------|-------------------|
+| Tenant root | `teller_organizations` |
+| Membership | `teller_profiles` (16B: add entity memberships) |
+| Integrations | `teller_integrations`, webhook events, bank **connections** (provider tokens) |
+| Shared master | `teller_parties` (customers/vendors) — org directory |
+| Industry / labels | `teller_industry_settings` |
+| Automation (org policy) | `teller_org_automation_settings`, scheduler runs |
+| Audit | `teller_audit_events` |
+| Global tax reference | `teller_tax_jurisdictions`, rates, rule sets (no org) |
+| Intelligence | `teller_intelligence_suggestions` |
+
+---
+
+## AMBIGUOUS_TABLES
+
+| Table | Recommendation |
+|-------|----------------|
+| `teller_accounts` | **Entity-specific account instances** (Option A) — each entity owns COA rows; org may share template at setup. Independent trial balance requires entity-owned accounts. |
+| `teller_ap_settings` / `teller_close_settings` | Move to **entity scope** in 16C (approval thresholds, close policy per entity) |
+| `teller_tax_settings` | **Entity scope** — registrations and liability belong to filing entity |
+| `teller_planning_settings` | Org default + entity overrides in 16C+ |
+| `teller_locations` | Remain org-scoped operational sites; not legal entities |
+| `teller_jobs` | Entity-scoped accounting ownership; shared operational view optional later |
+
+---
+
+## COA recommendation (16A decision)
+
+**Option A — entity-specific account instances** (recommended):
+
+- Each legal entity has its own `teller_accounts` rows (`organization_id` + `legal_entity_id`)
+- Trial balance = sum journals for one `legal_entity_id`
+- Intercompany due-to/due-from accounts are entity-specific (16D)
+
+Option B (org template + mapping) deferred — adds indirection without clear V1 benefit.
+
+---
+
+## SHARED_PARTY_MODEL
+
+```
+Organization → teller_parties (shared directory)
+Legal Entity → documents/payments/journals referencing party_id
+```
+
+**Invariant:** `SHARED_PARTY_DOES_NOT_SHARE_AR_AP_BALANCES = true`
+
+Balances live on entity-scoped documents and allocations, not on the party row.
+
+---
+
+## Journal architecture
+
+Every journal belongs to **exactly one** legal entity:
+
+- `CROSS_ENTITY_SINGLE_JOURNAL_ALLOWED = false`
+- Intercompany (16D): paired journals in Entity A and Entity B, linked by `intercompany_transaction_id`
+
+Journal lines inherit entity from header — no cross-entity lines within one entry.
+
+---
+
+## Payment, banking, inventory, assets, payroll, tax, jobs
+
+| Rule | Value |
+|------|-------|
+| `DOCUMENT_SINGLE_LEGAL_ENTITY` | true |
+| `CROSS_ENTITY_DIRECT_PAYMENT_ALLOCATION` | false |
+| `BANK_ACCOUNT_SINGLE_LEGAL_ENTITY` | true (provider connection may stay org-scoped) |
+| Inventory / FA / payroll | entity-scoped |
+| Tax registrations & filings | entity-scoped |
+| Jobs | one entity owns job accounting |
+
+---
+
+## INTEGRATION_IMPACT
+
+**HFAC (unchanged in 16A):**
+
+```
+HFAC webhook → organizationId (mapped) → default legal entity (implicit)
+```
+
+- `HFAC_DEFAULT_ENTITY_COMPATIBILITY = PASS`
+- No HFAC repo changes
+- Future: `legal_entity_external_id` mapping before client-supplied entity IDs
+
+**Resolution priority (future):**
+
+1. Explicit trusted external entity ID
+2. Integration mapping table
+3. Organization default legal entity
+
+`CLIENT_CONTROLLED_LEGAL_ENTITY = false`
+
+---
+
+## REPORTING_IMPACT
+
+Future consolidated reporting (16F–16G):
+
+```
+Entity A TB + Entity B TB + eliminations = Consolidated TB
+```
+
+`CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations are reporting-layer entries only.
+
+---
+
+## SECURITY / RLS strategy
+
+1. **Organization isolation first** — existing `teller_is_org_member(organization_id)`
+2. **Entity authorization second** — Phase 16B: `teller_legal_entity_memberships`
+3. `CROSS_ORG_ENTITY_ACCESS = false`
+4. Never replace org checks with entity-only checks
+
+Phase 16A RLS on `teller_legal_entities`: org member read; writers insert/update; no DELETE (archive via `is_active`).
+
+---
+
+## MIGRATION_STRATEGY (staged)
+
+| Stage | Slice | Action |
+|-------|-------|--------|
+| 1 | **16A** | `teller_legal_entities`, default entity, backfill, setup RPC |
+| 2 | 16B | Entity memberships, switching |
+| 3 | 16C | Entity-scoped COA, periods, settings |
+| 4 | 16D–16E | Intercompany + settlement |
+| 5 | 16F–16G | Consolidation + eliminations |
+| Per domain | 16C+ | Add nullable `legal_entity_id`, backfill to default, validate, constrain |
+
+**Nullability:** avoid NOT NULL on all economic tables in one migration.
+
+**Backfill validation:**
+
+- Every setup-completed org has exactly one default entity
+- No cross-org entity references
+- Journal/document counts and amounts unchanged (ownership metadata only)
+
+`MULTI_ENTITY_BACKFILL_CHANGES_ACCOUNTING_AMOUNTS = false`
+
+---
+
+## BACKWARD_COMPATIBILITY_STRATEGY
+
+Existing orgs receive one default legal entity (`entity_code = MAIN`) named from org `name` / `legal_name`.
+
+```
+BEFORE: Organization → books
+AFTER:  Organization → Default Legal Entity → same books (until domain migration)
+```
+
+`SINGLE_ENTITY_BACKWARD_COMPATIBILITY = PASS`
+
+Resolver: `resolveDefaultLegalEntity()` / `resolveAuthorizedLegalEntity()` — canonical server-side; no scattered `is_default` queries.
+
+`AccountingContext { organizationId, legalEntityId }` — pattern for future posting services (16A interface only).
+
+---
+
+## Entity lifecycle rules
+
+| Rule | Value |
+|------|-------|
+| `LEGAL_ENTITY_WITH_HISTORY_HARD_DELETE` | false — archive via `is_active` |
+| `POSTED_TRANSACTION_ENTITY_REASSIGNMENT` | false — reversal/repost only |
+| `LEGAL_ENTITY_PERIOD_INDEPENDENCE` | true (16C implementation) |
+| `ONE_DEFAULT_LEGAL_ENTITY_PER_ORG` | DB partial unique index |
+
+---
+
+## Patch 043 — accounting state entity isolation (2026-09-11)
+
+Migration 042 changed `teller_accounting_state_versions` primary key from `organization_id` to `(organization_id, legal_entity_id)` so each legal entity owns its own optimistic-lock/version row.
+
+Phase 9 bump RPCs (`teller_increment_accounting_version`, `teller_increment_close_state_version`, `teller_get_accounting_state`) and the journal insert trigger still used `ON CONFLICT (organization_id)`. That mismatch caused `postJournal` to fail after 042 with:
+
+> there is no unique or exclusion constraint matching the ON CONFLICT specification
+
+**Patch:** `supabase/patches/043_phase16c_accounting_state_entity.sql` (manual apply)
+
+- Updates bump/get RPCs to accept `p_legal_entity_id` and conflict on `(organization_id, legal_entity_id)`
+- Updates journal and close-state bump triggers to pass `NEW.legal_entity_id`
+
+This is an **entity-isolation correction**, not an accounting-semantics change. Double-entry rules, period-close ordering, and HFAC behavior are unchanged.
+
+---
+
+## Intercompany (future — not 16A/16B/16C)
+
+Entity A: Dr Expense, Cr Due To B  
+Entity B: Dr Due From A, Cr Revenue/Cash  
+
+Linked by intercompany group ID; each journal balances independently.
+
+---
+
+## Phase 16A deliverables
+
+- Migration: `supabase/migrations/040_phase16a_legal_entity_foundation.sql` (**manual apply**)
+- Module: `src/lib/accounting/legal-entity/`
+- Static verify: `npm run verify:phase16:multi-entity`
+- Controlled acceptance: `npm run accept:phase16:controlled` (after migration)

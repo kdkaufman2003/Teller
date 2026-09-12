@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { EntitySwitcher } from "@/components/legal-entity/EntitySwitcher";
 import { routes } from "@/lib/routes";
 import { getHfacPlatformUrl } from "@/lib/partners/registry";
 import { createClient } from "@/lib/supabase/client";
+import type { ActiveLegalEntitySummary } from "@/types";
 
 type NavItem = { href: string; label: string; module?: string };
 
@@ -37,6 +39,9 @@ export function AppShell({
   attached,
   modules,
   labels,
+  activeLegalEntity,
+  accessibleLegalEntities,
+  showEntitySwitcher,
   children,
 }: {
   companyName: string;
@@ -45,6 +50,9 @@ export function AppShell({
   attached: boolean;
   modules: string[];
   labels: Record<string, string>;
+  activeLegalEntity?: ActiveLegalEntitySummary | null;
+  accessibleLegalEntities?: ActiveLegalEntitySummary[];
+  showEntitySwitcher?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -89,6 +97,11 @@ export function AppShell({
         <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">
           {industryName}
         </p>
+        <EntitySwitcher
+          activeLegalEntity={activeLegalEntity}
+          accessibleEntities={accessibleLegalEntities}
+          showEntitySwitcher={Boolean(showEntitySwitcher)}
+        />
         {attached && partnerAppUrl && (modules.includes("hfac") || modules.includes("quoter")) ? (
           <a
             href={partnerAppUrl}

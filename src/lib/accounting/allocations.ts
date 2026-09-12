@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
+import { assertPaymentDocumentSameEntity } from "./entity-books/validation";
 import { roundMoney } from "./payment-fees";
 
 export type AllocationKind =
@@ -59,6 +60,21 @@ export async function recordPaymentAllocation(
   if (amount <= 0.009) {
     throw new Error("Allocation amount must be greater than zero.");
   }
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("teller_payments")
+    .select("id, legal_entity_id")
+    .eq("id", input.paymentId)
+    .eq("organization_id", input.organizationId)
+    .maybeSingle();
+  if (paymentError) throw new Error(paymentError.message);
+  if (!payment?.id) throw new Error("Payment not found");
+  const paymentEntityId = payment.legal_entity_id as string;
+  await assertPaymentDocumentSameEntity(supabase, {
+    organizationId: input.organizationId,
+    paymentLegalEntityId: paymentEntityId,
+    documentId: input.documentId,
+  });
 
   const row: Record<string, unknown> = {
     organization_id: input.organizationId,

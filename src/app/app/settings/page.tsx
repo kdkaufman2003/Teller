@@ -47,6 +47,16 @@ export default async function SettingsPage() {
       />
 
       <section className="card p-4">
+        <h2 className="font-medium">Companies</h2>
+        <p className="text-muted mb-3 text-sm">
+          Manage legal entities, defaults, and which company books each member can access.
+        </p>
+        <Link href={routes.entitySettings} className="btn btn-secondary">
+          Companies
+        </Link>
+      </section>
+
+      <section className="card p-4">
         <h2 className="font-medium">Tax accounting</h2>
         <p className="text-muted mb-3 text-sm">Sales tax setup, liability account, and registration readiness.</p>
         <Link href={routes.taxSettings} className="btn btn-secondary">

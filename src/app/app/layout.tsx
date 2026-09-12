@@ -27,6 +27,9 @@ export default async function BooksLayout({
       attached={branding.attached}
       modules={session.settings?.modules ?? []}
       labels={session.settings?.labels ?? {}}
+      activeLegalEntity={session.activeLegalEntity}
+      accessibleLegalEntities={session.accessibleLegalEntities}
+      showEntitySwitcher={session.showEntitySwitcher}
     >
       {children}
     </AppShell>

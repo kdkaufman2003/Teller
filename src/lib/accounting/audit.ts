@@ -122,7 +122,14 @@ export type AuditAction =
   | "payroll.labor.allocated"
   | "payroll.labor.reallocated"
   | "payroll.settlement.created"
-  | "payroll.reconciliation.reviewed";
+  | "payroll.reconciliation.reviewed"
+  | "legal_entity.created"
+  | "legal_entity.updated"
+  | "legal_entity.archived"
+  | "legal_entity.default_changed"
+  | "legal_entity.access_granted"
+  | "legal_entity.access_revoked"
+  | "legal_entity.active_changed";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
+import { resolveLegalEntityId } from "./post";
 import type { AccountRow } from "./reports";
 import { roundMoney } from "./payment-fees";
 import { computeComparativeAmounts, type ComparativeAmounts } from "./report-context";
@@ -160,6 +161,7 @@ type LineRow = {
 async function loadScopedLines(
   supabase: SupabaseClient,
   organizationId: string,
+  legalEntityId: string,
   periodEnd: string,
   periodStart: string | null,
 ) {
@@ -167,6 +169,7 @@ async function loadScopedLines(
     .from("teller_journal_entries")
     .select("id, entry_date, source_kind, reverses_entry_id")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .lte("entry_date", periodEnd);
 
   const entryMap = new Map(
@@ -190,6 +193,7 @@ async function loadScopedLines(
     .from("teller_journal_entries")
     .select("reverses_entry_id")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId)
     .in("reverses_entry_id", entryIds);
   const reversedOriginals = new Set(
     (reversals ?? []).map((row) => row.reverses_entry_id as string),
@@ -222,18 +226,24 @@ async function loadScopedLines(
 export async function buildTrialBalance(
   supabase: SupabaseClient,
   organizationId: string,
-  input: { periodStart?: string | null; periodEnd: string },
+  input: { legalEntityId?: string | null; periodStart?: string | null; periodEnd: string },
 ): Promise<TrialBalanceReport> {
   const periodEnd = input.periodEnd.slice(0, 10);
   const periodStart = input.periodStart?.slice(0, 10) ?? null;
+  const legalEntityId = await resolveLegalEntityId(
+    supabase,
+    organizationId,
+    input.legalEntityId,
+  );
 
   const { data: accountsRaw } = await supabase
     .from("teller_accounts")
     .select("id, code, name, type, subtype")
-    .eq("organization_id", organizationId);
+    .eq("organization_id", organizationId)
+    .eq("legal_entity_id", legalEntityId);
   const accounts = (accountsRaw ?? []) as AccountRow[];
 
-  const lines = await loadScopedLines(supabase, organizationId, periodEnd, periodStart);
+  const lines = await loadScopedLines(supabase, organizationId, legalEntityId, periodEnd, periodStart);
   const totalsByAccount = new Map<
     string,
     {

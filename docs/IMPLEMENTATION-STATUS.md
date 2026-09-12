@@ -24,6 +24,22 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_15L_STARTED` | **true** | Production deploy + post-deploy verification (2026-09-11) |
 | `PHASE_15L_COMPLETE` | **true** | Deploy `71942a4` → `https://teller-indol.vercel.app`; smoke + schema probes PASS; HFAC 8/17 unchanged |
 | `PRODUCTION_DEPLOYED_FOR_PHASE15` | **true** | Vercel deployment `HhrjMrgJBizfyMjzcMTRfsddCrmy`; MO/KS reference packs at MO-2026.1 / KS-2026.1 |
+| `PHASE_16_STARTED` | **true** | Slice 16A foundation |
+| `PHASE_16_SLICE` | **16C** | Entity-scoped books complete; 16D not started |
+| `PHASE_16A_CODE_COMPLETE` | **true** | Legal entity table, resolver, AccountingContext, migration 040 |
+| `PHASE_16A_DB_VERIFIED` | **true** | Migration 040 manually applied; controlled prod verification 2026-09-11 |
+| `PHASE_16A_COMPLETE` | **true** | 11/11 acceptance; 22 org backfill; 0 economic mutations; HFAC 8/17 unchanged |
+| `PHASE_16B_CODE_COMPLETE` | **true** | Entity admin UI, switcher, access model, migration 041 |
+| `PHASE_16B_DB_VERIFIED` | **true** | Migration 041 manually applied; controlled prod verification 2026-09-11 |
+| `PHASE_16B_COMPLETE` | **true** | 11/11 acceptance (3× idempotent reruns); 0 demo journals; HFAC 8/17 unchanged |
+| `PHASE_16C_STARTED` | **true** | Migration 042 manually applied; entity books wired |
+| `PHASE_16C_CODE_COMPLETE` | **true** | Entity context APIs, COA setup, settings, acceptance harness |
+| `PHASE_16C_DB_VERIFIED` | **true** | Migration 042 + patch 043 manually applied |
+| `PHASE_16C_COMPLETE` | **true** | 25/25 controlled acceptance × 2 idempotent reruns |
+| `MANUAL_PATCH_043_REQUIRED` | **false** | Patch 043 applied (`043_phase16c_accounting_state_entity.sql`) |
+| `PHASE_16_COMPLETE` | **false** | |
+| `PHASE_16B_STARTED` | **true** | |
+| `PHASE_16D_STARTED` | **false** | |
 | `PHASE_14_COMPLETE` | **true** | Migration 032 + patches 032d/033f/034h manually applied; deploy `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` → `https://teller-indol.vercel.app` (commit `ca0ac38`); controlled prod 106/106 DB acceptance; fast 207/207; full 689/689; HFAC unchanged (8 docs, 16 journals, 0 HFAC planning); production journals balanced; planning writes 0 journals |
 | `PHASE_13_COMPLETE` | **true** | Migration 031 manually applied; deploy `dpl_Du2Lfjuwh8hRcWYE7PT3fppmPawZ` → `https://teller-indol.vercel.app`; controlled prod 70/70 DB acceptance; HFAC unchanged; production journals balanced |
 | `PHASE_12_COMPLETE` | **true** | Migrations 029+030 manually applied; deploy `dpl_CWhNfxQHnNn6gpqGhtr4NDbUeaBV` → `https://teller-indol.vercel.app`; controlled prod 110/110 logic + 52/52 DB acceptance; claim-before-post concurrency; `ORPHAN_PAYROLL_JOURNALS=0`; HFAC unchanged; production journals balanced; scheduler disabled |

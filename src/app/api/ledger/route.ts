@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { filterGlEntries, paginateGlReport } from "@/lib/accounting/gl-report";
-import { jsonError, requireBooks } from "@/lib/api";
+import { resolveLegalEntityId } from "@/lib/accounting/post";
+import { jsonError, requireAccountingBooks } from "@/lib/api";
 
 export async function GET(request: Request) {
-  const ctx = await requireBooks();
+  const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
-  const { supabase, organizationId } = ctx;
+  const { supabase, organizationId, legalEntityId } = ctx;
+  const entityId =
+    legalEntityId ?? (await resolveLegalEntityId(supabase, organizationId, null));
 
   const url = new URL(request.url);
   const legacy = url.searchParams.get("legacy") === "1";
@@ -16,6 +19,7 @@ export async function GET(request: Request) {
     .from("teller_journal_entries")
     .select("id, entry_date, memo, source_kind, source_id, reverses_entry_id")
     .eq("organization_id", organizationId)
+    .eq("legal_entity_id", entityId)
     .order("entry_date", { ascending: false });
 
   if (error) return jsonError(error.message, 500);
@@ -31,7 +35,8 @@ export async function GET(request: Request) {
     supabase
       .from("teller_accounts")
       .select("id, code, name, type")
-      .eq("organization_id", organizationId),
+      .eq("organization_id", organizationId)
+      .eq("legal_entity_id", entityId),
   ]);
 
   const filtered = filterGlEntries(
