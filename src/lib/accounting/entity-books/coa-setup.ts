@@ -31,7 +31,7 @@ export async function initializeEntityCoa(
       name: account.name,
       type: account.type,
       subtype: account.subtype ?? "",
-      industry_tag: account.industryTag ?? "",
+      industry_tag: account.industry_tag ?? "",
       is_system: true,
     }));
     const { error } = await supabase.from("teller_accounts").insert(rows);

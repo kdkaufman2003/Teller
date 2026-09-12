@@ -5,7 +5,7 @@ import {
   buildReportsFromEngine,
   loadReportEngineData,
 } from "@/lib/accounting/report-engine";
-import { buildTrialBalance, buildComparativeTrialBalance } from "@/lib/accounting/trial-balance";
+import { buildTrialBalance } from "@/lib/accounting/trial-balance";
 import { filterGlEntries, paginateGlReport } from "@/lib/accounting/gl-report";
 import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
 import { buildArAging, buildApAging } from "@/lib/accounting/aging-service";
@@ -21,9 +21,9 @@ import { getSessionContext } from "@/lib/session";
 export async function GET(request: Request) {
   const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
+  const { supabase, organizationId, legalEntityId, session: booksSession } = ctx;
   const entityId =
-    ctx.legalEntityId ??
-    (await resolveLegalEntityId(ctx.supabase, ctx.organizationId, null));
+    legalEntityId ?? (await resolveLegalEntityId(supabase, organizationId, null));
 
   const session = await getSessionContext();
   const exportAllowed = canExportBooks(session?.profile?.role, parseCpaMode(session?.settings?.answers?.cpaMode));
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   const basis = parseAccountingBasis(session?.settings?.answers?.basis);
 
   const reportCtx = buildReportContextFromParams({
-    organizationId: ctx.organizationId,
+    organizationId,
     startDate: periodStart,
     endDate: periodEnd,
     basis,
@@ -44,22 +44,22 @@ export async function GET(request: Request) {
     comparison: "none",
   });
 
-  const data = await loadReportEngineData(ctx.supabase, ctx.organizationId, periodEnd, periodStart);
-  const reports = await buildReportsFromEngine(ctx.supabase, reportCtx, data);
-  const trialBalance = await buildTrialBalance(ctx.supabase, ctx.organizationId, {
+  const data = await loadReportEngineData(supabase, organizationId, periodEnd, periodStart);
+  const reports = await buildReportsFromEngine(supabase, reportCtx, data);
+  const trialBalance = await buildTrialBalance(supabase, organizationId, {
     legalEntityId: entityId,
     periodStart,
     periodEnd,
   });
 
-  const { data: entries } = await ctx.supabase
+  const { data: entries } = await supabase
     .from("teller_journal_entries")
     .select("id, entry_date, memo, source_kind, source_id, reverses_entry_id")
-    .eq("organization_id", ctx.organizationId)
+    .eq("organization_id", organizationId)
     .eq("legal_entity_id", entityId);
   const entryIds = (entries ?? []).map((e) => e.id as string);
   const { data: lines } = entryIds.length
-    ? await ctx.supabase
+    ? await supabase
         .from("teller_journal_lines")
         .select("id, entry_id, account_id, debit, credit, memo, job_id")
         .in("entry_id", entryIds)
@@ -92,21 +92,21 @@ export async function GET(request: Request) {
   ).entries;
 
   const [{ data: invoices }, { data: bills }] = await Promise.all([
-    ctx.supabase
+    supabase
       .from("teller_documents")
       .select("id, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
-      .eq("organization_id", ctx.organizationId)
+      .eq("organization_id", organizationId)
       .eq("kind", "invoice"),
-    ctx.supabase
+    supabase
       .from("teller_documents")
       .select("id, kind, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
-      .eq("organization_id", ctx.organizationId)
+      .eq("organization_id", organizationId)
       .in("kind", ["bill", "expense"]),
   ]);
 
   const [invoicesPaid, billsPaid] = await Promise.all([
-    enrichDocumentsWithAuthoritativePaid(ctx.supabase, ctx.organizationId, invoices ?? []),
-    enrichDocumentsWithAuthoritativePaid(ctx.supabase, ctx.organizationId, bills ?? []),
+    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, invoices ?? []),
+    enrichDocumentsWithAuthoritativePaid(supabase, organizationId, bills ?? []),
   ]);
 
   const files = buildAccountantPackageFiles({
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
 
   const includePlanning = url.searchParams.get("includePlanning") === "1";
   if (includePlanning) {
-    const planningPkg = await loadAccountantPlanningPackage(ctx.supabase, ctx.organizationId, {
+    const planningPkg = await loadAccountantPlanningPackage(supabase, organizationId, {
       periodEnd,
       periodLabel: `${periodStart ?? "start"} – ${periodEnd}`,
       fiscalYear: Number(periodEnd.slice(0, 4)),
@@ -137,12 +137,12 @@ export async function GET(request: Request) {
     );
   }
 
-  await recordAuditEvent(ctx.supabase, {
-    organizationId: ctx.organizationId,
-    actorId: ctx.session.userId,
+  await recordAuditEvent(supabase, {
+    organizationId,
+    actorId: booksSession.userId,
     action: "data.exported",
     resourceKind: "accountant_package",
-    resourceId: ctx.organizationId,
+    resourceId: organizationId,
     metadata: { fileCount: files.length, periodEnd },
   });
 
