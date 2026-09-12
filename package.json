@@ -106,6 +106,8 @@
     "accept:phase16d:controlled": "node scripts/run-controlled-phase16d-db-acceptance.mjs",
     "verify:migration:045:static": "node scripts/verify-migration-045-static.mjs",
     "verify:phase16e:settlement": "node scripts/verify-phase16e-settlement.mjs",
+    "verify:phase16f:consolidated-reporting": "node scripts/verify-phase16f-consolidated-reporting.mjs",
+    "accept:phase16f:controlled": "node scripts/run-controlled-phase16f-db-acceptance.mjs",
     "accept:phase16e:controlled": "node scripts/run-controlled-phase16e-db-acceptance.mjs",
     "patch:045:phase16e:controlled": "node scripts/patch-045-phase16e-controlled.mjs",
     "verify:migration:045:controlled": "node scripts/verify-migration-045-controlled.mjs",

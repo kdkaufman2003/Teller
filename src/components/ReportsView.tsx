@@ -118,6 +118,9 @@ export function ReportsView({
         <Link href={routes.reportsVendorBalances} className="text-sky hover:underline">
           Vendor balances
         </Link>
+        <Link href={routes.reportsConsolidated} className="text-sky hover:underline">
+          Consolidated reports
+        </Link>
         <Link href={routes.accountingSalesTax} className="text-sky hover:underline">
           Sales tax summary
         </Link>

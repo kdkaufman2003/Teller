@@ -175,13 +175,25 @@ HFAC webhook → organizationId (mapped) → default legal entity (implicit)
 
 ## REPORTING_IMPACT
 
-Future consolidated reporting (16F–16G):
+### Phase 16F (pre-elimination consolidation)
 
 ```
-Entity A TB + Entity B TB + eliminations = Consolidated TB
+Entity A TB + Entity B TB = Consolidated TB (pre-elimination)
 ```
 
-`CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations are reporting-layer entries only.
+- Reporting-only: aggregate per-entity `buildTrialBalance`, `buildProfitAndLoss`, `buildBalanceSheet`, `buildCashFlowStatement`
+- Account grouping key: `type|subtype|code|normalizedName` (never database account IDs)
+- Scope: `resolveConsolidationScope` with server-side entity authorization
+- Intercompany due-to/due-from **visible**; pair reconciliation warnings when out of balance
+- No migration 046 — scope via API params; named groups deferred
+
+### Phase 16G (future eliminations)
+
+```
+Consolidated TB (pre-elimination) + elimination adjustments = Consolidated TB (eliminated)
+```
+
+`CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations remain reporting-layer only.
 
 ---
 

@@ -56,6 +56,7 @@ export const routes = {
   accountingSchedulesRevenue: "/app/accounting/schedules/revenue",
   accountingSchedulesNew: "/app/accounting/schedules/new",
   reports: "/app/reports",
+  reportsConsolidated: "/app/reports/consolidated",
   banking: "/app/banking",
   bankingReconcile: "/app/banking/reconcile",
   bankingReconciliations: "/app/banking/reconciliations",

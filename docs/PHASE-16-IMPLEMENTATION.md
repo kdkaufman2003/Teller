@@ -479,7 +479,74 @@ Migration 045 `teller_intercompany_pair_reconciliation` had invalid table aliase
 | `PHASE_16E_CODE_COMPLETE` | true |
 | `PHASE_16E_DB_VERIFIED` | true |
 | `PHASE_16E_COMPLETE` | true |
-| `PHASE_16F_STARTED` | false |
+| `PHASE_16F_STARTED` | true |
+| `PHASE_16F_CODE_COMPLETE` | true |
+| `PHASE_16F_DB_VERIFIED` | true |
+| `PHASE_16F_COMPLETE` | true |
+
+---
+
+## Phase 16F — consolidated pre-elimination reporting
+
+**Purpose:** Query/reporting layer combining selected legal entities within one organization. Does **not** post journals, rewrite entity books, or eliminate intercompany balances (Phase 16G).
+
+### Scope model
+
+- API / page params: `entityIds`, `includeAll=1`, `periodStart`, `periodEnd`, `asOf`
+- Server resolves scope via `resolveConsolidationScope` — **never trust client org IDs**
+- User must have access to **every** selected entity (`assertEntityAccess` per entity)
+- `All Companies` is explicit (`includeAllEntities`) — single-entity reports unchanged at `/app/reports`
+
+### Account grouping
+
+- Key: `${type}|${subtype}|${code}|${normalizedName}` — avoids merging unrelated accounts that share type/subtype/code but differ semantically by label
+- No explicit mapping overrides in 16F (`ACCOUNT_MAPPING_OVERRIDE_NEEDED = false`)
+- Named consolidation groups deferred (`NAMED_CONSOLIDATION_GROUPS_IN_16F = false`)
+
+### Reports
+
+| Report | Builder | Route |
+|--------|---------|-------|
+| Trial balance | `buildConsolidatedTrialBalance` | `/api/reports/consolidated/trial-balance` |
+| P&L | `buildConsolidatedProfitAndLoss` | `/api/reports/consolidated/profit-loss` |
+| Balance sheet | `buildConsolidatedBalanceSheet` | `/api/reports/consolidated/balance-sheet` |
+| Cash flow | `buildConsolidatedCashFlow` | `/api/reports/consolidated/cash-flow` |
+
+UI: `/app/reports/consolidated` — pre-elimination banner, intercompany warnings, per-entity period status, entity contribution drill-down.
+
+### Invariants
+
+- `CONSOLIDATION_REWRITES_ENTITY_BOOKS = false`
+- `CONSOLIDATION_POSTS_JOURNALS = false`
+- `ELIMINATION_ENTRIES_IN_16F = false`
+- Intercompany due-to/due-from remain visible pre-elimination
+- Settlement reduces GL balances only — not treated as elimination
+- Single currency (USD); no FX translation
+
+### Operator commands (no migration 046)
+
+```bash
+npm run verify:phase16f:consolidated-reporting
+npm run accept:phase16f:controlled   # run twice for idempotency; report-only, 0 journal side effects
+TELLER_TEST_PHASE=16 npm run test:phase
+```
+
+### 16F close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `PHASE16F_CONSOLIDATED_REPORTING_VERIFY` | PASS |
+| `PHASE16F_CONTROLLED_ACCEPTANCE` | PASS — 27/27 |
+| Idempotent rerun ×2 | PASS |
+| `UNRELATED_SAME_CODE_ACCOUNT_MERGE` | false (16F_01) |
+| `EQUIVALENT_CROSS_ENTITY_ACCOUNT_GROUPING` | PASS (16F_02) |
+| `CONSOLIDATION_REPORT_SIDE_EFFECTS` | false (16F_24) |
+| `HFAC_MODIFIED` | false |
+| `UNBALANCED_PRODUCTION_JOURNALS` | 0 |
+| `NEW_MIGRATION_046_REQUIRED` | false |
+| `PHASE_16F_CODE_COMPLETE` | true |
+| `PHASE_16F_DB_VERIFIED` | true |
+| `PHASE_16F_COMPLETE` | true |
 
 ---
 

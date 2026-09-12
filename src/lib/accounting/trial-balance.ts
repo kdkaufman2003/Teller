@@ -158,7 +158,7 @@ type LineRow = {
   entry_id: string;
 };
 
-async function loadScopedLines(
+export async function loadEntityJournalLines(
   supabase: SupabaseClient,
   organizationId: string,
   legalEntityId: string,
@@ -243,7 +243,13 @@ export async function buildTrialBalance(
     .eq("legal_entity_id", legalEntityId);
   const accounts = (accountsRaw ?? []) as AccountRow[];
 
-  const lines = await loadScopedLines(supabase, organizationId, legalEntityId, periodEnd, periodStart);
+  const lines = await loadEntityJournalLines(
+    supabase,
+    organizationId,
+    legalEntityId,
+    periodEnd,
+    periodStart,
+  );
   const totalsByAccount = new Map<
     string,
     {

@@ -25,7 +25,7 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_15L_COMPLETE` | **true** | Deploy `71942a4` → `https://teller-indol.vercel.app`; smoke + schema probes PASS; HFAC 8/17 unchanged |
 | `PRODUCTION_DEPLOYED_FOR_PHASE15` | **true** | Vercel deployment `HhrjMrgJBizfyMjzcMTRfsddCrmy`; MO/KS reference packs at MO-2026.1 / KS-2026.1 |
 | `PHASE_16_STARTED` | **true** | Slice 16A foundation |
-| `PHASE_16_SLICE` | **16E** | Intercompany settlement complete — migration 045 + patch 045 applied |
+| `PHASE_16_SLICE` | **16F** | Consolidated pre-elimination reporting complete |
 | `PHASE_16A_CODE_COMPLETE` | **true** | Legal entity table, resolver, AccountingContext, migration 040 |
 | `PHASE_16A_DB_VERIFIED` | **true** | Migration 040 manually applied; controlled prod verification 2026-09-11 |
 | `PHASE_16A_COMPLETE` | **true** | 11/11 acceptance; 22 org backfill; 0 economic mutations; HFAC 8/17 unchanged |
@@ -49,6 +49,11 @@ Maps [SPEC.md](./SPEC.md) to the codebase as of V1 development. Update this when
 | `PHASE_16E_DB_VERIFIED` | **true** | Migration 045 + patch 045 applied; 28/28 acceptance × 2 reruns |
 | `PHASE_16E_COMPLETE` | **true** | 0 unbalanced production journals; HFAC unchanged |
 | `MANUAL_PATCH_045_APPLIED` | **true** | `supabase/patches/045_phase16e_reconciliation_immutable_fix.sql` |
+| `PHASE_16F_STARTED` | **true** | Pre-elimination consolidated reporting layer |
+| `PHASE_16F_CODE_COMPLETE` | **true** | Consolidated TB/P&L/BS/cash flow lib, API routes, UI, static verify |
+| `PHASE_16F_DB_VERIFIED` | **true** | 27/27 controlled acceptance × 2 reruns; no migration 046 |
+| `PHASE_16F_COMPLETE` | **true** | 0 report side effects; HFAC unchanged; 0 unbalanced production journals |
+| `NEW_MIGRATION_046_REQUIRED` | **false** | Scope via API params; named groups deferred |
 | `NEW_MIGRATION_045_REQUIRED` | **false** | |
 | `PHASE_14_COMPLETE` | **true** | Migration 032 + patches 032d/033f/034h manually applied; deploy `dpl_7RH5vHiGNFVv6tU1nhZ79oJEcn44` → `https://teller-indol.vercel.app` (commit `ca0ac38`); controlled prod 106/106 DB acceptance; fast 207/207; full 689/689; HFAC unchanged (8 docs, 16 journals, 0 HFAC planning); production journals balanced; planning writes 0 journals |
 | `PHASE_13_COMPLETE` | **true** | Migration 031 manually applied; deploy `dpl_Du2Lfjuwh8hRcWYE7PT3fppmPawZ` → `https://teller-indol.vercel.app`; controlled prod 70/70 DB acceptance; HFAC unchanged; production journals balanced |
