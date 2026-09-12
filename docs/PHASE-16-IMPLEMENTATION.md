@@ -387,7 +387,7 @@ TELLER_TEST_PHASE=16 npm run test:phase
 
 Migration 044 `teller_provision_intercompany_accounts` used `SELECT … INTO rowtype` with a partial column list, returning null account IDs when a pair row already existed. App layer falls back to `teller_intercompany_account_pairs` until patch is applied.
 
-**Patch:** `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` (manual apply recommended)
+**Patch:** `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` (manually applied 2026-09-12)
 
 ### 16D close gate (verified 2026-09-12)
 

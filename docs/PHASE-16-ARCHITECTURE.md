@@ -1,7 +1,7 @@
 # Phase 16 — Multi-Entity Architecture
 
 **Slice 16A:** Legal entity foundation (tenant vs books separation)  
-**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 applied; optional patch 044 provision fix recommended. **16E not started.**
+**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 + patch 044 provision fix applied. **16E not started.**
 
 ## Canonical terminology
 
