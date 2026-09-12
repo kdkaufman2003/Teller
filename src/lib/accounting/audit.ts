@@ -132,7 +132,9 @@ export type AuditAction =
   | "legal_entity.active_changed"
   | "intercompany.posted"
   | "intercompany.reversed"
-  | "intercompany.failed";
+  | "intercompany.failed"
+  | "intercompany.settlement.posted"
+  | "intercompany.settlement.reversed";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

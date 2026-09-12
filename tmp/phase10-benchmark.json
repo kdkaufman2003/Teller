@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2026-09-07T16:45:45.497Z",
+  "unboundedReportFetches": [],
+  "suites": [
+    {
+      "lineCount": 10000,
+      "journalEntries": 5000,
+      "journalLines": 10000,
+      "timingsMs": {
+        "profit_and_loss": 2.4,
+        "balance_sheet": 2.35,
+        "trial_balance": 0.43,
+        "comparative_pl": 0.16,
+        "gl_page": 12
+      },
+      "sanity": {
+        "netIncome": 0,
+        "totalAssets": 0,
+        "tbBalanced": true,
+        "glPageSize": 50
+      }
+    },
+    {
+      "lineCount": 100000,
+      "journalEntries": 50000,
+      "journalLines": 100000,
+      "timingsMs": {
+        "profit_and_loss": 7.75,
+        "balance_sheet": 12.29,
+        "trial_balance": 2.19,
+        "comparative_pl": 0.06,
+        "gl_page": 128.34
+      },
+      "sanity": {
+        "netIncome": 0,
+        "totalAssets": 0,
+        "tbBalanced": true,
+        "glPageSize": 50
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getIntercompanyPairBalance } from "@/lib/accounting/intercompany";
+import { getIntercompanyPairReconciliation } from "@/lib/accounting/intercompany/settlement";
 import { jsonError, requireAccountingBooks } from "@/lib/api";
 
 export async function GET(request: Request) {
@@ -11,12 +12,23 @@ export async function GET(request: Request) {
   const entityAId = url.searchParams.get("entityAId")?.trim();
   const entityBId = url.searchParams.get("entityBId")?.trim();
   const asOf = url.searchParams.get("asOf")?.slice(0, 10);
+  const detailed = url.searchParams.get("detailed") === "1";
 
   if (!entityAId || !entityBId) {
     return jsonError("entityAId and entityBId are required", 400);
   }
 
   try {
+    if (detailed) {
+      const report = await getIntercompanyPairReconciliation(supabase, {
+        organizationId,
+        entityAId,
+        entityBId,
+        asOf: asOf ?? undefined,
+      });
+      return NextResponse.json(report);
+    }
+
     const balance = await getIntercompanyPairBalance(supabase, {
       organizationId,
       entityAId,

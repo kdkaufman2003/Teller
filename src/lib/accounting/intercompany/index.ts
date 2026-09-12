@@ -4,3 +4,4 @@ export * from "./validation";
 export * from "./posting";
 export * from "./reversal";
 export * from "./reconciliation";
+export * from "./settlement";

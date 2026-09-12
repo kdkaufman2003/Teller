@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IntercompanyPanel } from "@/components/intercompany/IntercompanyPanel";
 import { listIntercompanyTransactions } from "@/lib/accounting/intercompany";
+import { listIntercompanySettlements } from "@/lib/accounting/intercompany/settlement";
 import { canWriteBooks } from "@/lib/auth/roles";
 import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { getSessionContext } from "@/lib/session";
@@ -36,6 +37,7 @@ export default async function IntercompanyPage() {
   ]);
 
   let initialTransactions: Awaited<ReturnType<typeof listIntercompanyTransactions>> = [];
+  let initialSettlements: Awaited<ReturnType<typeof listIntercompanySettlements>> = [];
   try {
     initialTransactions = await listIntercompanyTransactions(supabase, {
       organizationId,
@@ -44,6 +46,15 @@ export default async function IntercompanyPage() {
     });
   } catch {
     initialTransactions = [];
+  }
+  try {
+    initialSettlements = await listIntercompanySettlements(supabase, {
+      organizationId,
+      legalEntityId,
+      limit: 50,
+    });
+  } catch {
+    initialSettlements = [];
   }
 
   const accountsByEntity: Record<string, Array<{ id: string; code: string; name: string }>> = {};
@@ -73,6 +84,7 @@ export default async function IntercompanyPage() {
         }))}
         accountsByEntity={accountsByEntity}
         initialTransactions={initialTransactions as never[]}
+        initialSettlements={initialSettlements as never[]}
         canWrite={canWriteBooks(role)}
       />
     </div>

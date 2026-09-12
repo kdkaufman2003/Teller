@@ -1,7 +1,7 @@
 # Phase 16 — Multi-Entity Architecture
 
 **Slice 16A:** Legal entity foundation (tenant vs books separation)  
-**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 + patch 044 provision fix applied. **16E not started.**
+**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 + patch 044 provision fix applied. **16E complete** — migration 045 + patch 045 reconciliation fix applied.
 
 ## Canonical terminology
 
@@ -335,7 +335,57 @@ Surfaces discrepancy only — **no auto-balancing journals**.
 
 ### Patch 044 — provision pair lookup fix
 
-When an intercompany account pair row already exists, the initial 044 RPC returned null `due_from`/`due_to` IDs due to a `SELECT INTO rowtype` mapping bug. Patch `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` corrects the lookup. App layer includes a pair-table fallback until the patch is applied.
+When an intercompany account pair row already exists, the initial 044 RPC returned null `due_from`/`due-to` IDs due to a `SELECT INTO rowtype` mapping bug. Patch `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` corrects the lookup. App layer includes a pair-table fallback until the patch is applied.
+
+---
+
+## Intercompany settlement (Phase 16E)
+
+Settlement **clears existing due-to/due-from balances** — it does not recreate original economics.
+
+| Rule | Value |
+|------|-------|
+| `SETTLEMENT_CREATES_REVENUE` | false |
+| `SETTLEMENT_CREATES_EXPENSE` | false |
+| `SETTLEMENT_GENERATES_SALES_TAX` | false |
+| `SETTLEMENT_PARTIAL_POSTING_POSSIBLE` | false |
+| `AUTOMATIC_GL_NETTING` | false |
+| `INTERCOMPANY_AUTO_BALANCING_ENTRY` | false |
+
+### Settlement model
+
+`teller_intercompany_settlements` — payer/payee entities, settlement date, amount, paired journal IDs, idempotency key, bank account linkage fields, lifecycle status (`draft` → `posted` → `reconciled` / `reversed`).
+
+**Phase 16E cash model:** posted settlement assumes transfer completed (no pending clearing account). Bank feed matching deferred — `intercompany_settlement` added to `teller_bank_matches` resource types for future linkage without duplicate journal posting.
+
+### Allocation truth
+
+`teller_intercompany_settlement_allocations` links settlement cash to one or more open intercompany transactions.
+
+- `amount_applied > 0`; sum must equal settlement amount
+- Over-allocation rejected at RPC
+- Open balance = original IC amount − sum(posted settlement allocations) — **not** mutable cached fields
+- Supports partial settlement, multiple settlements per item, multi-item settlement
+
+### Paired settlement journals
+
+Payer (A owes B): Dr Due To B, Cr Cash. Payee (B): Dr Cash, Cr Due From A.
+
+Posted atomically via `teller_atomic_post_intercompany_settlement`. Cash GL resolved server-side — `CLIENT_CONTROLLED_SETTLEMENT_CASH_ACCOUNT = false`.
+
+### Reconciliation
+
+`teller_intercompany_pair_reconciliation(entity A, entity B, as_of)` extends 16D pair balances with gross/net positions, open items, pair status, and as-of filtering.
+
+### Reversal
+
+`teller_atomic_reverse_intercompany_settlement` — paired reversal journals; original immutable; open balances restored.
+
+**Migration:** `supabase/migrations/045_phase16e_intercompany_settlement.sql` (applied 2026-09-12)
+
+### Patch 045 — reconciliation RPC + reversed settlement immutability
+
+Initial 045 `teller_intercompany_pair_reconciliation` referenced invalid aliases in `last_activity` (`ic`/`s`). Patch `supabase/patches/045_phase16e_reconciliation_immutable_fix.sql` corrects the query and extends immutability to `reversed` settlements.
 
 ---
 

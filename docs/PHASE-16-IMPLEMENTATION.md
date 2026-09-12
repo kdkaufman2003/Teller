@@ -8,7 +8,8 @@
 | **16B** | Entity setup, switching, permissions | **Complete — migration 041 applied; 11/11 controlled acceptance (2026-09-11)** |
 | **16C** | Entity-specific books, COA, periods | **Complete — 25/25 acceptance × 2 reruns (2026-09-11)** |
 | **16D** | Intercompany + due-to/due-from | **Complete — migration 044 applied; 19/19 acceptance × 2** |
-| 16E–16J | Settlement, consolidation, UX, deploy | Not started |
+| **16E** | Intercompany settlement + reconciliation | **Complete — migration 045 + patch 045 applied; 28/28 acceptance × 2** |
+| 16F–16J | Consolidation, UX, deploy | Not started |
 
 Full architecture: [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md)
 
@@ -404,7 +405,8 @@ Migration 044 `teller_provision_intercompany_accounts` used `SELECT … INTO row
 | `PHASE16D_CODE_COMPLETE` | true |
 | `PHASE_16D_DB_VERIFIED` | true |
 | `PHASE_16D_COMPLETE` | true |
-| `PHASE_16E_STARTED` | false |
+| `PHASE_16E_STARTED` | true |
+| `PHASE_16E_COMPLETE` | true |
 | `CONSOLIDATION_ELIMINATIONS_IN_16D` | false |
 
 **Operator commands:**
@@ -415,6 +417,69 @@ npm run verify:migration:044:controlled
 npm run accept:phase16d:controlled   # run twice
 TELLER_TEST_PHASE=16 npm run test:phase
 ```
+
+---
+
+## Phase 16E (2026-09-12)
+
+### Delivered (code + DB verified 2026-09-12)
+
+| Area | Path |
+|------|------|
+| Migration (manual) | `supabase/migrations/045_phase16e_intercompany_settlement.sql` |
+| Settlement module | `src/lib/accounting/intercompany/settlement/` |
+| Posting | `postIntercompanySettlement` → `teller_atomic_post_intercompany_settlement` |
+| Reversal | `reverseIntercompanySettlement` → atomic RPC |
+| Open items | `listIntercompanyOpenItems`, `getIntercompanyTransactionOpenBalance` |
+| Reconciliation report | `getIntercompanyPairReconciliation` (as-of, gross/net, status) |
+| Auto-apply | `autoApplySettlementAllocations` (oldest-first, pre-post review) |
+| API | `/api/accounting/intercompany/settlements`, `[id]/reverse`, `open-items` |
+| UI | Extended `/app/accounting/intercompany` — Transactions / Settlements / Reconciliation tabs |
+| Unit tests | `src/lib/accounting/phase16e.test.ts` |
+| Static verify | `npm run verify:phase16e:settlement`, `verify:migration:045:static` |
+| Controlled acceptance | `scripts/controlled-phase16e-db-acceptance.ts` (30 scenarios) |
+
+### Migration 045 scope
+
+- `teller_intercompany_settlements` — settlement record + paired journal links
+- `teller_intercompany_settlement_allocations` — allocation truth for open balances
+- `teller_intercompany_tx_open_balance` / `teller_intercompany_tx_settled_amount`
+- `teller_intercompany_open_items` — open item list (as-of aware)
+- `teller_intercompany_pair_reconciliation` — accountant reconciliation report
+- `teller_resolve_entity_cash_account` — server-side cash GL resolution
+- `teller_atomic_post_intercompany_settlement` / `teller_atomic_reverse_intercompany_settlement`
+- Bank match resource type `intercompany_settlement` (foundation — no auto-match in 16E)
+- RLS: org + entity access; writes via RPC only; posted immutability
+
+### Operator commands (after manual migration 045 apply)
+
+```bash
+npm run verify:migration:045:static
+npm run verify:phase16e:settlement
+npm run accept:phase16e:controlled   # run twice for idempotency
+TELLER_TEST_PHASE=16 npm run test:phase
+```
+
+### Patch 045 — reconciliation RPC + reversed settlement immutability
+
+Migration 045 `teller_intercompany_pair_reconciliation` had invalid table aliases in `last_activity`. Patch `supabase/patches/045_phase16e_reconciliation_immutable_fix.sql` applied manually 2026-09-12.
+
+### 16E close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_045_STATIC_VERIFY` | PASS |
+| `MIGRATION_045_CONTROLLED_VERIFY` | PASS |
+| `PHASE16E_SETTLEMENT_VERIFY` | PASS |
+| `PHASE16E_CONTROLLED_ACCEPTANCE` | PASS — 28/28 |
+| Idempotent rerun ×2 | PASS |
+| `SETTLEMENT_PARTIAL_POSTING_POSSIBLE` | false (16E_16) |
+| `SETTLEMENT_BOTH_PERIODS_OPEN` | PASS (16E_15) |
+| `HFAC_ECONOMIC_DATA_MODIFIED` | false |
+| `PHASE_16E_CODE_COMPLETE` | true |
+| `PHASE_16E_DB_VERIFIED` | true |
+| `PHASE_16E_COMPLETE` | true |
+| `PHASE_16F_STARTED` | false |
 
 ---
 
