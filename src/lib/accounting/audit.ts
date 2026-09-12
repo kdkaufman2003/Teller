@@ -134,7 +134,12 @@ export type AuditAction =
   | "intercompany.reversed"
   | "intercompany.failed"
   | "intercompany.settlement.posted"
-  | "intercompany.settlement.reversed";
+  | "intercompany.settlement.reversed"
+  | "consolidation.elimination.created"
+  | "consolidation.elimination.approved"
+  | "consolidation.elimination.posted"
+  | "consolidation.elimination.reversed"
+  | "consolidation.elimination.suggested";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

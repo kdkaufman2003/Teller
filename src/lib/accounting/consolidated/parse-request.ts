@@ -4,6 +4,7 @@ export function parseConsolidationRequestParams(url: URL): {
   periodStart: string | null;
   periodEnd: string | null;
   asOf: string | null;
+  reportMode: "pre" | "post";
 } {
   const includeAllEntities =
     url.searchParams.get("includeAll") === "1" ||
@@ -14,11 +15,15 @@ export function parseConsolidationRequestParams(url: URL): {
     ? entityIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
     : url.searchParams.getAll("legalEntityId").filter(Boolean);
 
+  const reportModeParam = url.searchParams.get("reportMode");
+  const reportMode = reportModeParam === "post" ? "post" : "pre";
+
   return {
     legalEntityIds: legalEntityIds.length ? legalEntityIds : null,
     includeAllEntities,
     periodStart: url.searchParams.get("periodStart"),
     periodEnd: url.searchParams.get("periodEnd"),
     asOf: url.searchParams.get("asOf"),
+    reportMode,
   };
 }

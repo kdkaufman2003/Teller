@@ -5,4 +5,5 @@ export { buildConsolidatedCashFlow } from "./cash-flow";
 export { resolveConsolidationScope } from "./scope";
 export { consolidationAccountKey, isIntercompanyAccount } from "./grouping";
 export { parseConsolidationRequestParams } from "./parse-request";
+export * from "./eliminations";
 export type * from "./types";

@@ -11,6 +11,9 @@ import {
 import { loadEntityAccounts, loadEntityDatedLines } from "./entity-data";
 import { mergeFinancialSection } from "./merge-lines";
 import type { ConsolidatedFinancialLine, ConsolidatedProfitAndLossReport } from "./types";
+import { buildConsolidationScopeKey } from "./eliminations/scope-key";
+import { loadPostedEliminationAdjustments } from "./eliminations/load-posted";
+import { applyEliminationsToFinancialLines } from "./eliminations/apply";
 
 export async function buildConsolidatedProfitAndLoss(
   supabase: SupabaseClient,
@@ -20,6 +23,7 @@ export async function buildConsolidatedProfitAndLoss(
     includeAllEntities?: boolean;
     periodStart?: string | null;
     periodEnd: string;
+    reportMode?: "pre" | "post";
     auth?: EntityAuthContext;
   },
 ): Promise<ConsolidatedProfitAndLossReport> {
@@ -61,18 +65,37 @@ export async function buildConsolidatedProfitAndLoss(
     });
   }
 
-  const revenue = [...revenueMap.values()].sort((a, b) => a.code.localeCompare(b.code));
-  const cogs = [...cogsMap.values()].sort((a, b) => a.code.localeCompare(b.code));
-  const expenses = [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let revenue = [...revenueMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let cogs = [...cogsMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let expenses = [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+
+  const entityNetSum = roundMoney(entityNetIncome.reduce((sum, row) => sum + row.amount, 0));
+  const reportMode = input.reportMode ?? "pre";
+
+  if (reportMode === "post") {
+    const scopeKey = buildConsolidationScopeKey(
+      input.organizationId,
+      scope.entities.map((entity) => entity.legalEntityId),
+    );
+    const adjustments = await loadPostedEliminationAdjustments(supabase, {
+      organizationId: input.organizationId,
+      scopeKey,
+      asOf: periodEnd,
+      periodStart,
+      periodEnd,
+    });
+    revenue = applyEliminationsToFinancialLines(revenue, adjustments);
+    cogs = applyEliminationsToFinancialLines(cogs, adjustments);
+    expenses = applyEliminationsToFinancialLines(expenses, adjustments);
+  }
 
   const totalRevenueSum = roundMoney(revenue.reduce((sum, row) => sum + row.amount, 0));
   const totalCogs = roundMoney(cogs.reduce((sum, row) => sum + row.amount, 0));
   const totalExpenses = roundMoney(expenses.reduce((sum, row) => sum + row.amount, 0));
   const grossProfit = roundMoney(totalRevenueSum - totalCogs);
   const netIncome = roundMoney(grossProfit - totalExpenses);
-  const entityNetSum = roundMoney(entityNetIncome.reduce((sum, row) => sum + row.amount, 0));
 
-  if (Math.abs(netIncome - entityNetSum) > 0.05) {
+  if (reportMode === "pre" && Math.abs(netIncome - entityNetSum) > 0.05) {
     throw new Error("Consolidated net income must equal sum of entity net income (pre-adjustment)");
   }
 
@@ -86,6 +109,7 @@ export async function buildConsolidatedProfitAndLoss(
     ...buildReportMeta(scope, {
       intercompanyWarnings,
       periodStatuses: buildPeriodStatuses(scope, periodEnd),
+      reportMode,
     }),
     periodStart,
     periodEnd,

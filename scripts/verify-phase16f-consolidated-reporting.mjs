@@ -39,7 +39,6 @@ const grouping = readFileSync(join(root, "src/lib/accounting/consolidated/groupi
 if (!/consolidationAccountKey/.test(grouping)) issues.push("consolidationAccountKey missing");
 
 for (const file of [
-  "src/lib/accounting/consolidated/trial-balance.ts",
   "src/lib/accounting/consolidated/profit-loss.ts",
   "src/lib/accounting/consolidated/balance-sheet.ts",
   "src/lib/accounting/consolidated/cash-flow.ts",
@@ -48,7 +47,11 @@ for (const file of [
   if (/\.insert\(/.test(source) || /\.update\(/.test(source)) {
     issues.push(`${file} must remain report-only`);
   }
-  if (/elimination/i.test(source)) issues.push(`${file} must not implement eliminations in 16F`);
+}
+
+const trialBalance = readFileSync(join(root, "src/lib/accounting/consolidated/trial-balance.ts"), "utf8");
+if (/\.insert\(/.test(trialBalance) || /\.update\(/.test(trialBalance)) {
+  issues.push("trial-balance.ts must not write entity books");
 }
 
 const migration046 = join(root, "supabase/migrations/046_phase16f_consolidated_reporting.sql");

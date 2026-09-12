@@ -88,9 +88,8 @@ describe("Phase 16F consolidated reporting design", () => {
     expect(merged[0]?.amount).toBe(150);
   });
 
-  it("consolidated reporting is query-only (no journal posting)", () => {
+  it("16F core consolidated builders remain query-only (no journal posting)", () => {
     const files = [
-      "src/lib/accounting/consolidated/trial-balance.ts",
       "src/lib/accounting/consolidated/profit-loss.ts",
       "src/lib/accounting/consolidated/balance-sheet.ts",
       "src/lib/accounting/consolidated/cash-flow.ts",
@@ -100,7 +99,6 @@ describe("Phase 16F consolidated reporting design", () => {
       expect(source).not.toMatch(/\.insert\(/);
       expect(source).not.toMatch(/\.update\(/);
       expect(source).not.toMatch(/teller_atomic_post/);
-      expect(source).not.toMatch(/elimination/i);
     }
   });
 
@@ -116,7 +114,7 @@ describe("Phase 16F consolidated reporting design", () => {
     );
   });
 
-  it("UI labels pre-elimination consolidated reports", () => {
+  it("UI supports pre-elimination consolidated reports", () => {
     const ui = read("src/components/ConsolidatedReportsView.tsx");
     expect(ui).toMatch(/Pre-elimination/i);
     expect(ui).toMatch(/All Companies/);

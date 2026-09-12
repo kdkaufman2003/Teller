@@ -10,6 +10,9 @@ import {
   buildReportMeta,
 } from "./warnings";
 import type { ConsolidatedTrialBalanceReport, ConsolidatedTrialBalanceRow } from "./types";
+import { buildConsolidationScopeKey } from "./eliminations/scope-key";
+import { loadPostedEliminationAdjustments } from "./eliminations/load-posted";
+import { applyEliminationsToTrialBalanceRows } from "./eliminations/apply";
 
 export async function buildConsolidatedTrialBalance(
   supabase: SupabaseClient,
@@ -19,6 +22,7 @@ export async function buildConsolidatedTrialBalance(
     includeAllEntities?: boolean;
     periodStart?: string | null;
     periodEnd: string;
+    reportMode?: "pre" | "post";
     auth?: EntityAuthContext;
   },
 ): Promise<ConsolidatedTrialBalanceReport> {
@@ -88,9 +92,27 @@ export async function buildConsolidatedTrialBalance(
     }
   }
 
-  const rows = [...rowMap.values()]
+  let rows = [...rowMap.values()]
     .filter((row) => row.adjustedDebit !== 0 || row.adjustedCredit !== 0)
     .sort((a, b) => a.code.localeCompare(b.code) || a.type.localeCompare(b.type));
+
+  let eliminationAdjustments: ConsolidatedTrialBalanceReport["eliminationAdjustments"];
+  if (input.reportMode === "post") {
+    const scopeKey = buildConsolidationScopeKey(
+      input.organizationId,
+      scope.entities.map((entity) => entity.legalEntityId),
+    );
+    const adjustments = await loadPostedEliminationAdjustments(supabase, {
+      organizationId: input.organizationId,
+      scopeKey,
+      asOf: periodEnd,
+      periodStart,
+      periodEnd,
+    });
+    const applied = applyEliminationsToTrialBalanceRows(rows, adjustments);
+    rows = applied.rows;
+    eliminationAdjustments = applied.eliminationRows;
+  }
 
   const totals = rows.reduce(
     (sum, row) => ({
@@ -110,10 +132,12 @@ export async function buildConsolidatedTrialBalance(
     ...buildReportMeta(scope, {
       intercompanyWarnings,
       periodStatuses: buildPeriodStatuses(scope, periodEnd),
+      reportMode: input.reportMode ?? "pre",
     }),
     periodStart,
     periodEnd,
     rows,
+    eliminationAdjustments,
     totals,
     balanced: isTrialBalanceBalanced(totals.adjustedDebit, totals.adjustedCredit),
   };

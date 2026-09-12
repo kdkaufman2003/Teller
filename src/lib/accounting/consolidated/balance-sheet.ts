@@ -11,6 +11,9 @@ import {
 import { loadEntityAccounts, loadEntityDatedLines } from "./entity-data";
 import { mergeFinancialSection } from "./merge-lines";
 import type { ConsolidatedBalanceSheetReport } from "./types";
+import { buildConsolidationScopeKey } from "./eliminations/scope-key";
+import { loadPostedEliminationAdjustments } from "./eliminations/load-posted";
+import { applyEliminationsToFinancialLines } from "./eliminations/apply";
 
 export async function buildConsolidatedBalanceSheet(
   supabase: SupabaseClient,
@@ -20,6 +23,7 @@ export async function buildConsolidatedBalanceSheet(
     includeAllEntities?: boolean;
     asOf: string;
     fiscalYearStartMonth?: number;
+    reportMode?: "pre" | "post";
     auth?: EntityAuthContext;
   },
 ): Promise<ConsolidatedBalanceSheetReport> {
@@ -53,9 +57,26 @@ export async function buildConsolidatedBalanceSheet(
     mergeFinancialSection(equityMap, entity, sheet.equity, accounts);
   }
 
-  const assets = [...assetsMap.values()].sort((a, b) => a.code.localeCompare(b.code));
-  const liabilities = [...liabilitiesMap.values()].sort((a, b) => a.code.localeCompare(b.code));
-  const equity = [...equityMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let assets = [...assetsMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let liabilities = [...liabilitiesMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  let equity = [...equityMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+  const reportMode = input.reportMode ?? "pre";
+
+  if (reportMode === "post") {
+    const scopeKey = buildConsolidationScopeKey(
+      input.organizationId,
+      scope.entities.map((entity) => entity.legalEntityId),
+    );
+    const adjustments = await loadPostedEliminationAdjustments(supabase, {
+      organizationId: input.organizationId,
+      scopeKey,
+      asOf,
+      periodEnd: asOf,
+    });
+    assets = applyEliminationsToFinancialLines(assets, adjustments);
+    liabilities = applyEliminationsToFinancialLines(liabilities, adjustments);
+    equity = applyEliminationsToFinancialLines(equity, adjustments);
+  }
 
   const totalAssets = roundMoney(assets.reduce((sum, row) => sum + row.amount, 0));
   const totalLiabilities = roundMoney(liabilities.reduce((sum, row) => sum + row.amount, 0));
@@ -77,6 +98,7 @@ export async function buildConsolidatedBalanceSheet(
     ...buildReportMeta(scope, {
       intercompanyWarnings,
       periodStatuses: buildPeriodStatuses(scope, asOf),
+      reportMode,
     }),
     asOf,
     assets,

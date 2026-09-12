@@ -7,7 +7,10 @@ import {
   buildConsolidatedCashFlow,
   buildConsolidatedProfitAndLoss,
   buildConsolidatedTrialBalance,
+  buildConsolidationEliminationSuggestions,
+  buildConsolidationWorksheet,
 } from "@/lib/accounting/consolidated";
+import type { ConsolidationReportMode } from "@/lib/accounting/consolidated/types";
 import { resolveActiveLegalEntityContext } from "@/lib/accounting/legal-entity";
 import { parseFiscalYearStart } from "@/lib/org/config";
 import { routes } from "@/lib/routes";
@@ -22,6 +25,7 @@ type PageProps = {
     periodStart?: string;
     periodEnd?: string;
     asOf?: string;
+    reportMode?: string;
   }>;
 };
 
@@ -30,11 +34,17 @@ function parseTab(value: string | undefined) {
     value === "profit_loss" ||
     value === "balance_sheet" ||
     value === "cash_flow" ||
-    value === "trial_balance"
+    value === "trial_balance" ||
+    value === "eliminations" ||
+    value === "worksheet"
   ) {
     return value;
   }
   return "trial_balance" as const;
+}
+
+function parseReportMode(value: string | undefined): ConsolidationReportMode {
+  return value === "post" ? "post" : "pre";
 }
 
 export default async function ConsolidatedReportsPage({ searchParams }: PageProps) {
@@ -43,6 +53,7 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
 
   const params = await searchParams;
   const tab = parseTab(params.tab);
+  const reportMode = parseReportMode(params.reportMode);
   const today = new Date().toISOString().slice(0, 10);
   const periodEnd = params.periodEnd ?? params.asOf ?? today;
   const periodStart = params.periodStart ?? `${periodEnd.slice(0, 4)}-01-01`;
@@ -64,6 +75,7 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
     id: entity.id,
     name: entity.name,
     entityCode: entity.entityCode,
+    isDefault: entity.isDefault,
   }));
 
   if (accessibleEntities.length <= 1) {
@@ -93,6 +105,8 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
   let profitAndLoss = null;
   let balanceSheet = null;
   let cashFlow = null;
+  let worksheet = null;
+  let eliminationSuggestions = null;
 
   try {
     if (tab === "trial_balance") {
@@ -100,19 +114,39 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
         ...scopeInput,
         periodStart,
         periodEnd,
+        reportMode,
       });
     } else if (tab === "profit_loss") {
       profitAndLoss = await buildConsolidatedProfitAndLoss(supabase, {
         ...scopeInput,
         periodStart,
         periodEnd,
+        reportMode,
       });
     } else if (tab === "balance_sheet") {
       balanceSheet = await buildConsolidatedBalanceSheet(supabase, {
         ...scopeInput,
         asOf,
         fiscalYearStartMonth: fiscalYearStart,
+        reportMode,
       });
+    } else if (tab === "worksheet") {
+      worksheet = await buildConsolidationWorksheet(supabase, {
+        ...scopeInput,
+        periodStart,
+        periodEnd,
+      });
+    } else if (tab === "eliminations") {
+      const suggestions = await buildConsolidationEliminationSuggestions(supabase, {
+        ...scopeInput,
+        asOf,
+        periodStart,
+        periodEnd,
+      });
+      eliminationSuggestions = {
+        dueToFrom: suggestions.dueToFrom,
+        intercompanyPl: suggestions.intercompanyPl,
+      };
     } else {
       cashFlow = await buildConsolidatedCashFlow(supabase, {
         ...scopeInput,
@@ -129,7 +163,7 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
       <header className="page-header">
         <h1>Consolidated reports</h1>
         <p>
-          Pre-elimination financial statements across selected companies ·{" "}
+          Consolidated financial statements across selected companies ·{" "}
           <Link href={routes.reports} className="text-sky hover:underline">
             Single-company reports
           </Link>
@@ -142,12 +176,15 @@ export default async function ConsolidatedReportsPage({ searchParams }: PageProp
           periodEnd={periodEnd}
           asOf={asOf}
           tab={tab}
+          reportMode={reportMode}
           includeAll={includeAll}
           selectedEntityIds={selectedEntityIds}
           trialBalance={trialBalance}
           profitAndLoss={profitAndLoss}
           balanceSheet={balanceSheet}
           cashFlow={cashFlow}
+          worksheet={worksheet}
+          eliminationSuggestions={eliminationSuggestions}
           error={error}
         />
       </Suspense>

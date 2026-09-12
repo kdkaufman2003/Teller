@@ -550,6 +550,80 @@ TELLER_TEST_PHASE=16 npm run test:phase
 
 ---
 
+## Phase 16G — consolidation eliminations
+
+**Purpose:** Explicit consolidation-only adjustments on top of Phase 16F pre-elimination reporting. Entity books, intercompany journals, and settlements remain unchanged.
+
+### Architecture invariants
+
+| Invariant | Value |
+|-----------|-------|
+| `ELIMINATIONS_MUTATE_ENTITY_BOOKS` | false |
+| `ELIMINATIONS_POST_TO_LEGAL_ENTITY_JOURNALS` | false |
+| `ENTITY_REPORTS_INCLUDE_ELIMINATIONS` | false |
+| `ELIMINATION_AUTO_POST_WITHOUT_REVIEW` | false |
+| `OUT_OF_BALANCE_INTERCOMPANY_AUTO_FIXED` | false |
+| `CONSOLIDATED_CASH_BALANCE_ELIMINATED` | false |
+
+### Schema (migration 046 — manual apply)
+
+- `teller_consolidation_elimination_entries` — scoped, dated, status lifecycle
+- `teller_consolidation_elimination_lines` — balanced debit/credit lines with 16F `group_key`
+- `teller_consolidation_elimination_sources` — traceability to IC pairs, transactions, reconciliation
+- `teller_consolidation_report_locks` — optional consolidation period lock
+- RPCs: `teller_atomic_post_consolidation_elimination`, `teller_atomic_reverse_consolidation_elimination`
+
+### Application layer
+
+- `src/lib/accounting/consolidated/eliminations/` — suggestions, service, worksheet, apply
+- Due-to/from suggestions use Phase 16E `getIntercompanyPairReconciliation`; matched amount = `min(abs(aDueFromB), abs(bDueToA))`
+- IC P&L suggestions from explicit intercompany transaction metadata (not account name guessing)
+- Post-elimination TB/P&L/BS via `reportMode=post`; pre view unchanged
+- Worksheet: entity columns + pre + elim Dr/Cr + post
+
+### API / UI
+
+- `/api/reports/consolidated/eliminations` — list/create (admin)
+- `/api/reports/consolidated/eliminations/suggestions` — read-only
+- `/api/reports/consolidated/eliminations/[id]/post|reverse`
+- `/api/reports/consolidated/worksheet`
+- `/app/reports/consolidated` — tabs: Financial Statements, Eliminations, Worksheet; pre/post toggle
+
+### Deferred in 16G
+
+- NCI, goodwill, investment-in-subsidiary equity elimination
+- Intercompany inventory profit / fixed asset transfer elimination
+- Multicurrency eliminations
+- Full IC cash-flow reclassification (16F double-sided presentation preserved)
+
+### Verification commands
+
+```bash
+npm run verify:migration:046:static
+npm run verify:phase16g:eliminations
+TELLER_TEST_PHASE=16 npm run test:phase
+# After manual migration 046 apply:
+npm run accept:phase16g:controlled
+```
+
+### 16G close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_046_STATIC_VERIFY` | PASS |
+| `PHASE16G_ELIMINATIONS_VERIFY` | PASS |
+| `PHASE_16G_CONTROLLED_ACCEPTANCE` | PASS — 17/17 |
+| `ELIMINATIONS_MUTATE_ENTITY_BOOKS` | false |
+| `NO_ENTITY_JOURNAL_WRITES` | PASS |
+| `REVERSAL_RESTORES_PRE_POST_STATE` | PASS |
+| `HFAC_MODIFIED` | false |
+| `MIGRATIONS_AUTO_APPLIED` | false |
+| `PHASE_16G_CODE_COMPLETE` | true |
+| `PHASE_16G_DB_VERIFIED` | true |
+| `PHASE_16G_COMPLETE` | true |
+
+---
+
 ## Table inventory (organization_id audit)
 
 **100 org-scoped tables** across: core tenant (16), accounting (29), master data (4), banking (9), inventory/FA/payroll (22), planning (6), tax (14).

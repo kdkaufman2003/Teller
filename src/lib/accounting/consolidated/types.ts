@@ -21,10 +21,14 @@ export type EntityContribution = {
   accountId?: string;
 };
 
+export type ConsolidationReportMode = "pre" | "post";
+
 export type ConsolidatedReportMeta = {
   scope: ConsolidationScope;
   generatedAt: string;
+  reportMode: ConsolidationReportMode;
   preEliminationLabel: string;
+  postEliminationLabel?: string;
   intercompanyWarnings: string[];
   periodStatuses: Array<{
     legalEntityId: string;
@@ -51,6 +55,15 @@ export type ConsolidatedTrialBalanceReport = ConsolidatedReportMeta & {
   periodStart: string | null;
   periodEnd: string;
   rows: ConsolidatedTrialBalanceRow[];
+  eliminationAdjustments?: Array<{
+    groupKey: string;
+    code: string;
+    name: string;
+    type: string;
+    subtype: string;
+    eliminationDebit: number;
+    eliminationCredit: number;
+  }>;
   totals: {
     adjustedDebit: number;
     adjustedCredit: number;

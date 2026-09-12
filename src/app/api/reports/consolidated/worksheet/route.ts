@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  buildConsolidatedTrialBalance,
-  parseConsolidationRequestParams,
-} from "@/lib/accounting/consolidated";
+import { buildConsolidationWorksheet } from "@/lib/accounting/consolidated/eliminations";
+import { parseConsolidationRequestParams } from "@/lib/accounting/consolidated";
 import { jsonError, requireAccountingBooks } from "@/lib/api";
 
 export async function GET(request: Request) {
@@ -14,18 +12,17 @@ export async function GET(request: Request) {
   const periodEnd = params.periodEnd ?? params.asOf ?? new Date().toISOString().slice(0, 10);
 
   try {
-    const report = await buildConsolidatedTrialBalance(ctx.supabase, {
+    const worksheet = await buildConsolidationWorksheet(ctx.supabase, {
       organizationId: ctx.organizationId,
       legalEntityIds: params.legalEntityIds,
       includeAllEntities: params.includeAllEntities,
       periodStart: params.periodStart,
       periodEnd,
-      reportMode: params.reportMode,
       auth: ctx.auth,
     });
-    return NextResponse.json(report);
+    return NextResponse.json(worksheet);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Consolidated trial balance failed";
+    const message = err instanceof Error ? err.message : "Could not build consolidation worksheet";
     const status = /access|permission/i.test(message) ? 403 : 400;
     return jsonError(message, status);
   }

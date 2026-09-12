@@ -59,12 +59,17 @@ export function buildReportMeta(
   input: {
     intercompanyWarnings: string[];
     periodStatuses: ReturnType<typeof buildPeriodStatuses>;
+    reportMode?: "pre" | "post";
   },
 ) {
+  const reportMode = input.reportMode ?? "pre";
   return {
     scope,
     generatedAt: new Date().toISOString(),
+    reportMode,
     preEliminationLabel: "Pre-elimination consolidated report",
+    postEliminationLabel:
+      reportMode === "post" ? "Post-elimination consolidated report" : undefined,
     intercompanyWarnings: input.intercompanyWarnings,
     periodStatuses: input.periodStatuses,
   };

@@ -187,13 +187,26 @@ Entity A TB + Entity B TB = Consolidated TB (pre-elimination)
 - Intercompany due-to/due-from **visible**; pair reconciliation warnings when out of balance
 - No migration 046 — scope via API params; named groups deferred
 
-### Phase 16G (future eliminations)
+### Phase 16G (consolidation eliminations)
 
 ```
-Consolidated TB (pre-elimination) + elimination adjustments = Consolidated TB (eliminated)
+Entity A books (unchanged) + Entity B books (unchanged)
+        +
+Consolidation elimination layer (posted adjustments)
+        =
+Post-elimination consolidated reports
 ```
 
-`CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations remain reporting-layer only.
+- Dedicated tables — **not** `teller_journal_entries`
+- Lifecycle: draft/suggested → approved → posted; corrections via reversal (no hard delete)
+- Scope key: deterministic hash of org + sorted legal entity IDs
+- Due-to/from: eliminate matched reconciliation amount only; difference surfaces warning
+- IC revenue/expense: explicit intercompany transaction metadata
+- Worksheet: pre + elimination Dr/Cr + post per 16F account group key
+- Cash: consolidated cash balances are **not** eliminated (additive across entities)
+- IC cash-flow reclassification deferred; 16F limitation message retained
+
+`CONSOLIDATION_REWRITES_ENTITY_BOOKS = false` — eliminations never touch legal-entity books or subledgers.
 
 ---
 
