@@ -1,7 +1,7 @@
 # Phase 16 — Multi-Entity Architecture
 
 **Slice 16A:** Legal entity foundation (tenant vs books separation)  
-**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043 manually applied). **16D not started.**
+**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 applied; optional patch 044 provision fix recommended. **16E not started.**
 
 ## Canonical terminology
 
@@ -264,12 +264,78 @@ This is an **entity-isolation correction**, not an accounting-semantics change. 
 
 ---
 
-## Intercompany (future — not 16A/16B/16C)
+## Intercompany (Phase 16D)
 
-Entity A: Dr Expense, Cr Due To B  
-Entity B: Dr Due From A, Cr Revenue/Cash  
+**Invariant preserved:** `CROSS_ENTITY_SINGLE_JOURNAL_ALLOWED = false`
 
-Linked by intercompany group ID; each journal balances independently.
+Each economic event creates **two balanced journals** — one per legal entity — linked by `teller_intercompany_transactions`.
+
+Example (expense on behalf):
+
+| Entity A (payer) | Entity B (beneficiary) |
+|------------------|------------------------|
+| Dr Due From B | Dr Expense |
+| Cr Cash/AP | Cr Due To A |
+
+### Group model
+
+`teller_intercompany_transactions` holds:
+
+- `source_legal_entity_id`, `counterparty_legal_entity_id` (same org, must differ)
+- `transaction_type`: `expense_on_behalf`, `cash_received_on_behalf`, `fund_transfer`, `manual`
+- `source_journal_id`, `counterparty_journal_id` (both required when posted)
+- `idempotency_key` (unique per org when set)
+- `reverses_transaction_id` / `reversal_transaction_id` for paired reversals
+
+Posted rows are **immutable** — corrections via atomic reversal RPC only.
+
+### Due-to / Due-from accounts (Option A)
+
+Per-entity, per-counterparty GL accounts (`teller_intercompany_account_pairs`):
+
+- **Due From** counterparty → `asset`, subtype `due_from`
+- **Due To** counterparty → `liability`, subtype `due_to`
+
+Provisioned idempotently via `teller_provision_intercompany_accounts` on first use. Code pattern: `IC-DF-{ENTITY_CODE}`, `IC-DT-{ENTITY_CODE}`.
+
+Not AR/AP trade balances — explicit intercompany subledger for reconciliation and future elimination metadata.
+
+### Atomicity
+
+`teller_atomic_post_intercompany` and `teller_atomic_reverse_intercompany` post both journals in one DB transaction. Simulated failure after source journal rolls back the entire group — `INTERCOMPANY_PARTIAL_POSTING_POSSIBLE = false`.
+
+### Authorization
+
+Initiator must have accounting access to **both** entities (`teller_can_access_legal_entity` on each side in RPC). Client-supplied entity UUIDs revalidated server-side.
+
+### Period controls
+
+Both entities' periods must be open for transaction/reversal date. No date shifting to work around a closed counterparty period.
+
+### Reconciliation
+
+`teller_intercompany_pair_balances(entity A, entity B)` compares:
+
+- A Due From B ↔ B Due To A
+- A Due To B ↔ B Due From A
+
+Surfaces discrepancy only — **no auto-balancing journals**.
+
+### Boundaries (16D)
+
+| Out of scope | Notes |
+|--------------|-------|
+| Consolidation eliminations | 16F–16G reporting layer |
+| Intercompany inventory | Deferred |
+| Cross-entity payroll | Deferred |
+| HFAC intercompany | HFAC unchanged; maps to default entity only |
+| Tax engine changes | Phase 15 untouched |
+
+**Migration:** `supabase/migrations/044_phase16d_intercompany.sql` (applied 2026-09-12)
+
+### Patch 044 — provision pair lookup fix
+
+When an intercompany account pair row already exists, the initial 044 RPC returned null `due_from`/`due_to` IDs due to a `SELECT INTO rowtype` mapping bug. Patch `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` corrects the lookup. App layer includes a pair-table fallback until the patch is applied.
 
 ---
 

@@ -92,6 +92,7 @@ export const PHASE_UNIT_TESTS = {
     "src/lib/accounting/phase16a.test.ts",
     "src/lib/accounting/phase16b.test.ts",
     "src/lib/accounting/phase16c.test.ts",
+    "src/lib/accounting/phase16d.test.ts",
   ],
   15: [
     "src/lib/accounting/tax/phase15a.test.ts",

@@ -23,6 +23,7 @@ export const routes = {
   accountingClose: "/app/accounting/close",
   accountingAdjustments: "/app/accounting/adjustments",
   accountingTrialBalance: "/app/accounting/trial-balance",
+  accountingIntercompany: "/app/accounting/intercompany",
   accountingIntegrity: "/app/accounting/integrity",
   accounting1099Review: "/app/accounting/tax/1099-review",
   accountingSalesTax: "/app/accounting/tax/sales-tax",

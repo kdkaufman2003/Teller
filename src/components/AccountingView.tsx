@@ -263,6 +263,12 @@ export function AccountingView({
               Trial balance
             </Link>
             <Link
+              href={routes.accountingIntercompany}
+              className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
+            >
+              Between companies
+            </Link>
+            <Link
               href={routes.accountingRecurringJournals}
               className="rounded-md border border-rule bg-paper-strong px-4 py-2 text-sm hover:border-navy"
             >

@@ -129,7 +129,10 @@ export type AuditAction =
   | "legal_entity.default_changed"
   | "legal_entity.access_granted"
   | "legal_entity.access_revoked"
-  | "legal_entity.active_changed";
+  | "legal_entity.active_changed"
+  | "intercompany.posted"
+  | "intercompany.reversed"
+  | "intercompany.failed";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

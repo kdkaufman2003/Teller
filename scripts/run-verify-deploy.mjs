@@ -33,6 +33,8 @@ if (phase === 13) {
 
 if (phase === 16) {
   steps.push(run("verify_phase16_multi_entity", "npm", ["run", "verify:phase16:multi-entity"]));
+  steps.push(run("verify_phase16d_intercompany", "npm", ["run", "verify:phase16d:intercompany"]));
+  steps.push(run("verify_migration_044_static", "npm", ["run", "verify:migration:044:static"]));
   steps.push(run("verify_migration_040", "npm", ["run", "verify:migration:040:controlled"]));
 }
 

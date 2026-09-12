@@ -7,7 +7,8 @@
 | **16A** | Legal entity foundation + data model | **Complete** (migration 040 manually applied 2026-09-11) |
 | **16B** | Entity setup, switching, permissions | **Complete — migration 041 applied; 11/11 controlled acceptance (2026-09-11)** |
 | **16C** | Entity-specific books, COA, periods | **Complete — 25/25 acceptance × 2 reruns (2026-09-11)** |
-| 16D–16J | Intercompany, consolidation, UX, deploy | Not started |
+| **16D** | Intercompany + due-to/due-from | **Complete — migration 044 applied; 19/19 acceptance × 2** |
+| 16E–16J | Settlement, consolidation, UX, deploy | Not started |
 
 Full architecture: [PHASE-16-ARCHITECTURE.md](./PHASE-16-ARCHITECTURE.md)
 
@@ -322,7 +323,7 @@ Static verify: `npm run verify:migration:043:static`
 | `PHASE16_STATIC_VERIFY` | PASS |
 | `FAST_TESTS` | PASS — 373/373 |
 | `PHASE16_TESTS` | PASS — 31/31 |
-| `PHASE_16D_STARTED` | false |
+| `PHASE_16D_STARTED` | true (code); DB pending 044 |
 
 **Delivered in 16C:**
 
@@ -340,6 +341,78 @@ Static verify: `npm run verify:migration:043:static`
 npm run accept:phase16c:controlled   # run twice for idempotency
 npm run verify:phase16:multi-entity
 npm run verify:migration:043:static
+TELLER_TEST_PHASE=16 npm run test:phase
+```
+
+---
+
+## Phase 16D (2026-09-12)
+
+### Delivered (code — DB pending migration 044)
+
+| Area | Path |
+|------|------|
+| Migration (manual) | `supabase/migrations/044_phase16d_intercompany.sql` |
+| Types + validation | `src/lib/accounting/intercompany/` |
+| Posting primitive | `postIntercompanyTransaction`, typed helpers |
+| Reversal | `reverseIntercompanyTransaction` → atomic RPC |
+| Reconciliation | `getIntercompanyPairBalance`, pair balance RPC |
+| API | `/api/accounting/intercompany`, `[id]`, `[id]/reverse`, `reconciliation` |
+| UI | `/app/accounting/intercompany` |
+| Unit tests | `src/lib/accounting/phase16d.test.ts` |
+| Static verify | `npm run verify:phase16d:intercompany`, `verify:migration:044:static` |
+| Controlled acceptance | `scripts/controlled-phase16d-db-acceptance.ts` (25 scenarios) |
+
+### Migration 044 scope
+
+- `teller_intercompany_transactions` — group linking paired journals
+- `teller_intercompany_account_pairs` — per-entity due-to/due-from GL mapping
+- `teller_provision_intercompany_accounts` — idempotent account setup
+- `teller_atomic_post_intercompany` — atomic paired posting + idempotency
+- `teller_atomic_reverse_intercompany` — atomic paired reversal
+- `teller_intercompany_pair_balances` — reconciliation (no auto-fix)
+- RLS: org + entity access; writes via RPC only
+- Immutability trigger on posted groups
+
+### Operator commands (after manual migration 044 apply)
+
+```bash
+npm run verify:migration:044:static
+npm run verify:phase16d:intercompany
+npm run accept:phase16d:controlled   # run twice for idempotency
+TELLER_TEST_PHASE=16 npm run test:phase
+```
+
+### Patch 044 — provision pair lookup fix
+
+Migration 044 `teller_provision_intercompany_accounts` used `SELECT … INTO rowtype` with a partial column list, returning null account IDs when a pair row already existed. App layer falls back to `teller_intercompany_account_pairs` until patch is applied.
+
+**Patch:** `supabase/patches/044_phase16d_provision_pair_lookup_fix.sql` (manual apply recommended)
+
+### 16D close gate (verified 2026-09-12)
+
+| Check | Result |
+|-------|--------|
+| `MIGRATION_044_VERIFY` | PASS (production probe) |
+| `MIGRATION_044_STATIC_VERIFY` | PASS |
+| `PHASE16D_CONTROLLED_ACCEPTANCE` | PASS — 19/19 |
+| Idempotent rerun ×2 | PASS |
+| `INTERCOMPANY_PARTIAL_POSTING_POSSIBLE` | false (16D_12 atomic rollback) |
+| `INTERCOMPANY_BOTH_PERIODS_OPEN` | PASS (16D_11 dual-period deny) |
+| `UNBALANCED_PRODUCTION_JOURNALS` | 0 |
+| `HFAC_ECONOMIC_DATA_MODIFIED` | false (17 journals) |
+| `PHASE16D_CODE_COMPLETE` | true |
+| `PHASE_16D_DB_VERIFIED` | true |
+| `PHASE_16D_COMPLETE` | true |
+| `PHASE_16E_STARTED` | false |
+| `CONSOLIDATION_ELIMINATIONS_IN_16D` | false |
+
+**Operator commands:**
+
+```bash
+npm run verify:migration:044:static
+npm run verify:migration:044:controlled
+npm run accept:phase16d:controlled   # run twice
 TELLER_TEST_PHASE=16 npm run test:phase
 ```
 
