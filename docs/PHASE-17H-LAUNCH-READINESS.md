@@ -18,7 +18,7 @@ All other automated gates must also pass.
 | Field | Value |
 |-------|-------|
 | Branch | `main` |
-| Commit | Set at 17H close — see `FINAL_RELEASE_COMMIT_SHA` |
+| Commit | `b12ad43` — Phase 17H: final production launch readiness |
 | Feature freeze | Active |
 
 ---
@@ -51,7 +51,7 @@ All other automated gates must also pass.
 | 17E-002 | 17E | HIGH | POST_LAUNCH_HIGH | No restore rehearsal — quarterly procedure |
 | 17E-008–009 | 17E | LOW | POST_LAUNCH_LOW | Scheduler/alerting |
 | 17F-010 | 17F | INFO | POST_LAUNCH_LOW | Bills page title |
-| 17G-001 | 17G | INFO | Resolved by 17H deploy | `/api/ready` must be live post-deploy |
+| 17G-001 | 17G | INFO | **RESOLVED** | `/api/ready` live post-deploy — `{"ok":true,"db":"connected"}` verified 2026-09-13 |
 | 17G-002 | 17G | INFO | TEST_FIXTURE_DEBT | 5 orphan demo payments — not production |
 
 **UNRESOLVED_LAUNCH_CRITICAL = 0**  
