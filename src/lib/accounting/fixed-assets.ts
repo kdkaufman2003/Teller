@@ -246,6 +246,21 @@ export async function recordFixedAssetJournalLink(
   if (error && !error.message.includes("duplicate")) throw new Error(error.message);
 }
 
+/** Immutable link table — replaces post-hoc journal line metadata updates (17A-013). */
+export async function loadFixedAssetJournalLinkByEntry(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from("teller_fixed_asset_journal_links")
+    .select("journal_entry_id, fixed_asset_id")
+    .eq("organization_id", organizationId);
+  if (error) throw new Error(error.message);
+  return new Map(
+    (data ?? []).map((row) => [row.journal_entry_id as string, row.fixed_asset_id as string]),
+  );
+}
+
 export async function sumPostedDepreciationForAsset(
   supabase: SupabaseClient,
   assetId: string,

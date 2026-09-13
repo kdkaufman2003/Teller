@@ -1,19 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
 import type { MatchedResourceType } from "./normalize";
+import { bankingOperationSeed, normalizeUuidEventId } from "@/lib/reliability/idempotency";
 import { recordBankingAuditEvent } from "./audit";
 import type { BankSplitInput, CategorizeKind } from "./types";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export function normalizeBankingEventId(input?: string | null): string {
-  if (input?.trim()) {
-    const id = input.trim();
-    if (!UUID_RE.test(id)) throw new Error("Event id must be a valid UUID.");
-    return id;
-  }
-  return randomUUID();
+export function normalizeBankingEventId(input?: string | null, seed?: string): string {
+  return normalizeUuidEventId(input, seed);
 }
 
 export type BankingRpcResult = {
@@ -38,7 +30,10 @@ export async function confirmBankMatch(
     actorId?: string | null;
   },
 ): Promise<BankingRpcResult & { matchId?: string }> {
-  const eventId = normalizeBankingEventId(input.idempotencyEventId);
+  const eventId = normalizeBankingEventId(
+    input.idempotencyEventId,
+    bankingOperationSeed("match", input.organizationId, input.bankTransactionId, input.matchedResourceId),
+  );
   const { data, error } = await supabase.rpc("teller_confirm_bank_match", {
     p_organization_id: input.organizationId,
     p_bank_transaction_id: input.bankTransactionId,
@@ -143,7 +138,10 @@ export async function categorizeBankTransaction(
     actorId?: string | null;
   },
 ): Promise<BankingRpcResult & { journalEntryId?: string }> {
-  const eventId = normalizeBankingEventId(input.idempotencyEventId);
+  const eventId = normalizeBankingEventId(
+    input.idempotencyEventId,
+    bankingOperationSeed("categorize", input.organizationId, input.bankTransactionId, input.categoryKind),
+  );
   const { data, error } = await supabase.rpc("teller_categorize_bank_transaction", {
     p_organization_id: input.organizationId,
     p_bank_transaction_id: input.bankTransactionId,
@@ -186,7 +184,10 @@ export async function splitCategorizeBankTransaction(
     actorId?: string | null;
   },
 ): Promise<BankingRpcResult & { journalEntryId?: string }> {
-  const eventId = normalizeBankingEventId(input.idempotencyEventId);
+  const eventId = normalizeBankingEventId(
+    input.idempotencyEventId,
+    bankingOperationSeed("split-categorize", input.organizationId, input.bankTransactionId),
+  );
   const payload = input.splits.map((split) => ({
     account_id: split.accountId,
     amount: split.amount,

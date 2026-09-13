@@ -28,6 +28,7 @@ import { recordTellerPayment } from "./payments";
 import { resolvePostingLegalEntityId } from "./entity-books/document-context";
 import { assertEntryDateOpen } from "./periods";
 import { recordTaxSubledgerReversalForDocument } from "./tax/posting/reverse-transactions";
+import { invoicePaymentIdempotencyKey } from "@/lib/reliability/idempotency";
 
 export type JournalLineInput = {
   account_id: string;
@@ -550,9 +551,43 @@ export async function postInvoicePaid(
     actorId?: string | null;
     externalSource?: string | null;
     externalId?: string | null;
+    idempotencyKey?: string | null;
     paymentMetadata?: Record<string, unknown>;
   },
 ) {
+  const invoiceTotalEarly = input.invoiceTotal ?? input.total;
+  const priorPaidEarly = input.priorPaid ?? 0;
+  const idempotencyKey = invoicePaymentIdempotencyKey(
+    input.organizationId,
+    input.documentId,
+    input.issueDate,
+    input.total,
+    input.idempotencyKey,
+  );
+
+  const { data: existingPayment } = await supabase
+    .from("teller_payments")
+    .select("id, journal_entry_id")
+    .eq("organization_id", input.organizationId)
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  if (existingPayment?.journal_entry_id) {
+    const { data: doc } = await supabase
+      .from("teller_documents")
+      .select("amount_paid, total, status")
+      .eq("id", input.documentId)
+      .maybeSingle();
+    const amountPaid = asNumber(doc?.amount_paid);
+    const total = asNumber(doc?.total) || invoiceTotalEarly;
+    return {
+      entryId: existingPayment.journal_entry_id as string,
+      paymentId: existingPayment.id as string,
+      duplicate: true,
+      amountPaid,
+      fullyPaid: total > 0 && amountPaid >= total - 0.009,
+    };
+  }
+
   const legalEntityId = await resolvePostingLegalEntityId(supabase, {
     organizationId: input.organizationId,
     documentId: input.documentId,
@@ -652,7 +687,7 @@ export async function postInvoicePaid(
 
   if (error) throw new Error(error.message);
 
-  const { paymentId } = await recordTellerPayment(supabase, {
+  const { paymentId, duplicate: paymentDuplicate } = await recordTellerPayment(supabase, {
     organizationId: input.organizationId,
     legalEntityId,
     documentId: input.documentId,
@@ -666,25 +701,30 @@ export async function postInvoicePaid(
     processorName: input.processorName,
     externalSource: input.externalSource ?? null,
     externalId: input.externalId ?? null,
+    idempotencyKey,
     journalEntryId: entryId,
     metadata: input.paymentMetadata ?? {},
   });
 
-  await recordDocumentJournalLink(supabase, {
-    organizationId: input.organizationId,
-    documentId: input.documentId,
-    journalEntryId: entryId,
-    linkKind: "payment",
-    paymentId,
-  });
+  if (paymentId && !paymentDuplicate) {
+    await recordDocumentJournalLink(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      journalEntryId: entryId,
+      linkKind: "payment",
+      paymentId,
+    });
+  }
 
-  await assertDocumentCacheConsistent(supabase, {
-    organizationId: input.organizationId,
-    documentId: input.documentId,
-    documentTotal: invoiceTotal,
-    cachedAmountPaid: amountPaid,
-    kind: "invoice",
-  });
+  if (!paymentDuplicate) {
+    await assertDocumentCacheConsistent(supabase, {
+      organizationId: input.organizationId,
+      documentId: input.documentId,
+      documentTotal: invoiceTotal,
+      cachedAmountPaid: amountPaid,
+      kind: "invoice",
+    });
+  }
 
   const auditAction = fullyPaid
     ? "invoice.payment.completed"
@@ -692,26 +732,28 @@ export async function postInvoicePaid(
       ? "invoice.payment.partial"
       : "invoice.payment.recorded";
 
-  await recordAuditEvent(supabase, {
-    organizationId: input.organizationId,
-    actorId: input.actorId,
-    action: auditAction,
-    resourceKind: "invoice",
-    resourceId: input.documentId,
-    metadata: {
-      number: input.number,
-      grossAmount,
-      feeAmount,
-      netAmount,
-      amountPaid,
-      invoiceTotal,
-      entryId,
-      paymentId,
-      status: nextStatus,
-    },
-  });
+  if (!paymentDuplicate) {
+    await recordAuditEvent(supabase, {
+      organizationId: input.organizationId,
+      actorId: input.actorId,
+      action: auditAction,
+      resourceKind: "invoice",
+      resourceId: input.documentId,
+      metadata: {
+        number: input.number,
+        grossAmount,
+        feeAmount,
+        netAmount,
+        amountPaid,
+        invoiceTotal,
+        entryId,
+        paymentId,
+        status: nextStatus,
+      },
+    });
+  }
 
-  if (paymentId) {
+  if (paymentId && !paymentDuplicate) {
     await recordAuditEvent(supabase, {
       organizationId: input.organizationId,
       actorId: input.actorId,
@@ -730,7 +772,7 @@ export async function postInvoicePaid(
     });
   }
 
-  if (priorStatus !== nextStatus) {
+  if (!paymentDuplicate && priorStatus !== nextStatus) {
     await recordAuditEvent(supabase, {
       organizationId: input.organizationId,
       actorId: input.actorId,
@@ -741,7 +783,7 @@ export async function postInvoicePaid(
     });
   }
 
-  return { entryId, amountPaid, fullyPaid, paymentId };
+  return { entryId, amountPaid, fullyPaid, paymentId, duplicate: paymentDuplicate };
 }
 
 /** Backfill processor fees when a payment was previously recorded without fee split. */

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountsBySubtype, FIXED_ASSET_SUBTYPES } from "./fixed-asset-accounts";
 import type { AccountLookup } from "./fixed-asset-types";
+import { loadFixedAssetJournalLinkByEntry } from "./fixed-assets";
 
 export type UnassignedFixedAssetActivityRow = {
   accountCode: string;
@@ -36,13 +37,19 @@ export async function listUnassignedFixedAssetActivity(
   const accountMap = new Map(controlAccounts.map((account) => [account.id, account]));
   const accountIds = controlAccounts.map((account) => account.id);
 
-  const { data: lines } = await supabase
+  const linkByEntryId = await loadFixedAssetJournalLinkByEntry(supabase, organizationId);
+
+  const { data: linesRaw } = await supabase
     .from("teller_journal_lines")
     .select("account_id, debit, credit, memo, fixed_asset_id, entry_id")
-    .in("account_id", accountIds)
-    .is("fixed_asset_id", null);
+    .in("account_id", accountIds);
 
-  const entryIds = [...new Set((lines ?? []).map((line) => line.entry_id as string))];
+  const lines = (linesRaw ?? []).filter(
+    (line) =>
+      !line.fixed_asset_id && !linkByEntryId.has(line.entry_id as string),
+  );
+
+  const entryIds = [...new Set(lines.map((line) => line.entry_id as string))];
   if (!entryIds.length) return [];
 
   const { data: entries } = await supabase

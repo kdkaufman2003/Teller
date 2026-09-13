@@ -11,6 +11,7 @@ import { loadOrgAccounts, postJournal, assertOrgPeriodOpen } from "./post";
 import { EntityControlError, ENTITY_CONTROL_MESSAGES } from "./entity-books/errors";
 import { recordTellerPayment } from "./payments";
 import { roundMoney } from "./payment-fees";
+import { billPaymentIdempotencyKey } from "@/lib/reliability/idempotency";
 
 export type BillPaymentAllocation = {
   documentId: string;
@@ -85,6 +86,30 @@ export async function postMultiBillPayment(
   if (cashTotal <= 0) throw new Error("Payment total must be greater than zero");
   if (!paymentLegalEntityId) throw new Error("Payment legal entity could not be resolved");
 
+  const resolvedIdempotencyKey = billPaymentIdempotencyKey(
+    input.organizationId,
+    input.partyId,
+    input.paymentDate,
+    cashTotal,
+    validated.map((v) => v.documentId),
+    input.idempotencyKey,
+  );
+
+  const { data: existingPayment } = await supabase
+    .from("teller_payments")
+    .select("id, journal_entry_id")
+    .eq("organization_id", input.organizationId)
+    .eq("idempotency_key", resolvedIdempotencyKey)
+    .maybeSingle();
+  if (existingPayment?.journal_entry_id) {
+    return {
+      paymentId: existingPayment.id as string,
+      entryId: existingPayment.journal_entry_id as string,
+      total: cashTotal,
+      duplicate: true,
+    };
+  }
+
   await assertOrgPeriodOpen(supabase, input.organizationId, input.paymentDate, paymentLegalEntityId);
   const accounts = await loadOrgAccounts(supabase, input.organizationId, paymentLegalEntityId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
@@ -127,9 +152,10 @@ export async function postMultiBillPayment(
     paymentMethod: input.paymentMethod,
     referenceNumber: input.referenceNumber,
     journalEntryId: entryId,
+    idempotencyKey: resolvedIdempotencyKey,
     paymentType: "bill_payment",
     createAllocation: false,
-    metadata: input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {},
+    metadata: {},
   });
 
   if (!paymentId) throw new Error("Could not record payment");

@@ -69,22 +69,47 @@ export async function postScheduleOccurrence(
     occurrenceId: string;
     actorId?: string | null;
   },
-): Promise<{ journalEntryId: string }> {
-  const { data: occurrence, error } = await supabase
+): Promise<{ journalEntryId: string; duplicate?: boolean }> {
+  const { data: existing, error: readError } = await supabase
     .from("teller_schedule_occurrences")
-    .select("*, teller_accounting_schedules(*)")
+    .select("status, journal_entry_id")
     .eq("organization_id", input.organizationId)
     .eq("id", input.occurrenceId)
-    .single();
-  if (error || !occurrence) throw new Error(error?.message || "Occurrence not found");
-  if (occurrence.status === "posted" && occurrence.journal_entry_id) {
-    return { journalEntryId: occurrence.journal_entry_id as string };
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!existing) throw new Error("Occurrence not found");
+  if (existing.status === "posted" && existing.journal_entry_id) {
+    return { journalEntryId: existing.journal_entry_id as string, duplicate: true };
   }
-  if (occurrence.status === "reversed") throw new Error("Occurrence was reversed");
+  if (existing.status === "reversed") throw new Error("Occurrence was reversed");
+
+  const { data: occurrence, error: claimError } = await supabase
+    .from("teller_schedule_occurrences")
+    .update({ status: "generated" })
+    .eq("organization_id", input.organizationId)
+    .eq("id", input.occurrenceId)
+    .in("status", ["scheduled", "generated", "approved"])
+    .is("journal_entry_id", null)
+    .select("*, teller_accounting_schedules(*)")
+    .maybeSingle();
+  if (claimError) throw new Error(claimError.message);
+  if (!occurrence) {
+    const { data: raced } = await supabase
+      .from("teller_schedule_occurrences")
+      .select("status, journal_entry_id")
+      .eq("organization_id", input.organizationId)
+      .eq("id", input.occurrenceId)
+      .maybeSingle();
+    if (raced?.journal_entry_id) {
+      return { journalEntryId: raced.journal_entry_id as string, duplicate: true };
+    }
+    throw new Error("Occurrence is not postable or is being posted by another worker");
+  }
 
   const schedule = occurrence.teller_accounting_schedules as Record<string, unknown>;
   const scheduleType = schedule.schedule_type as string;
   const amount = roundMoney(Number(occurrence.amount));
+  const priorStatus = existing.status as string;
 
   let lines: Array<Record<string, unknown>>;
   if (scheduleType === "prepaid_expense") {
@@ -119,14 +144,25 @@ export async function postScheduleOccurrence(
     throw new Error(`Unsupported schedule type ${scheduleType}`);
   }
 
-  const entryId = await postJournal(supabase, {
-    organizationId: input.organizationId,
-    entryDate: occurrence.occurrence_date as string,
-    memo: `${schedule.name} schedule recognition`,
-    sourceKind: `schedule-${scheduleType}`,
-    sourceId: occurrence.id as string,
-    lines: lines as Parameters<typeof postJournal>[1]["lines"],
-  });
+  let entryId: string;
+  try {
+    entryId = await postJournal(supabase, {
+      organizationId: input.organizationId,
+      entryDate: occurrence.occurrence_date as string,
+      memo: `${schedule.name} schedule recognition`,
+      sourceKind: `schedule-${scheduleType}`,
+      sourceId: occurrence.id as string,
+      lines: lines as Parameters<typeof postJournal>[1]["lines"],
+    });
+  } catch (err) {
+    await supabase
+      .from("teller_schedule_occurrences")
+      .update({ status: priorStatus === "generated" ? "scheduled" : priorStatus })
+      .eq("organization_id", input.organizationId)
+      .eq("id", input.occurrenceId)
+      .is("journal_entry_id", null);
+    throw err;
+  }
 
   const remaining =
     scheduleType === "prepaid_expense" || scheduleType === "deferred_revenue"

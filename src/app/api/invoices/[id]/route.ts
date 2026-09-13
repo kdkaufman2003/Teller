@@ -61,6 +61,7 @@ export async function POST(request: Request, { params }: Params) {
     reason?: string;
     writeoffDate?: string;
     writeoffEventId?: string;
+    idempotencyKey?: string;
   };
 
   const { data: invoice, error } = await supabase
@@ -200,9 +201,14 @@ export async function POST(request: Request, { params }: Params) {
         invoiceTotal,
         priorPaid,
         paymentMemo: body.memo,
+        idempotencyKey: body.idempotencyKey,
         actorId: session.userId,
       });
-      return NextResponse.json({ ok: true, ...result });
+      return NextResponse.json({
+        ok: true,
+        ...result,
+        alreadyProcessed: Boolean(result.duplicate),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not record payment";
       return jsonError(message, 400);

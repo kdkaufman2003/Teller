@@ -1,7 +1,7 @@
 # Phase 16 — Multi-Entity Architecture
 
 **Slice 16A:** Legal entity foundation (tenant vs books separation)  
-**Status:** 16A/16B/16C complete — entity-scoped books live (migrations 040–042 + patch 043). **16D complete** — migration 044 + patch 044 provision fix applied. **16E complete** — migration 045 + patch 045 reconciliation fix applied.
+**Status:** **Phase 16 complete (2026-09-12)** — migrations 040–047 + patches 043–050 manually applied; production deploy `edc0dc6` → https://teller-indol.vercel.app. Slices 16A–16J delivered (entity books, intercompany, settlement, consolidated reporting, eliminations, entity RLS, multi-entity UX).
 
 ## Canonical terminology
 

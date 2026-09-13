@@ -9,6 +9,7 @@ import {
   buildReportMeta,
 } from "./warnings";
 import { loadEntityAccounts, loadEntityDatedLines } from "./entity-data";
+import { mapConsolidatedEntities } from "./entity-parallel";
 import { mergeFinancialSection } from "./merge-lines";
 import type { ConsolidatedFinancialLine, ConsolidatedProfitAndLossReport } from "./types";
 import { buildConsolidationScopeKey } from "./eliminations/scope-key";
@@ -41,7 +42,7 @@ export async function buildConsolidatedProfitAndLoss(
   const expenseMap = new Map<string, ConsolidatedFinancialLine>();
   const entityNetIncome: ConsolidatedProfitAndLossReport["entityNetIncome"] = [];
 
-  for (const entity of scope.entities) {
+  const entityReports = await mapConsolidatedEntities(scope.entities, async (entity) => {
     const accounts = await loadEntityAccounts(supabase, input.organizationId, entity.legalEntityId);
     const lines = await loadEntityDatedLines(supabase, {
       organizationId: input.organizationId,
@@ -54,6 +55,10 @@ export async function buildConsolidatedProfitAndLoss(
       return true;
     });
     const pl = buildProfitAndLoss(periodLines, accounts);
+    return { entity, accounts, pl };
+  });
+
+  for (const { entity, accounts, pl } of entityReports) {
     mergeFinancialSection(revenueMap, entity, pl.revenue, accounts);
     mergeFinancialSection(cogsMap, entity, pl.cogs, accounts);
     mergeFinancialSection(expenseMap, entity, pl.expenses, accounts);

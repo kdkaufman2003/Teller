@@ -10,6 +10,7 @@ import {
   buildReportMeta,
 } from "./warnings";
 import type { ConsolidatedTrialBalanceReport, ConsolidatedTrialBalanceRow } from "./types";
+import { mapConsolidatedEntities } from "./entity-parallel";
 import { buildConsolidationScopeKey } from "./eliminations/scope-key";
 import { loadPostedEliminationAdjustments } from "./eliminations/load-posted";
 import { applyEliminationsToTrialBalanceRows } from "./eliminations/apply";
@@ -37,7 +38,7 @@ export async function buildConsolidatedTrialBalance(
 
   const rowMap = new Map<string, ConsolidatedTrialBalanceRow>();
 
-  for (const entity of scope.entities) {
+  const entityReports = await mapConsolidatedEntities(scope.entities, async (entity) => {
     const entityTb = await buildTrialBalance(supabase, input.organizationId, {
       legalEntityId: entity.legalEntityId,
       periodStart,
@@ -50,7 +51,10 @@ export async function buildConsolidatedTrialBalance(
       .eq("organization_id", input.organizationId)
       .eq("legal_entity_id", entity.legalEntityId);
     const subtypeById = new Map((accounts ?? []).map((row) => [row.id as string, (row.subtype as string) ?? ""]));
+    return { entity, entityTb, subtypeById };
+  });
 
+  for (const { entity, entityTb, subtypeById } of entityReports) {
     for (const row of entityTb.rows) {
       const subtype = subtypeById.get(row.accountId) ?? "";
       const groupKey = consolidationAccountKey({

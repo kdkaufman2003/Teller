@@ -2,27 +2,31 @@ import { NextResponse } from "next/server";
 import { submitBillForApproval } from "@/lib/accounting/bill-approval";
 import { nextNumber } from "@/lib/accounting/accounts";
 import {
-  authoritativeDocumentRemaining,
+  batchAuthoritativeDocumentRemaining,
   enrichDocumentsWithAuthoritativePaid,
 } from "@/lib/accounting/balances";
+import { paginationMeta, parseListPagination } from "@/lib/performance/pagination";
 import { recordAuditEvent } from "@/lib/accounting/audit";
 import { detectDuplicateBillWarnings } from "@/lib/accounting/duplicate-bills";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
-export async function GET() {
+export async function GET(request: Request) {
   const ctx = await requireBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId } = ctx;
+  const pagination = parseListPagination(new URL(request.url).searchParams);
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("teller_documents")
     .select(
       "id, number, status, total, amount_paid, issue_date, due_date, memo, party_id, job_id, reference_number",
+      { count: "exact" },
     )
     .eq("organization_id", organizationId)
     .eq("kind", "bill")
-    .order("issue_date", { ascending: false });
+    .order("issue_date", { ascending: false })
+    .range(pagination.offset, pagination.offset + pagination.limit - 1);
 
   if (error) return jsonError(error.message, 500);
 
@@ -32,21 +36,22 @@ export async function GET() {
   ]);
 
   const partyNames = new Map((parties ?? []).map((row) => [row.id, row.name]));
-
-  const rows = await Promise.all(
-    enriched.map(async (row) => ({
-      ...row,
-      party_name: row.party_id ? partyNames.get(row.party_id) || "" : "",
-      remaining_balance: await authoritativeDocumentRemaining(
-        supabase,
-        organizationId,
-        row.id,
-        asNumber(row.total),
-      ),
-    })),
+  const remainingMap = await batchAuthoritativeDocumentRemaining(
+    supabase,
+    organizationId,
+    enriched.map((row) => ({ id: row.id, total: asNumber(row.total) })),
   );
 
-  return NextResponse.json({ bills: rows });
+  const rows = enriched.map((row) => ({
+    ...row,
+    party_name: row.party_id ? partyNames.get(row.party_id) || "" : "",
+    remaining_balance: remainingMap.get(row.id) ?? 0,
+  }));
+
+  return NextResponse.json({
+    bills: rows,
+    pagination: paginationMeta(pagination.page, pagination.pageSize, count),
+  });
 }
 
 export async function POST(request: Request) {

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber } from "@/lib/format";
 import { accountsBySubtype, FIXED_ASSET_SUBTYPES } from "./fixed-asset-accounts";
 import type { AccountLookup, GlReconciliationSlice } from "./fixed-asset-types";
+import { loadFixedAssetJournalLinkByEntry } from "./fixed-assets";
 import { roundMoney } from "./payment-fees";
 
 const TOLERANCE = 0.01;
@@ -70,13 +71,16 @@ async function loadActiveJournalLines(
 function sliceFromLines(
   lines: JournalLineRow[],
   balanceFn: (debit: number, credit: number) => number,
+  linkByEntryId?: Map<string, string>,
 ): { glActivity: number; attributed: number; unassigned: number } {
   let glActivity = 0;
   let attributed = 0;
   for (const line of lines) {
     const amount = balanceFn(asNumber(line.debit), asNumber(line.credit));
     glActivity = roundMoney(glActivity + amount);
-    if (line.fixed_asset_id) attributed = roundMoney(attributed + amount);
+    const linkedAsset =
+      line.fixed_asset_id ?? linkByEntryId?.get(line.entry_id as string) ?? null;
+    if (linkedAsset) attributed = roundMoney(attributed + amount);
   }
   return {
     glActivity,
@@ -94,7 +98,12 @@ export async function buildFixedAssetCostReconciliation(
   const fixedAssetAccounts = accountsBySubtype(accounts, FIXED_ASSET_SUBTYPES.fixedAsset);
   const accountIds = fixedAssetAccounts.map((account) => account.id);
   const lines = await loadActiveJournalLines(supabase, organizationId, accountIds, asOfDate);
-  const { glActivity, attributed, unassigned } = sliceFromLines(lines, (debit, credit) => debit - credit);
+  const linkByEntryId = await loadFixedAssetJournalLinkByEntry(supabase, organizationId);
+  const { glActivity, attributed, unassigned } = sliceFromLines(
+    lines,
+    (debit, credit) => debit - credit,
+    linkByEntryId,
+  );
 
   const { data: assets } = await supabase
     .from("teller_fixed_assets")
@@ -130,7 +139,12 @@ export async function buildAccumulatedDepreciationReconciliation(
   const accumAccounts = accountsBySubtype(accounts, FIXED_ASSET_SUBTYPES.accumulatedDepreciation);
   const accountIds = accumAccounts.map((account) => account.id);
   const lines = await loadActiveJournalLines(supabase, organizationId, accountIds, asOfDate);
-  const { glActivity, attributed, unassigned } = sliceFromLines(lines, (debit, credit) => credit - debit);
+  const linkByEntryId = await loadFixedAssetJournalLinkByEntry(supabase, organizationId);
+  const { glActivity, attributed, unassigned } = sliceFromLines(
+    lines,
+    (debit, credit) => credit - debit,
+    linkByEntryId,
+  );
 
   const { data: entries } = await supabase
     .from("teller_fixed_asset_depreciation_entries")
@@ -249,6 +263,7 @@ export async function buildDepreciationExpenseReconciliation(
       : `${periodYear}-${String(periodMonth + 1).padStart(2, "0")}-01`;
 
   const lines = await loadActiveJournalLines(supabase, organizationId, accountIds);
+  const linkByEntryId = await loadFixedAssetJournalLinkByEntry(supabase, organizationId);
   const periodLines = [];
   for (const line of lines) {
     const { data: entry } = await supabase
@@ -264,6 +279,7 @@ export async function buildDepreciationExpenseReconciliation(
   const { glActivity, attributed, unassigned } = sliceFromLines(
     periodLines,
     (debit, credit) => debit - credit,
+    linkByEntryId,
   );
 
   const { data: entries } = await supabase

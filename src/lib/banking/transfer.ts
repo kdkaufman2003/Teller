@@ -146,7 +146,10 @@ export async function createBankTransfer(
     input.destinationBankTransactionId,
   );
 
-  const eventId = normalizeBankingEventId(input.idempotencyEventId);
+  const eventId = normalizeBankingEventId(
+    input.idempotencyEventId,
+    `bank:transfer:${input.organizationId}:${input.sourceBankTransactionId}:${input.destinationBankTransactionId}`,
+  );
   const { data, error } = await supabase.rpc("teller_create_bank_transfer", {
     p_organization_id: input.organizationId,
     p_source_bank_transaction_id: input.sourceBankTransactionId,

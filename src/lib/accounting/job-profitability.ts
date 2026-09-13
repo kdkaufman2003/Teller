@@ -467,12 +467,15 @@ export async function buildJobProfitabilitySummary(
   if (jobError) throw new Error(jobError.message);
   if (!job) throw new Error("Job not found");
 
-  const [{ data: accounts }, { data: entries }, { data: budgetLines }] = await Promise.all([
+  const [{ data: accounts }, { data: journalLines }, { data: budgetLines }] = await Promise.all([
     supabase
       .from("teller_accounts")
       .select("id, code, name, type")
       .eq("organization_id", organizationId),
-    supabase.from("teller_journal_entries").select("id").eq("organization_id", organizationId),
+    supabase
+      .from("teller_journal_lines")
+      .select("account_id, debit, credit, job_id, cost_classification, entry_id")
+      .eq("job_id", jobId),
     supabase
       .from("teller_job_budget_lines")
       .select("estimated_amount")
@@ -480,18 +483,7 @@ export async function buildJobProfitabilitySummary(
       .eq("job_id", jobId),
   ]);
 
-  const entryIds = (entries ?? []).map((row) => row.id as string);
-  let orgJournalLines: JournalLineForJob[] = [];
-  if (entryIds.length) {
-    const { data: journalLines } = await supabase
-      .from("teller_journal_lines")
-      .select("account_id, debit, credit, job_id, cost_classification, entry_id")
-      .in("entry_id", entryIds)
-      .not("job_id", "is", null);
-    orgJournalLines = journalLines ?? [];
-  }
-
-  const jobLines = orgJournalLines.filter((row) => row.job_id === jobId);
+  const jobLines = (journalLines ?? []) as JournalLineForJob[];
 
   const { recognizedRevenue, actualDirectCost: journalDirectCost, indirectCost } =
     summarizeJournalLinesForJob(jobId, jobLines, accounts ?? []);
@@ -543,7 +535,18 @@ export async function buildJobProfitabilitySummary(
   });
   const actualDirectCost = costBreakdown.actualDirectCost;
 
-  const glReconciliation = summarizeGlReconciliation(orgJournalLines, accounts ?? [], jobId);
+  const plAccountIds = (accounts ?? [])
+    .filter((row) => ["revenue", "cogs", "expense"].includes(row.type))
+    .map((row) => row.id);
+  let reconLines: JournalLineForJob[] = [];
+  if (plAccountIds.length) {
+    const { data: plLines } = await supabase
+      .from("teller_journal_lines")
+      .select("account_id, debit, credit, job_id, cost_classification, entry_id")
+      .in("account_id", plAccountIds);
+    reconLines = (plLines ?? []) as JournalLineForJob[];
+  }
+  const glReconciliation = summarizeGlReconciliation(reconLines, accounts ?? [], jobId);
 
   const estimatedCostFromBudget = roundMoney(
     (budgetLines ?? []).reduce((sum, row) => sum + asNumber(row.estimated_amount), 0),

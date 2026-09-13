@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { enrichDocumentsWithAuthoritativePaid } from "@/lib/accounting/balances";
+import { paginationMeta, parseListPagination } from "@/lib/performance/pagination";
 import { revenueCodeForItemType } from "@/lib/accounting/accounts";
 import { nextEntityDocumentNumber } from "@/lib/accounting/entity-books";
 import { postInvoicePaid } from "@/lib/accounting/post";
@@ -17,20 +18,24 @@ import { buildTaxContextFromOrg } from "@/lib/tax/context";
 import { determineInvoiceTax, persistTaxDeterminations } from "@/lib/tax/determine";
 import type { TaxTransactionLine } from "@/lib/tax/types";
 
-export async function GET() {
+export async function GET(request: Request) {
   const ctx = await requireAccountingBooks();
   if ("error" in ctx && ctx.error) return ctx.error;
   const { supabase, organizationId, legalEntityId } = ctx;
+  const pagination = parseListPagination(new URL(request.url).searchParams);
 
   let query = supabase
     .from("teller_documents")
     .select(
       "id, number, status, total, amount_paid, issue_date, due_date, memo, party_id, job_id, external_source",
+      { count: "exact" },
     )
     .eq("organization_id", organizationId)
     .eq("kind", "invoice");
   if (legalEntityId) query = query.eq("legal_entity_id", legalEntityId);
-  const { data, error } = await query.order("created_at", { ascending: false });
+  const { data, error, count } = await query
+    .order("created_at", { ascending: false })
+    .range(pagination.offset, pagination.offset + pagination.limit - 1);
 
   if (error) return jsonError(error.message, 500);
 
@@ -56,6 +61,7 @@ export async function GET() {
       party_name: row.party_id ? partyNames.get(row.party_id) || "" : "",
       job_name: row.job_id ? jobNames.get(row.job_id) || "" : "",
     })),
+    pagination: paginationMeta(pagination.page, pagination.pageSize, count),
   });
 }
 

@@ -294,6 +294,84 @@ export async function buildHfacIntegrationReport(
   };
 }
 
+export type HfacWebhookClaimResult =
+  | { kind: "new" }
+  | { kind: "duplicate_processed" }
+  | { kind: "retry" };
+
+/** Claim webhook event for processing; failed events may be retried (Phase 17C). */
+export async function claimHfacWebhookEvent(
+  supabase: SupabaseClient,
+  input: {
+    eventId: string;
+    route: string;
+    authMode: string;
+  },
+): Promise<HfacWebhookClaimResult> {
+  const { error } = await supabase.from("teller_hfac_webhook_events").insert({
+    event_id: input.eventId,
+    organization_id: null,
+    route: input.route,
+    auth_mode: input.authMode,
+    processing_status: "pending",
+  });
+
+  if (!error) return { kind: "new" };
+  if (!error.message.includes("duplicate")) throw new Error(error.message);
+
+  const { data: existing, error: readError } = await supabase
+    .from("teller_hfac_webhook_events")
+    .select("processing_status")
+    .eq("event_id", input.eventId)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!existing) return { kind: "new" };
+
+  if (existing.processing_status === "processed") {
+    return { kind: "duplicate_processed" };
+  }
+
+  const { error: reclaimError } = await supabase
+    .from("teller_hfac_webhook_events")
+    .update({ processing_status: "pending", last_error: null })
+    .eq("event_id", input.eventId)
+    .in("processing_status", ["failed", "pending"]);
+  if (reclaimError) throw new Error(reclaimError.message);
+  return { kind: "retry" };
+}
+
+export async function markHfacWebhookProcessed(
+  supabase: SupabaseClient,
+  input: { eventId: string; organizationId: string },
+) {
+  const { error } = await supabase
+    .from("teller_hfac_webhook_events")
+    .update({
+      organization_id: input.organizationId,
+      processing_status: "processed",
+      processed_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("event_id", input.eventId);
+  if (error) throw new Error(error.message);
+}
+
+export async function markHfacWebhookFailed(
+  supabase: SupabaseClient,
+  input: { eventId: string; organizationId?: string | null; errorMessage: string },
+) {
+  const { error } = await supabase
+    .from("teller_hfac_webhook_events")
+    .update({
+      organization_id: input.organizationId ?? null,
+      processing_status: "failed",
+      last_error: input.errorMessage.slice(0, 500),
+    })
+    .eq("event_id", input.eventId);
+  if (error) throw new Error(error.message);
+}
+
+/** @deprecated use claimHfacWebhookEvent — legacy insert-only helper */
 export async function recordHfacWebhookEventId(
   supabase: SupabaseClient,
   input: {
@@ -303,15 +381,14 @@ export async function recordHfacWebhookEventId(
     authMode: string;
   },
 ): Promise<boolean> {
-  const { error } = await supabase.from("teller_hfac_webhook_events").insert({
-    event_id: input.eventId,
-    organization_id: input.organizationId ?? null,
-    route: input.route,
-    auth_mode: input.authMode,
-  });
-
-  if (error?.message.includes("duplicate")) return true;
-  if (error) throw new Error(error.message);
+  const claim = await claimHfacWebhookEvent(supabase, input);
+  if (claim.kind === "duplicate_processed") return true;
+  if (input.organizationId) {
+    await supabase
+      .from("teller_hfac_webhook_events")
+      .update({ organization_id: input.organizationId })
+      .eq("event_id", input.eventId);
+  }
   return false;
 }
 

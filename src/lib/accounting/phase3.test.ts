@@ -66,11 +66,18 @@ describe("deposit application idempotency", () => {
     expect(normalizeApplicationEventId(eventId)).toBe(eventId);
   });
 
-  it("generates UUID when event id omitted", () => {
-    const generated = normalizeApplicationEventId();
-    expect(generated).toMatch(
+  it("derives deterministic UUID from seed when event id omitted", () => {
+    const seed = "deposit-apply:org:pay:inv:2026-01-01:100.00";
+    const a = normalizeApplicationEventId(undefined, seed);
+    const b = normalizeApplicationEventId(undefined, seed);
+    expect(a).toBe(b);
+    expect(a).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
+  });
+
+  it("requires client id or seed when event id omitted", () => {
+    expect(() => normalizeApplicationEventId()).toThrow(/Event id or seed required/);
   });
 
   it("rejects invalid application event id", () => {
@@ -111,9 +118,12 @@ describe("deposit application idempotency", () => {
 });
 
 describe("deposit receipt idempotency", () => {
-  it("generates UUID when receipt event id omitted", () => {
-    const generated = normalizeReceiptEventId();
-    expect(generated).toMatch(
+  it("derives deterministic UUID from seed when receipt event id omitted", () => {
+    const seed = "deposit-receive:org:party:2026-01-01:5000.00:";
+    const a = normalizeReceiptEventId(undefined, seed);
+    const b = normalizeReceiptEventId(undefined, seed);
+    expect(a).toBe(b);
+    expect(a).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
   });

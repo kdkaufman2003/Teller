@@ -12,6 +12,8 @@ import { parseFiscalYearStart } from "@/lib/org/config";
 import { StatusBadge } from "@/components/StatusBadge";
 import { money } from "@/lib/format";
 import { isBilledInvoice } from "@/lib/accounting/reports";
+import { batchAuthoritativeDocumentRemaining } from "@/lib/accounting/balances";
+import { roundMoney } from "@/lib/accounting/payment-fees";
 import {
   computeApOpenSubledgerTotal,
   computeArOpenSubledgerTotal,
@@ -39,7 +41,7 @@ export default async function DashboardPage() {
   const companyName = session.activeLegalEntity?.name ?? session.organization.name;
   const showAllCompaniesLink = (session.accessibleLegalEntities?.length ?? 0) > 1;
 
-  const [invoices, expenses, jobs, parties, integration, arSubledger, apSubledger] =
+  const [invoices, allInvoices, expenses, jobs, parties, integration, arSubledger, apSubledger] =
     await Promise.all([
       supabase
         .from("teller_documents")
@@ -49,6 +51,12 @@ export default async function DashboardPage() {
         .eq("kind", "invoice")
         .order("created_at", { ascending: false })
         .limit(8),
+      supabase
+        .from("teller_documents")
+        .select("id, total, status, posted_entry_id")
+        .eq("organization_id", organizationId)
+        .eq("legal_entity_id", legalEntityId)
+        .eq("kind", "invoice"),
       supabase
         .from("teller_documents")
         .select("status, total")
@@ -78,9 +86,17 @@ export default async function DashboardPage() {
   const invoiceRows = invoices.data ?? [];
   const partyNames = new Map((parties.data ?? []).map((row) => [row.id, row.name]));
   const openAR = arSubledger.total;
-  const collected = invoiceRows
-    .filter((row) => row.status === "paid" && isBilledInvoice(row))
-    .reduce((sum, row) => sum + asNumber(row.total), 0);
+  const billedInvoices = (allInvoices.data ?? []).filter((row) => isBilledInvoice(row));
+  const remainingMap = await batchAuthoritativeDocumentRemaining(
+    supabase,
+    organizationId,
+    billedInvoices.map((row) => ({ id: row.id as string, total: asNumber(row.total) })),
+  );
+  const collected = billedInvoices.reduce(
+    (sum, row) =>
+      sum + roundMoney(asNumber(row.total) - (remainingMap.get(row.id as string) ?? asNumber(row.total))),
+    0,
+  );
   const openAP = apSubledger.total;
   const activeJobs = (jobs.data ?? []).filter((job) =>
     ["estimate", "scheduled", "in_progress"].includes(job.status),

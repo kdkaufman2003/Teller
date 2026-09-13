@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { loadCompaniesOverview } from "@/lib/legal-entity/companies-overview";
 import { listAccessibleLegalEntities } from "@/lib/accounting/legal-entity/active-context";
 import { money } from "@/lib/format";
@@ -47,6 +48,10 @@ export default async function CompaniesOverviewPage() {
         scope="all_companies"
         subtitle="Pre-elimination company totals. Use Consolidated Reports for elimination-aware views."
       />
+      <InlineAlert variant="info" title="View only — no posting from this page">
+        All Companies is for comparison and reporting. Select a company in the sidebar before
+        recording invoices, bills, payments, or journal entries.
+      </InlineAlert>
       <header className="page-header">
         <h1>All Companies</h1>
         <p className="text-muted">Compare cash, receivables, payables, and books status by company.</p>

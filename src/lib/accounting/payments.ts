@@ -32,6 +32,7 @@ export async function recordTellerPayment(
     referenceNumber?: string;
     externalSource?: string | null;
     externalId?: string | null;
+    idempotencyKey?: string | null;
     journalEntryId: string;
     paymentType?: PaymentType;
     metadata?: Record<string, unknown>;
@@ -47,6 +48,19 @@ export async function recordTellerPayment(
     documentId: input.documentId,
     legalEntityId: input.legalEntityId,
   });
+
+  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  if (idempotencyKey) {
+    const { data: existingByKey } = await supabase
+      .from("teller_payments")
+      .select("id, journal_entry_id")
+      .eq("organization_id", input.organizationId)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+    if (existingByKey?.id) {
+      return { paymentId: existingByKey.id as string, duplicate: true };
+    }
+  }
 
   const { data, error } = await supabase
     .from("teller_payments")
@@ -65,6 +79,7 @@ export async function recordTellerPayment(
       reference_number: input.referenceNumber ?? null,
       external_source: input.externalSource ?? null,
       external_id: input.externalId ?? null,
+      idempotency_key: idempotencyKey,
       journal_entry_id: input.journalEntryId,
       payment_type: paymentType,
       status: "posted",
@@ -82,6 +97,15 @@ export async function recordTellerPayment(
           .eq("organization_id", input.organizationId)
           .eq("external_source", input.externalSource)
           .eq("external_id", input.externalId)
+          .maybeSingle();
+        return { paymentId: (existing?.id as string) ?? null, duplicate: true };
+      }
+      if (idempotencyKey) {
+        const { data: existing } = await supabase
+          .from("teller_payments")
+          .select("id")
+          .eq("organization_id", input.organizationId)
+          .eq("idempotency_key", idempotencyKey)
           .maybeSingle();
         return { paymentId: (existing?.id as string) ?? null, duplicate: true };
       }

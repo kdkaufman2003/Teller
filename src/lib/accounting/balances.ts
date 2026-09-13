@@ -199,11 +199,37 @@ export async function authoritativeDocumentRemaining(
   documentId: string,
   documentTotal: number,
 ): Promise<number> {
-  const [{ total }, writeOffs] = await Promise.all([
-    authoritativeDocumentSettled(supabase, organizationId, documentId),
-    sumWriteOffsForDocument(supabase, organizationId, documentId),
+  const map = await batchAuthoritativeDocumentRemaining(supabase, organizationId, [
+    { id: documentId, total: documentTotal },
   ]);
-  return documentRemainingBalance(documentTotal, roundMoney(total + writeOffs));
+  return map.get(documentId) ?? documentRemainingBalance(documentTotal, 0);
+}
+
+/** Batch remaining balances — avoids per-document allocation/credit/write-off queries. */
+export async function batchAuthoritativeDocumentRemaining(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documents: Array<{ id: string; total: number }>,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!documents.length) return result;
+
+  const ids = documents.map((doc) => doc.id);
+  const totals = new Map(documents.map((doc) => [doc.id, asNumber(doc.total)]));
+
+  const [paidMap, creditsMap, writeOffMap] = await Promise.all([
+    authoritativeAmountPaidByDocuments(supabase, organizationId, ids),
+    batchCreditsAppliedToDocuments(supabase, organizationId, ids),
+    batchWriteOffsForDocuments(supabase, organizationId, ids),
+  ]);
+
+  for (const id of ids) {
+    const settled = roundMoney((paidMap.get(id) ?? 0) + (creditsMap.get(id) ?? 0));
+    const writeOffs = writeOffMap.get(id) ?? 0;
+    result.set(id, documentRemainingBalance(totals.get(id) ?? 0, roundMoney(settled + writeOffs)));
+  }
+
+  return result;
 }
 
 export async function sumWriteOffsForDocument(

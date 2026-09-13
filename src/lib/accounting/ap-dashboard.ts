@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { asNumber, todayISO } from "@/lib/format";
 import {
-  authoritativeDocumentRemaining,
+  batchAuthoritativeDocumentRemaining,
   enrichDocumentsWithAuthoritativePaid,
 } from "./balances";
 import { sumCreditsAppliedFromDocument } from "./document-allocations";
@@ -64,6 +64,12 @@ export async function buildApDashboardSummary(
     (bills ?? []).filter((row) => row.status !== "pending_approval"),
   );
 
+  const remainingMap = await batchAuthoritativeDocumentRemaining(
+    supabase,
+    organizationId,
+    enriched.map((bill) => ({ id: bill.id as string, total: asNumber(bill.total) })),
+  );
+
   let totalAp = 0;
   let dueToday = 0;
   let dueNext7 = 0;
@@ -74,12 +80,7 @@ export async function buildApDashboardSummary(
   let cashRequired30 = 0;
 
   for (const bill of enriched) {
-    const remaining = await authoritativeDocumentRemaining(
-      supabase,
-      organizationId,
-      bill.id as string,
-      asNumber(bill.total),
-    );
+    const remaining = remainingMap.get(bill.id as string) ?? 0;
     if (remaining <= 0.009) continue;
 
     totalAp += remaining;

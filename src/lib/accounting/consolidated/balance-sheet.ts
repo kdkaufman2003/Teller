@@ -9,6 +9,7 @@ import {
   buildReportMeta,
 } from "./warnings";
 import { loadEntityAccounts, loadEntityDatedLines } from "./entity-data";
+import { mapConsolidatedEntities } from "./entity-parallel";
 import { mergeFinancialSection } from "./merge-lines";
 import type { ConsolidatedBalanceSheetReport } from "./types";
 import { buildConsolidationScopeKey } from "./eliminations/scope-key";
@@ -39,7 +40,7 @@ export async function buildConsolidatedBalanceSheet(
   const liabilitiesMap = new Map<string, import("./types").ConsolidatedFinancialLine>();
   const equityMap = new Map<string, import("./types").ConsolidatedFinancialLine>();
 
-  for (const entity of scope.entities) {
+  const entityReports = await mapConsolidatedEntities(scope.entities, async (entity) => {
     const accounts = await loadEntityAccounts(supabase, input.organizationId, entity.legalEntityId);
     const lines = await loadEntityDatedLines(supabase, {
       organizationId: input.organizationId,
@@ -52,6 +53,10 @@ export async function buildConsolidatedBalanceSheet(
       asOf,
       input.fiscalYearStartMonth ?? 1,
     );
+    return { entity, accounts, sheet };
+  });
+
+  for (const { entity, accounts, sheet } of entityReports) {
     mergeFinancialSection(assetsMap, entity, sheet.assets, accounts);
     mergeFinancialSection(liabilitiesMap, entity, sheet.liabilities, accounts);
     mergeFinancialSection(equityMap, entity, sheet.equity, accounts);

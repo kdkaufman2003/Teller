@@ -34,6 +34,21 @@ import type {
 } from "./cash-basis-pl";
 import { fiscalYearStartDate, parseFiscalYearStart } from "@/lib/org/config";
 import { resolveLegalEntityId } from "./post";
+import { batchAuthoritativeDocumentRemaining } from "./balances";
+import type { OpenDocumentRow } from "./aging-service";
+import { asNumber } from "@/lib/format";
+import { roundMoney } from "./payment-fees";
+
+type AgingSourceDocument = {
+  id: string;
+  kind: string;
+  status: string;
+  total: number | string;
+  issue_date: string;
+  due_date?: string | null;
+  party_id?: string | null;
+  posted_entry_id?: string | null;
+};
 
 export type ReportEngineData = {
   accounts: AccountRow[];
@@ -46,6 +61,7 @@ export type ReportEngineData = {
   payments: CashBasisPayment[];
   allocations: CashBasisAllocation[];
   partyNames: Map<string, string>;
+  agingSourceDocuments: AgingSourceDocument[];
 };
 
 const EPOCH_START = "1970-01-01";
@@ -149,7 +165,7 @@ async function loadSubledgerData(
     await Promise.all([
       supabase
         .from("teller_documents")
-        .select("id, kind, status, total, issue_date, posted_entry_id")
+        .select("id, kind, status, total, amount_paid, issue_date, due_date, party_id, posted_entry_id")
         .eq("organization_id", organizationId)
         .eq("legal_entity_id", legalEntityId),
       supabase
@@ -197,11 +213,14 @@ async function loadSubledgerData(
     lines: linesByDoc.get(row.id as string) ?? [],
   });
 
+  const docRows = (documents ?? []) as AgingSourceDocument[];
+
   return {
-    invoices: (documents ?? [])
+    agingSourceDocuments: docRows,
+    invoices: docRows
       .filter((d) => d.kind === "invoice")
       .map((d) => toCashDoc(d as Record<string, unknown>)),
-    billsAndExpenses: (documents ?? [])
+    billsAndExpenses: docRows
       .filter((d) => d.kind === "bill" || d.kind === "expense")
       .map((d) => toCashDoc(d as Record<string, unknown>)),
     payments: (payments ?? []).map((p) => ({
@@ -421,12 +440,11 @@ export async function buildReportsFromEngine(
     }
   }
 
-  const openInvoices = data.invoices.map((inv) => ({
-    ...inv,
-    amount_paid: 0,
-    party_id: null,
-    due_date: null,
-  }));
+  const agingRows = await buildAgingRowsFromDocuments(
+    supabase,
+    ctx.organizationId,
+    data.agingSourceDocuments,
+  );
 
   return {
     profitAndLoss,
@@ -435,12 +453,41 @@ export async function buildReportsFromEngine(
     cashFlow,
     comparativeProfitAndLoss,
     comparativeBalanceSheet,
-    arAging: buildArAging(openInvoices, data.partyNames, ctx.asOfDate),
-    apAging: buildApAging(
-      data.billsAndExpenses.map((d) => ({ ...d, amount_paid: 0, party_id: null, due_date: null })),
-      data.partyNames,
-      ctx.asOfDate,
-    ),
+    arAging: buildArAging(agingRows.invoices, data.partyNames, ctx.asOfDate),
+    apAging: buildApAging(agingRows.payables, data.partyNames, ctx.asOfDate),
+  };
+}
+
+async function buildAgingRowsFromDocuments(
+  supabase: SupabaseClient,
+  organizationId: string,
+  documents: AgingSourceDocument[],
+): Promise<{ invoices: OpenDocumentRow[]; payables: OpenDocumentRow[] }> {
+  const remaining = await batchAuthoritativeDocumentRemaining(
+    supabase,
+    organizationId,
+    documents.map((doc) => ({ id: doc.id, total: asNumber(doc.total) })),
+  );
+
+  const toRow = (doc: AgingSourceDocument): OpenDocumentRow => {
+    const total = asNumber(doc.total);
+    const openRemaining = remaining.get(doc.id) ?? total;
+    return {
+      id: doc.id,
+      kind: doc.kind,
+      status: doc.status,
+      total,
+      issue_date: doc.issue_date,
+      due_date: doc.due_date ?? null,
+      party_id: doc.party_id ?? null,
+      posted_entry_id: doc.posted_entry_id ?? null,
+      amount_paid: roundMoney(total - openRemaining),
+    };
+  };
+
+  return {
+    invoices: documents.filter((d) => d.kind === "invoice").map(toRow),
+    payables: documents.filter((d) => d.kind === "bill" || d.kind === "expense").map(toRow),
   };
 }
 

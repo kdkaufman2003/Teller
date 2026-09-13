@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
 import { asNumber } from "@/lib/format";
+import { normalizeUuidEventId } from "@/lib/reliability/idempotency";
 import { recordAuditEvent } from "./audit";
 import { accountByCode, accountBySubtype } from "./accounts";
 import { documentRemainingBalance } from "./balances";
@@ -11,9 +11,6 @@ import {
   loadOrgAccounts,
   reverseJournalEntry,
 } from "./post";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type ApplyDepositResult = {
   allocationId: string;
@@ -35,18 +32,16 @@ type DepositApplicationRow = {
   application_event_id: string | null;
 };
 
-export function normalizeApplicationEventId(input?: string | null): string {
-  if (input?.trim()) {
-    const id = input.trim();
-    if (!UUID_RE.test(id)) {
-      throw new Error("applicationEventId must be a valid UUID.");
-    }
-    return id;
-  }
-  return randomUUID();
+export function normalizeApplicationEventId(
+  input?: string | null,
+  seed?: string,
+): string {
+  return normalizeUuidEventId(input, seed);
 }
 
-export const normalizeReceiptEventId = normalizeApplicationEventId;
+export function normalizeReceiptEventId(input?: string | null, seed?: string): string {
+  return normalizeUuidEventId(input, seed);
+}
 
 export function assertDepositApplicationIdempotencyMatch(
   existing: DepositApplicationRow,
@@ -192,7 +187,10 @@ export async function receiveCustomerDeposit(
   if (amount <= 0.009) throw new Error("Deposit amount must be greater than zero.");
   if (!input.partyId) throw new Error("Customer is required for a deposit.");
 
-  const receiptEventId = normalizeReceiptEventId(input.receiptEventId);
+  const receiptEventId = normalizeReceiptEventId(
+    input.receiptEventId,
+    `deposit-receive:${input.organizationId}:${input.partyId}:${input.paymentDate}:${amount.toFixed(2)}:${input.referenceNumber ?? ""}`,
+  );
 
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const cash = accountBySubtype(accounts, "bank") || accountByCode(accounts, "1000");
@@ -280,7 +278,10 @@ export async function applyDepositToInvoice(
   const amount = roundMoney(asNumber(input.amount));
   if (amount <= 0.009) throw new Error("Application amount must be greater than zero.");
 
-  const applicationEventId = normalizeApplicationEventId(input.applicationEventId);
+  const applicationEventId = normalizeApplicationEventId(
+    input.applicationEventId,
+    `deposit-apply:${input.organizationId}:${input.paymentId}:${input.invoiceId}:${input.applicationDate}:${amount.toFixed(2)}`,
+  );
 
   const accounts = await loadOrgAccounts(supabase, input.organizationId);
   const deposits = customerDepositsAccount(accounts);

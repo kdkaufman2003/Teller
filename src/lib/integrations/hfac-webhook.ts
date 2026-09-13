@@ -4,8 +4,10 @@ import { verifyHfacWebhookAuth } from "@/lib/integrations/hfac-auth";
 import {
   auditHfacWebhookAccepted,
   auditHfacWebhookRejected,
+  claimHfacWebhookEvent,
   HfacOrgRejectedError,
-  recordHfacWebhookEventId,
+  markHfacWebhookFailed,
+  markHfacWebhookProcessed,
   resolveHfacWebhookOrganization,
 } from "@/lib/integrations/hfac-org";
 import { createServiceClient, hasServiceRole } from "@/lib/supabase/admin";
@@ -63,16 +65,16 @@ export async function handleHfacWebhookRequest(
 
   if (auth.eventId) {
     try {
-      const duplicate = await recordHfacWebhookEventId(supabase, {
+      const claim = await claimHfacWebhookEvent(supabase, {
         eventId: auth.eventId,
         route,
         authMode: auth.mode,
       });
-      if (duplicate) {
-        return NextResponse.json({ ok: true, duplicate: true });
+      if (claim.kind === "duplicate_processed") {
+        return NextResponse.json({ ok: true, duplicate: true, alreadyProcessed: true });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not record webhook event";
+      const message = error instanceof Error ? error.message : "Could not claim webhook event";
       return NextResponse.json({ error: message }, { status: 500 });
     }
   }
@@ -80,17 +82,30 @@ export async function handleHfacWebhookRequest(
   try {
     const { organizationId } = await resolveHfacWebhookOrganization(supabase, body);
 
+    const result = await handler(supabase, organizationId, body);
+
     if (auth.eventId) {
-      await supabase
-        .from("teller_hfac_webhook_events")
-        .update({ organization_id: organizationId })
-        .eq("event_id", auth.eventId);
+      await markHfacWebhookProcessed(supabase, {
+        eventId: auth.eventId,
+        organizationId,
+      });
     }
 
-    const result = await handler(supabase, organizationId, body);
     await auditHfacWebhookAccepted(supabase, organizationId, route, auth.mode);
     return NextResponse.json({ ok: true, result, authMode: auth.mode });
   } catch (error) {
+    if (auth.eventId) {
+      try {
+        await markHfacWebhookFailed(supabase, {
+          eventId: auth.eventId,
+          organizationId: claimedOrgId,
+          errorMessage: error instanceof Error ? error.message : "Import failed",
+        });
+      } catch {
+        // Best-effort — allow HFAC retry even if status update fails
+      }
+    }
+
     if (error instanceof HfacOrgRejectedError) {
       await auditHfacWebhookRejected(supabase, {
         organizationId: claimedOrgId,

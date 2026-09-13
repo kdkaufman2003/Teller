@@ -20,6 +20,7 @@ export const PHASE_DEMOS = {
 };
 
 export const PHASE_VERIFY = {
+  17: "verify:phase17h:production",
   16: "verify:phase16j:production",
   15: "verify:migration:035:controlled",
   14: "verify:migration:032:controlled",
@@ -73,6 +74,20 @@ export const FAST_UNIT_PATTERNS = [
   "src/lib/accounting/tax/phase15j.test.ts",
   "src/lib/accounting/phase16a.test.ts",
   "src/lib/accounting/phase16b.test.ts",
+  "src/lib/accounting/phase17a.test.ts",
+  "src/lib/security/phase17b.test.ts",
+  "src/lib/reliability/phase17c.test.ts",
+  "src/lib/performance/phase17d.test.ts",
+  "src/lib/operations/phase17e.test.ts",
+  "src/lib/ux/phase17f.test.ts",
+  "src/lib/e2e/phase17g-ar.test.ts",
+  "src/lib/e2e/phase17g-ap.test.ts",
+  "src/lib/e2e/phase17g-banking.test.ts",
+  "src/lib/e2e/phase17g-inventory.test.ts",
+  "src/lib/e2e/phase17g-accounting.test.ts",
+  "src/lib/e2e/phase17g-multientity.test.ts",
+  "src/lib/e2e/phase17g-security.test.ts",
+  "src/lib/e2e/phase17g-certification.test.ts",
 ];
 
 /** Per-phase unit test files (local vitest only). */
@@ -88,6 +103,21 @@ export const PHASE_UNIT_TESTS = {
   12: ["src/lib/accounting/phase12.test.ts"],
   13: ["src/lib/accounting/phase13.test.ts"],
   14: ["src/lib/planning/budgets/phase14.test.ts", "src/lib/planning/budgets/phase14b.test.ts", "src/lib/planning/reports/phase14c.test.ts", "src/lib/planning/reports/phase14d.test.ts", "src/lib/planning/reports/phase14e.test.ts", "src/lib/planning/reports/phase14f.test.ts", "src/lib/planning/reports/phase14g.test.ts", "src/lib/planning/reports/phase14h.test.ts", "src/lib/planning/reports/phase14i.test.ts", "src/lib/planning/reports/phase14j.test.ts"],
+  17: [
+    "src/lib/e2e/phase17g-*.test.ts",
+    "src/lib/ux/phase17f.test.ts",
+    "src/lib/operations/phase17e.test.ts",
+    "src/lib/performance/phase17d.test.ts",
+    "src/lib/reliability/phase17c.test.ts",
+    "src/lib/security/phase17b.test.ts",
+    "src/lib/accounting/phase17a.test.ts",
+    "src/lib/accounting/integrity.test.ts",
+    "src/lib/accounting/subledger-reconciliation.test.ts",
+    "src/lib/accounting/post.test.ts",
+    "src/lib/banking/categorize.test.ts",
+    "src/lib/integrations/hfac-auth.test.ts",
+    "src/lib/integrations/hfac-org.test.ts",
+  ],
   16: [
     "src/lib/accounting/phase16a.test.ts",
     "src/lib/accounting/phase16b.test.ts",
@@ -204,6 +234,7 @@ export const PHASE_PRIMARY_MODULES = {
   14: ["planning", "period_lock_close", "financial_reporting"],
   15: ["sales_tax", "shared_journal_engine", "financial_reporting"],
   16: ["shared_journal_engine"],
+  17: ["shared_journal_engine"],
 };
 
 export function demoPhaseKey(phase) {
@@ -236,6 +267,7 @@ export function resolveAffectedUnitPatterns(phase = CURRENT_PHASE) {
 export const ALL_DEMO_PHASES = [5, 6, 7, 8, 9, 10, 11, "11.1", 12, 13];
 
 export const DB_ACCEPTANCE_SCRIPTS = {
+  17: "accept:phase17b:controlled",
   16: "accept:phase16:controlled",
   15: "accept:phase15:controlled",
   11: "accept:phase11:controlled",

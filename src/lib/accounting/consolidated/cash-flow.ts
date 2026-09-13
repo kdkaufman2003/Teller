@@ -10,6 +10,7 @@ import {
   buildReportMeta,
 } from "./warnings";
 import { loadEntityAccounts, loadEntityDatedLines } from "./entity-data";
+import { mapConsolidatedEntities } from "./entity-parallel";
 import type { ConsolidatedCashFlowReport } from "./types";
 
 export async function buildConsolidatedCashFlow(
@@ -40,7 +41,7 @@ export async function buildConsolidatedCashFlow(
   let endingCash = 0;
   const entityNetChange: ConsolidatedCashFlowReport["entityNetChange"] = [];
 
-  for (const entity of scope.entities) {
+  const entityReports = await mapConsolidatedEntities(scope.entities, async (entity) => {
     const accounts = await loadEntityAccounts(supabase, input.organizationId, entity.legalEntityId);
     const lines = await loadEntityDatedLines(supabase, {
       organizationId: input.organizationId,
@@ -54,7 +55,10 @@ export async function buildConsolidatedCashFlow(
     });
     const pl = buildProfitAndLoss(periodLines, accounts);
     const cashFlow = buildCashFlowStatement(lines, accounts, { start: periodStart, end: periodEnd, label: "" }, pl);
+    return { entity, cashFlow };
+  });
 
+  for (const { entity, cashFlow } of entityReports) {
     netOperating = roundMoney(netOperating + cashFlow.netOperating);
     netInvesting = roundMoney(netInvesting + cashFlow.netInvesting);
     netFinancing = roundMoney(netFinancing + cashFlow.netFinancing);

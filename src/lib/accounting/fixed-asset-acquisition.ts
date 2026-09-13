@@ -106,20 +106,6 @@ export async function linkFixedAssetAcquisition(
     linkKind: "acquisition",
   });
 
-  const accounts = await loadOrgAccounts(supabase, input.organizationId);
-  const fixedAssetAccountIds = accounts
-    .filter((account) => account.subtype === FIXED_ASSET_SUBTYPES.fixedAsset)
-    .map((account) => account.id);
-  if (fixedAssetAccountIds.length) {
-    const { error: tagError } = await supabase
-      .from("teller_journal_lines")
-      .update({ fixed_asset_id: input.assetId })
-      .eq("entry_id", input.acquisitionJournalEntryId)
-      .in("account_id", fixedAssetAccountIds)
-      .is("fixed_asset_id", null);
-    if (tagError) throw new Error(tagError.message);
-  }
-
   await persistDepreciationSchedule(supabase, input.organizationId, input.assetId);
 
   await recordAuditEvent(supabase, {

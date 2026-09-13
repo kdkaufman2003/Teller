@@ -8,10 +8,17 @@ import {
 } from "./categorize";
 
 describe("normalizeBankingEventId", () => {
-  it("generates UUID when omitted", () => {
-    expect(normalizeBankingEventId()).toMatch(
+  it("derives deterministic UUID from seed when omitted", () => {
+    const a = normalizeBankingEventId(undefined, "bank:seed:test");
+    const b = normalizeBankingEventId(undefined, "bank:seed:test");
+    expect(a).toBe(b);
+    expect(a).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
+  });
+
+  it("rejects when neither client id nor seed provided", () => {
+    expect(() => normalizeBankingEventId()).toThrow(/Event id or seed required/);
   });
 
   it("rejects invalid UUIDs", () => {

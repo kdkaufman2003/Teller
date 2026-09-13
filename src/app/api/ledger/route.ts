@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { filterGlEntries, paginateGlReport } from "@/lib/accounting/gl-report";
 import { resolveLegalEntityId } from "@/lib/accounting/post";
 import { jsonError, requireAccountingBooks } from "@/lib/api";
+import { addDaysISO, todayISO } from "@/lib/format";
 
 export async function GET(request: Request) {
   const ctx = await requireAccountingBooks();
@@ -14,14 +15,31 @@ export async function GET(request: Request) {
   const legacy = url.searchParams.get("legacy") === "1";
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? legacy ? "50" : "50");
+  const search = url.searchParams.get("search")?.trim() ?? "";
+  const accountId = url.searchParams.get("accountId");
+  const endDate = url.searchParams.get("endDate") ?? todayISO();
+  const startDate = url.searchParams.get("startDate") ?? addDaysISO(-365, endDate);
+  const useDbPagination = !search && !accountId && !url.searchParams.get("jobId");
 
-  const { data: entries, error } = await supabase
+  let entriesQuery = supabase
     .from("teller_journal_entries")
-    .select("id, entry_date, memo, source_kind, source_id, reverses_entry_id")
+    .select("id, entry_date, memo, source_kind, source_id, reverses_entry_id", {
+      count: useDbPagination ? "exact" : undefined,
+    })
     .eq("organization_id", organizationId)
     .eq("legal_entity_id", entityId)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate)
     .order("entry_date", { ascending: false });
 
+  if (useDbPagination) {
+    const safePage = Math.max(1, page);
+    const safeSize = Math.min(200, Math.max(10, pageSize));
+    const offset = (safePage - 1) * safeSize;
+    entriesQuery = entriesQuery.range(offset, offset + safeSize - 1);
+  }
+
+  const { data: entries, error, count } = await entriesQuery;
   if (error) return jsonError(error.message, 500);
 
   const entryIds = (entries ?? []).map((row) => row.id);
@@ -58,10 +76,18 @@ export async function GET(request: Request) {
       job_id: line.job_id as string | null,
     })),
     accounts ?? [],
-    {},
+    { startDate, endDate, search: search || null, accountId: accountId || null },
   );
 
-  const result = paginateGlReport(filtered, page, pageSize);
+  const result = useDbPagination
+    ? {
+        entries: filtered,
+        totalCount: count ?? filtered.length,
+        page: Math.max(1, page),
+        pageSize: Math.min(200, Math.max(10, pageSize)),
+        hasMore: count != null ? Math.max(1, page) * Math.min(200, Math.max(10, pageSize)) < count : false,
+      }
+    : paginateGlReport(filtered, page, pageSize);
 
   if (legacy) {
     const accountMap = new Map(

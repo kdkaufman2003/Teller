@@ -3,34 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { EntitySwitcher } from "@/components/legal-entity/EntitySwitcher";
+import { PresentationModeToggle } from "@/components/ui/PresentationModeToggle";
 import { routes } from "@/lib/routes";
 import { getHfacPlatformUrl } from "@/lib/partners/registry";
 import { createClient } from "@/lib/supabase/client";
+import type { PresentationMode } from "@/lib/accounting/presentation-mode";
+import { navItemsForMode } from "@/lib/ux/navigation";
 import type { ActiveLegalEntitySummary } from "@/types";
-
-type NavItem = { href: string; label: string; module?: string };
-
-const NAV: NavItem[] = [
-  { href: routes.app, label: "Dashboard" },
-  { href: routes.invoices, label: "Invoices" },
-  { href: routes.customers, label: "Customers" },
-  { href: routes.jobs, label: "Jobs", module: "jobs" },
-  { href: routes.assets, label: "Fixed assets", module: "fixed_assets" },
-  { href: routes.expenses, label: "Expenses" },
-  { href: routes.bills, label: "Bills" },
-  { href: routes.vendors, label: "Vendors" },
-  { href: routes.purchaseOrders, label: "Purchase orders" },
-  { href: routes.apDashboard, label: "AP" },
-  { href: routes.reports, label: "Reports" },
-  { href: routes.planning, label: "Planning" },
-  { href: routes.accounts, label: "Accounts" },
-  { href: routes.ledger, label: "Ledger" },
-  { href: routes.accounting, label: "Accounting" },
-  { href: routes.accountingSchedules, label: "Schedules" },
-  { href: routes.accountingClose, label: "Month-end close" },
-  { href: routes.banking, label: "Banking" },
-  { href: routes.settings, label: "Settings" },
-];
 
 export function AppShell({
   companyName,
@@ -42,6 +21,7 @@ export function AppShell({
   activeLegalEntity,
   accessibleLegalEntities,
   showEntitySwitcher,
+  presentationMode = "accountant",
   children,
 }: {
   companyName: string;
@@ -53,6 +33,7 @@ export function AppShell({
   activeLegalEntity?: ActiveLegalEntitySummary | null;
   accessibleLegalEntities?: ActiveLegalEntitySummary[];
   showEntitySwitcher?: boolean;
+  presentationMode?: PresentationMode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -66,17 +47,7 @@ export function AppShell({
     router.refresh();
   }
 
-  const items = NAV.filter(
-    (item) => !item.module || modules.includes(item.module),
-  ).map((item) => {
-    if (item.href === routes.customers) {
-      return { ...item, label: labels.customer || "Customers" };
-    }
-    if (item.href === routes.jobs) {
-      return { ...item, label: labels.job || "Jobs" };
-    }
-    return item;
-  });
+  const items = navItemsForMode(presentationMode, modules, labels);
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -102,6 +73,9 @@ export function AppShell({
           accessibleEntities={accessibleLegalEntities}
           showEntitySwitcher={Boolean(showEntitySwitcher)}
         />
+        <div className="mt-3">
+          <PresentationModeToggle mode={presentationMode} />
+        </div>
         {attached && partnerAppUrl && (modules.includes("hfac") || modules.includes("quoter")) ? (
           <a
             href={partnerAppUrl}

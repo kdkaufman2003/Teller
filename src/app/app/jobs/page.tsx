@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { buildJobProfitabilitySummary } from "@/lib/accounting/job-profitability";
 import { money } from "@/lib/format";
 import { jobPath, routes } from "@/lib/routes";
@@ -33,8 +35,17 @@ export default async function JobsPage() {
     }),
   );
 
+  const multiEntity = (session.accessibleLegalEntities?.length ?? 0) > 1;
+
   return (
     <div className="space-y-6">
+      <CompanyContextHeader activeLegalEntity={session.activeLegalEntity} />
+      {multiEntity ? (
+        <InlineAlert variant="info" title="Jobs are organization-wide">
+          Job lists and profitability may include activity across companies until job costs are
+          assigned to a specific job. Switch company context for entity-scoped invoices and bills.
+        </InlineAlert>
+      ) : null}
       <header className="page-header flex items-center justify-between gap-4">
         <h1>{label(session.settings, "job", "Jobs")}</h1>
         <div className="flex gap-2">
