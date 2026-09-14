@@ -56,8 +56,10 @@ body {
   font-feature-settings: "tnum";
 }
 
-a {
-  color: inherit;
+@layer base {
+  a {
+    color: inherit;
+  }
 }
 
 button,
@@ -171,6 +173,39 @@ a.btn-ghost {
 a.btn-ghost:hover:not(:disabled) {
   background: var(--paper);
   color: var(--navy);
+}
+
+.tab-chip,
+a.tab-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--paper-strong);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+}
+
+.tab-chip:hover,
+a.tab-chip:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.tab-chip-active,
+a.tab-chip-active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+.tab-chip-active:hover,
+a.tab-chip-active:hover {
+  background: var(--navy-mid);
+  border-color: var(--navy-mid);
+  color: #fff;
 }
 
 .card {

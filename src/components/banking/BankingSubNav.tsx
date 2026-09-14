@@ -27,11 +27,7 @@ export function BankingSubNav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-              active
-                ? "bg-navy text-white"
-                : "bg-paper-strong text-ink border border-rule hover:bg-paper"
-            }`}
+            className={active ? "tab-chip tab-chip-active" : "tab-chip"}
           >
             {link.label}
           </Link>
