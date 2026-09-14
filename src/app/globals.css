@@ -67,7 +67,7 @@ textarea {
   font: inherit;
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]),
 select,
 textarea {
   background: var(--paper-strong);
@@ -76,6 +76,21 @@ textarea {
   padding: 0.55rem 0.7rem;
   color: var(--ink);
   width: 100%;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--navy);
+  flex-shrink: 0;
+}
+
+input[type="file"] {
+  width: 100%;
+  color: var(--ink);
 }
 
 input:focus,
@@ -93,8 +108,10 @@ textarea:focus {
   border-radius: 8px;
   padding: 0.55rem 0.95rem;
   font-weight: 600;
-  border: 1px solid transparent;
+  border: 1px solid var(--rule);
   cursor: pointer;
+  background: var(--paper-strong);
+  color: var(--ink);
 }
 
 .btn:disabled {
@@ -102,39 +119,58 @@ textarea:focus {
   cursor: not-allowed;
 }
 
-.btn-primary {
+.btn-primary,
+a.btn-primary {
   background: var(--navy);
+  border-color: var(--navy);
   color: #fff;
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled),
+a.btn-primary:hover:not(:disabled) {
   background: var(--navy-mid);
-}
-
-.btn-brass {
-  background: var(--brass);
-  color: #1c160c;
-}
-
-.btn-brass:hover:not(:disabled) {
-  background: var(--brass-deep);
+  border-color: var(--navy-mid);
   color: #fff;
 }
 
-.btn-secondary {
+.btn-brass,
+a.btn-brass {
+  background: var(--brass-deep);
+  border-color: var(--brass-deep);
+  color: #fff;
+}
+
+.btn-brass:hover:not(:disabled),
+a.btn-brass:hover:not(:disabled) {
+  background: #6f4d1e;
+  border-color: #6f4d1e;
+  color: #fff;
+}
+
+.btn-secondary,
+a.btn-secondary {
   background: var(--paper-strong);
-  border-color: var(--rule);
-  color: var(--ink);
+  border-color: var(--navy);
+  color: var(--navy);
 }
 
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover:not(:disabled),
+a.btn-secondary:hover:not(:disabled) {
   background: var(--paper);
+  color: var(--navy);
 }
 
-.btn-ghost {
-  background: transparent;
-  border-color: var(--rule);
-  color: var(--ink);
+.btn-ghost,
+a.btn-ghost {
+  background: var(--paper-strong);
+  border-color: var(--navy);
+  color: var(--navy);
+}
+
+.btn-ghost:hover:not(:disabled),
+a.btn-ghost:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--navy);
 }
 
 .card {
