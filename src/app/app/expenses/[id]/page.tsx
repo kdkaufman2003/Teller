@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DocumentVendorSelect } from "@/components/BillVendorSelect";
 import { ExpenseActions } from "@/components/ExpenseActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { documentRemainingBalance } from "@/lib/accounting/balances";
@@ -54,7 +55,7 @@ export default async function ExpenseDetailPage({
         ? "Receipt"
         : "Manual";
 
-  const [{ data: lines }, { data: party }] = await Promise.all([
+  const [{ data: lines }, { data: party }, { data: vendors }] = await Promise.all([
     supabase
       .from("teller_document_lines")
       .select("id, description, quantity, amount, item_type, account_id")
@@ -63,6 +64,12 @@ export default async function ExpenseDetailPage({
     expense.party_id
       ? supabase.from("teller_parties").select("name").eq("id", expense.party_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase
+      .from("teller_parties")
+      .select("id, name")
+      .eq("organization_id", session.organization.id)
+      .in("kind", ["vendor", "both"])
+      .order("name"),
   ]);
 
   const accountIds = [...new Set((lines ?? []).map((line) => line.account_id).filter(Boolean))];
@@ -86,6 +93,15 @@ export default async function ExpenseDetailPage({
   const amountPaid = asNumber(expense.amount_paid);
   const remaining = documentRemainingBalance(expense.total, amountPaid);
 
+  const vendorOptions = [...(vendors ?? [])];
+  if (
+    expense.party_id &&
+    party?.name &&
+    !vendorOptions.some((vendor) => vendor.id === expense.party_id)
+  ) {
+    vendorOptions.unshift({ id: expense.party_id as string, name: party.name });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -94,12 +110,22 @@ export default async function ExpenseDetailPage({
             ← Expenses
           </Link>
           <h1 className="font-ledger mt-2 text-4xl text-navy">{expense.number}</h1>
-          <p className="mt-1 text-muted">{party?.name || expense.memo || "No vendor"}</p>
         </div>
         <StatusBadge status={expense.status} />
       </div>
 
       <div className="grid gap-3 text-sm md:grid-cols-4">
+        <div className="card p-4">
+          <p className="text-muted">Vendor</p>
+          <DocumentVendorSelect
+            key={expense.party_id ?? "none"}
+            actionUrl={`/api/expenses/${id}`}
+            currentPartyId={expense.party_id}
+            currentName={party?.name || expense.memo || "No vendor"}
+            vendors={vendorOptions}
+            disabled={expense.status === "void"}
+          />
+        </div>
         <div className="card p-4">
           <p className="text-muted">Type</p>
           <p>{typeLabel}</p>
