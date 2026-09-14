@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description:
     "Professional accounting software that adapts to your industry — invoicing, expenses, job costing, and a tailored chart of accounts.",
   icons: {
-    icon: "/favicon.svg",
+    icon: "/favicon.svg?v=2",
   },
 };
 

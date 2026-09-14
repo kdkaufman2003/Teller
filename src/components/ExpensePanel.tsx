@@ -466,7 +466,7 @@ function ModeButton({
       type="button"
       onClick={onClick}
       className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-        active ? "bg-navy text-white" : "text-muted hover:bg-paper-strong"
+        active ? "btn btn-primary" : "btn btn-ghost"
       }`}
     >
       {icon}
