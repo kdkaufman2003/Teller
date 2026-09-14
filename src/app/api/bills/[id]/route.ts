@@ -5,6 +5,7 @@ import {
   resolveDocumentAmountPaid,
 } from "@/lib/accounting/balances";
 import { approveBill, rejectBill, submitBillForApproval } from "@/lib/accounting/bill-approval";
+import { reassignBillVendor } from "@/lib/accounting/bill-vendor";
 import { postBillPaid, voidBill } from "@/lib/accounting/bills";
 import { canApproveBills } from "@/lib/auth/roles";
 import { asNumber, todayISO } from "@/lib/format";
@@ -75,13 +76,14 @@ export async function POST(request: Request, { params }: Params) {
   const { supabase, organizationId, session } = ctx;
   const { id } = await params;
   const body = (await request.json()) as {
-    action?: "post" | "pay" | "void" | "submit" | "approve" | "reject";
+    action?: "post" | "pay" | "void" | "submit" | "approve" | "reject" | "change_vendor";
     amount?: number;
     paymentDate?: string;
     memo?: string;
     paymentMethod?: string;
     referenceNumber?: string;
     reason?: string;
+    partyId?: string;
   };
 
   const { data: bill, error } = await supabase
@@ -92,6 +94,21 @@ export async function POST(request: Request, { params }: Params) {
     .eq("id", id)
     .maybeSingle();
   if (error || !bill) return jsonError("Bill not found", 404);
+
+  if (body.action === "change_vendor") {
+    if (!body.partyId?.trim()) return jsonError("Vendor is required");
+    try {
+      await reassignBillVendor(supabase, {
+        organizationId,
+        documentId: id,
+        partyId: body.partyId,
+        actorId: session.userId,
+      });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Could not change vendor", 400);
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   if (body.action === "post" || body.action === "submit") {
     if (bill.status !== "draft") return jsonError("Only draft bills can be submitted", 400);

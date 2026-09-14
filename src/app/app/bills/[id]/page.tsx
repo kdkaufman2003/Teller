@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { VendorCreditForm } from "@/components/VendorCreditForm";
 import { BillActions } from "@/components/BillActions";
+import { BillVendorSelect } from "@/components/BillVendorSelect";
 import { DocumentPaymentHistory } from "@/components/DocumentPaymentHistory";
 import { StatusBadge } from "@/components/StatusBadge";
 import { canApproveBills } from "@/lib/auth/roles";
 import { authoritativeDocumentSettled, authoritativeDocumentRemaining } from "@/lib/accounting/balances";
+import { isActiveDocumentAllocationRow } from "@/lib/accounting/document-allocations";
 import { asNumber, formatDate, money } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -40,7 +42,7 @@ export default async function BillDetailPage({
     asNumber(bill.total),
   );
 
-  const [{ data: lines }, { data: party }, { data: job }, { data: payments }, { data: creditAllocs }] =
+  const [{ data: lines }, { data: party }, { data: job }, { data: payments }, { data: creditAllocs }, { data: vendors }] =
     await Promise.all([
       supabase
         .from("teller_document_lines")
@@ -61,9 +63,15 @@ export default async function BillDetailPage({
         .order("payment_date", { ascending: false }),
       supabase
         .from("teller_document_allocations")
-        .select("id, amount, source_document_id, created_at")
+        .select("id, amount, source_document_id, created_at, reversed_by_allocation_id, reversal_of_allocation_id, allocation_kind")
         .eq("organization_id", organizationId)
         .eq("target_document_id", id),
+      supabase
+        .from("teller_parties")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .in("kind", ["vendor", "both"])
+        .order("name"),
     ]);
 
   const accountIds = [...new Set((lines ?? []).map((line) => line.account_id).filter(Boolean))];
@@ -86,6 +94,19 @@ export default async function BillDetailPage({
     .in("type", ["expense", "cogs", "asset"])
     .order("code");
 
+  const hasActiveVendorCredits = (creditAllocs ?? []).some((row) =>
+    isActiveDocumentAllocationRow(row),
+  );
+
+  const vendorOptions = [...(vendors ?? [])];
+  if (
+    bill.party_id &&
+    party?.name &&
+    !vendorOptions.some((vendor) => vendor.id === bill.party_id)
+  ) {
+    vendorOptions.unshift({ id: bill.party_id as string, name: party.name });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -94,15 +115,32 @@ export default async function BillDetailPage({
             ← Bills
           </Link>
           <h1 className="font-ledger mt-2 text-4xl text-navy">{bill.number}</h1>
-          <p className="mt-1 text-muted">
-            {party?.name || "No vendor"}
-            {bill.reference_number ? ` · Ref ${bill.reference_number}` : ""}
-          </p>
+          {bill.reference_number ? (
+            <p className="mt-1 text-muted">Ref {bill.reference_number}</p>
+          ) : null}
         </div>
         <StatusBadge status={bill.status} />
       </div>
 
       <div className="card p-4 grid gap-4 md:grid-cols-4 text-sm">
+        <div>
+          <p className="text-muted">Vendor</p>
+          <BillVendorSelect
+            key={bill.party_id ?? "none"}
+            billId={id}
+            currentPartyId={bill.party_id}
+            currentName={party?.name || "No vendor"}
+            vendors={vendorOptions}
+            disabled={bill.status === "void" || hasActiveVendorCredits}
+            disabledReason={
+              bill.status === "void"
+                ? undefined
+                : hasActiveVendorCredits
+                  ? "Reverse applied vendor credits before changing the vendor."
+                  : undefined
+            }
+          />
+        </div>
         <div>
           <p className="text-muted">Bill date</p>
           <p>{formatDate(bill.issue_date)}</p>
