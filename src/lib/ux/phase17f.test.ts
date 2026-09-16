@@ -31,6 +31,12 @@ describe("Phase 17F UX", () => {
     expect(accountantNav.some((i) => i.href.includes("/accounting/workspace"))).toBe(true);
   });
 
+  it("uses industry customer label without double-pluralizing", () => {
+    const nav = navItemsForMode("owner", [], { customer: "Subscribers" });
+    const customers = nav.find((i) => i.href.includes("/customers"));
+    expect(customers?.label).toBe("Subscribers");
+  });
+
   it("owner terminology preserves accountant labels in accountant mode", () => {
     expect(presentLabel("accountant", "Accounts Receivable")).toBe("Accounts Receivable");
     expect(presentLabel("owner", "Accounts Receivable")).toBe("Customers owe you");

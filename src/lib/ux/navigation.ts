@@ -46,7 +46,7 @@ export function navItemsForMode(
 
   return filtered.map((item) => {
     if (item.href === routes.customers) {
-      return { ...item, label: labels.customer ? `${labels.customer}s` : "Customers" };
+      return { ...item, label: labels.customer ?? "Customers" };
     }
     if (item.href === routes.invoices && mode === "accountant") {
       return { ...item, label: "Invoices" };
@@ -55,7 +55,7 @@ export function navItemsForMode(
       return { ...item, label: "Bills" };
     }
     if (item.href === routes.jobs) {
-      return { ...item, label: labels.job ? `${labels.job}s` : "Jobs" };
+      return { ...item, label: labels.job ?? "Jobs" };
     }
     if (item.href === routes.ledger && mode === "owner") {
       return { ...item, label: "Ledger detail" };
