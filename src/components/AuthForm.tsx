@@ -2,12 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { routes } from "@/lib/routes";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
+function safeNextPath(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return routes.app;
+  return raw;
+}
+
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const afterAuth = safeNextPath(searchParams.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -39,7 +46,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         });
         if (signError) throw signError;
       }
-      router.push(routes.app);
+      router.push(afterAuth);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in");
@@ -57,8 +64,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         {mode === "signup" ? "Create your account" : "Sign in"}
       </h1>
       <p className="mt-2 text-sm text-muted">
-        Secure sign-in, then a short setup to configure your chart of accounts and
-        industry modules.
+        {mode === "signup"
+          ? "Create your login. Company setup comes later unless you use the operator console."
+          : "Sign in to your books or the operator console at /ops."}
       </p>
       <form onSubmit={onSubmit} className="card mt-6 space-y-3 p-5">
         {mode === "signup" ? (

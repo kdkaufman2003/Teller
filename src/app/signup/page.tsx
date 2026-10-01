@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
 
 export default function SignupPage() {
   return (
     <div className="flex min-h-screen items-center bg-paper px-6 py-16">
-      <AuthForm mode="signup" />
+      <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+        <AuthForm mode="signup" />
+      </Suspense>
     </div>
   );
 }

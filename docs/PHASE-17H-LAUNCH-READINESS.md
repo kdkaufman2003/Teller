@@ -7,9 +7,14 @@
 
 ## Launch decision gate
 
-`LAUNCH_DECISION = NOT_READY` until **manual backup/PITR confirmation** is supplied by the operator (see §33 below).
+```
+LAUNCH_DECISION = READY
+PHASE_17H_COMPLETE = true
+PHASE_17_COMPLETE = true
+TELLER_PHASE17_RELEASE_COMPLETE = true
+```
 
-All other automated gates must also pass.
+Operator confirmed backup configuration 2026-09-13. All automated gates passed.
 
 ---
 
@@ -47,15 +52,16 @@ All other automated gates must also pass.
 | 17B-010 | 17B | MEDIUM | POST_LAUNCH_MEDIUM | Entity RLS gap — documented |
 | 17C-001–003 | 17C | HIGH | ACCEPTED_LAUNCH_RISK | Partial commit paths mitigated by idempotency; RPC wrap deferred |
 | 17D-007–008 | 17D | MEDIUM | POST_LAUNCH_MEDIUM | SSR full-scan lists — API paginated |
-| 17E-001 | 17E | HIGH | **LAUNCH_BLOCKER until confirmed** | Backup/PITR manual dashboard verify |
-| 17E-002 | 17E | HIGH | POST_LAUNCH_HIGH | No restore rehearsal — quarterly procedure |
+| 17E-001 | 17E | HIGH | **RESOLVED** | Operator confirmed daily backups; PITR not enabled (add-on available) |
+| 17E-002 | 17E | HIGH | POST_LAUNCH_HIGH | No timed restore rehearsal — RTO not demonstrated |
 | 17E-008–009 | 17E | LOW | POST_LAUNCH_LOW | Scheduler/alerting |
 | 17F-010 | 17F | INFO | POST_LAUNCH_LOW | Bills page title |
 | 17G-001 | 17G | INFO | **RESOLVED** | `/api/ready` live post-deploy — `{"ok":true,"db":"connected"}` verified 2026-09-13 |
 | 17G-002 | 17G | INFO | TEST_FIXTURE_DEBT | 5 orphan demo payments — not production |
 
 **UNRESOLVED_LAUNCH_CRITICAL = 0**  
-**UNRESOLVED_LAUNCH_HIGH = 1** (17E-001 until operator confirms backup/PITR)
+**UNRESOLVED_LAUNCH_HIGH = 0**  
+**PHASE17H_LAUNCH_BLOCKERS = []**
 
 ---
 
@@ -78,14 +84,33 @@ All other automated gates must also pass.
 
 ---
 
-## RPO / RTO (pending operator input)
+## Backup / PITR — operator confirmed
 
-Documented targets from 17E (supportability depends on verified Supabase tier):
+**BACKUP_CONFIGURATION_VERIFIED = true**  
+**BACKUP_PITR_OPERATOR_CONFIRMATION = RESOLVED** (closes 17E-001)
+
+Verified in Supabase Dashboard → Database → Backups (project `ypixbxicdecwfafculha`):
+
+| Setting | Value |
+|---------|-------|
+| `BACKUP_ENABLED` | true |
+| `BACKUP_FREQUENCY` | daily |
+| `BACKUP_RETENTION` | at least 8 daily restore points observed (2026-09-06 through 2026-09-13) |
+| `PITR_ENABLED` | false |
+| `PITR_RETENTION` | N/A |
+
+PITR page states *"Point in Time Recovery is available as an add-on"* with an **Enable add-on** action — PITR is **not** currently enabled.
+
+**Operational note:** Scheduled database backups do **not** include Supabase Storage API objects. If Teller stores required recoverable files in Supabase Storage, those require a separate backup strategy.
+
+## RPO / RTO
 
 | Metric | Target | Supported |
 |--------|--------|-----------|
-| RPO | ≤ 24 hours (daily backup) or ≤ minutes (PITR) | **Pending operator confirmation** |
-| RTO | ≤ 4 hours application; DB depends on restore path | **Pending operator confirmation** |
+| RPO | ≤ 24h | **true** (daily scheduled backups verified) |
+| RTO | ≤ 4h | **NOT_DEMONSTRATED** — operational target only; no timed production restore test performed |
+
+Restore points exist; that does **not** constitute a demonstrated ≤ 4h RTO. Quarterly restore drill remains recommended (17E-002).
 
 ---
 
@@ -144,30 +169,6 @@ Previous known-good: last Vercel production deployment before Phase 17H final pr
 - `TELLER_CONTROLLED_PROD_TEST=1` required for production DB reads in scripts
 
 ---
-
-## Manual operator checkpoint — BACKUP / PITR
-
-**BACKUP_PITR_OPERATOR_CONFIRMATION = REQUIRED**
-
-Cursor cannot read Supabase Dashboard backup settings. The operator must check:
-
-**Supabase Dashboard → Database → Backups**
-
-Report back:
-
-1. Is production database backup **enabled**?
-2. **Backup frequency** (e.g. daily)
-3. **Backup retention** (e.g. 7 days)
-4. Is **PITR enabled**?
-5. **PITR retention/window** if enabled (e.g. 7 days)
-
-Until confirmed:
-
-```
-BACKUP_CONFIGURATION_VERIFIED = false
-PHASE_17H_COMPLETE = false
-LAUNCH_DECISION = NOT_READY
-```
 
 ---
 

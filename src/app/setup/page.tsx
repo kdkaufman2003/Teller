@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { SetupWizard } from "@/components/SetupWizard";
+import { isPlatformAdmin } from "@/lib/platform/auth";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 
@@ -11,6 +12,7 @@ export default async function SetupPage({
   const session = await getSessionContext();
   if (!session) redirect(routes.login);
   if (session.organization) redirect(routes.app);
+  if (await isPlatformAdmin()) redirect("/ops");
 
   const params = await searchParams;
   const enableIntegrations =

@@ -28,7 +28,9 @@ function requiresAuth(pathname: string): boolean {
   return (
     pathname === routes.setup ||
     pathname === routes.app ||
-    pathname.startsWith("/app/")
+    pathname.startsWith("/app/") ||
+    pathname === "/ops" ||
+    pathname.startsWith("/ops/")
   );
 }
 

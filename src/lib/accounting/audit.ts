@@ -146,7 +146,9 @@ export type AuditAction =
   | "consolidation.elimination.approved"
   | "consolidation.elimination.posted"
   | "consolidation.elimination.reversed"
-  | "consolidation.elimination.suggested";
+  | "consolidation.elimination.suggested"
+  | "platform.user_created"
+  | "platform.org_provisioned";
 
 export async function recordAuditEvent(
   supabase: SupabaseClient,

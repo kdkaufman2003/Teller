@@ -20,8 +20,9 @@ These are intentional scope boundaries at Phase 17 launch, not undocumented defe
 ## Operations
 
 - **Database forward-fix** — Application rollback does not rollback database state; DB issues require manual patch or corrective migration.
-- **Backup/PITR** — Disaster recovery depends on Supabase project backup/PITR settings confirmed in Supabase Dashboard (operator responsibility).
-- **No production restore rehearsal** — Documented in 17E; quarterly restore drill recommended post-launch.
+- **Daily DB backups only** — Production has daily scheduled Supabase database backups (≥ 8 restore points observed). **PITR is not enabled** (available as a paid add-on). RPO ≤ 24h is supported; RTO ≤ 4h is an operational target only — not demonstrated via timed restore test.
+- **Storage not in DB backups** — Scheduled database backups do not include Supabase Storage API objects. Any required file artifacts in Storage need a separate backup strategy.
+- **No production restore rehearsal** — Documented in 17E-002; quarterly restore drill recommended post-launch.
 - **Scheduler disabled in production** — Recurring/schedule due processing may require manual or external trigger until enabled.
 
 ## Performance / UX

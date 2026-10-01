@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { tellerBranding } from "@/lib/branding";
 import { getIndustryPack } from "@/lib/industries/registry";
 import { getPartner } from "@/lib/partners/registry";
+import { isPlatformAdmin } from "@/lib/platform/auth";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 import {
@@ -18,7 +19,10 @@ export default async function BooksLayout({
 }) {
   const session = await getSessionContext();
   if (!session) redirect(routes.login);
-  if (!session.organization) redirect(routes.setup);
+  if (!session.organization) {
+    if (await isPlatformAdmin()) redirect("/ops");
+    redirect(routes.setup);
+  }
 
   const pack = getIndustryPack(session.organization.industry_id);
   const partner = getPartner(session.organization.partner_id);
