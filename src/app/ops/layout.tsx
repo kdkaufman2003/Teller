@@ -9,6 +9,8 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
   if (!session) redirect(`${routes.login}?next=/ops`);
 
   const admin = await isPlatformAdmin();
+  const booksHref = session.organization ? routes.app : routes.setup;
+
   if (!admin) {
     return (
       <div className="mx-auto max-w-lg px-6 py-16">
@@ -38,7 +40,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             <Link href="/ops/users/new" className="hover:underline">
               Create user
             </Link>
-            <Link href={routes.app} className="hover:underline">
+            <Link href={booksHref} className="hover:underline">
               Books
             </Link>
           </nav>
