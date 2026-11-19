@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutButton } from "@/components/SignOutButton";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 
@@ -15,9 +16,13 @@ export default async function HomePage() {
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
         <div className="font-ledger text-2xl tracking-tight text-navy">Teller</div>
         <nav className="flex items-center gap-3 text-sm">
-          <Link href={routes.login} className="btn btn-ghost">
-            Sign in
-          </Link>
+          {session ? (
+            <SignOutButton buttonClassName="btn btn-ghost" />
+          ) : (
+            <Link href={routes.login} className="btn btn-ghost">
+              Sign in
+            </Link>
+          )}
           <Link href={ctaHref} className="btn btn-primary">
             {session ? "Open dashboard" : "Start free setup"}
           </Link>
@@ -40,9 +45,13 @@ export default async function HomePage() {
           <Link href={routes.signup} className="btn btn-brass">
             Create your account
           </Link>
-          <Link href={routes.login} className="btn btn-ghost">
-            Sign in
-          </Link>
+          {session ? (
+            <SignOutButton buttonClassName="btn btn-ghost" />
+          ) : (
+            <Link href={routes.login} className="btn btn-ghost">
+              Sign in
+            </Link>
+          )}
         </div>
 
         <section className="mt-16">

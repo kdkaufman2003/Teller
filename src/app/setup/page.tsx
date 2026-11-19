@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SetupWizard } from "@/components/SetupWizard";
+import { SignOutButton } from "@/components/SignOutButton";
 import { isPlatformAdmin } from "@/lib/platform/auth";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -21,6 +22,9 @@ export default async function SetupPage({
 
   return (
     <div className="space-y-4">
+      <div className="mx-auto flex max-w-2xl justify-end px-6 pt-6">
+        <SignOutButton buttonClassName="btn btn-ghost" />
+      </div>
       {operator ? (
         <div className="mx-auto max-w-2xl rounded-lg border border-border bg-white px-4 py-3 text-sm">
           <p>

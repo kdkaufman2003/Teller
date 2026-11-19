@@ -4,6 +4,7 @@ export const routes = {
   signup: "/signup",
   setup: "/setup",
   callback: "/auth/callback",
+  signOut: "/auth/sign-out",
   app: "/app",
   invoices: "/app/invoices",
   invoiceNew: "/app/invoices/new",

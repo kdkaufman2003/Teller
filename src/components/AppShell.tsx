@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { EntitySwitcher } from "@/components/legal-entity/EntitySwitcher";
+import { SignOutButton } from "@/components/SignOutButton";
 import { PresentationModeToggle } from "@/components/ui/PresentationModeToggle";
 import { routes } from "@/lib/routes";
 import { getHfacPlatformUrl } from "@/lib/partners/registry";
-import { createClient } from "@/lib/supabase/client";
 import type { PresentationMode } from "@/lib/accounting/presentation-mode";
 import { navItemsForMode } from "@/lib/ux/navigation";
 import type { ActiveLegalEntitySummary } from "@/types";
@@ -37,15 +37,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const partnerAppUrl = getHfacPlatformUrl();
-
-  async function signOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push(routes.home);
-    router.refresh();
-  }
 
   const items = navItemsForMode(presentationMode, modules, labels);
 
@@ -105,13 +97,10 @@ export function AppShell({
             );
           })}
         </nav>
-        <button
-          type="button"
-          onClick={signOut}
-          className="mt-4 rounded-lg border border-white/25 px-3 py-2 text-sm text-white hover:bg-white/8"
-        >
-          Sign out
-        </button>
+        <SignOutButton
+          className="mt-4"
+          buttonClassName="w-full rounded-lg border border-white/25 px-3 py-2 text-sm text-white hover:bg-white/8"
+        />
       </aside>
       <div className="min-w-0 flex-1">
         <main key={activeLegalEntity?.id ?? "default-entity"} className="mx-auto max-w-6xl px-6 py-8">

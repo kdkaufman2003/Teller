@@ -40,6 +40,12 @@ export async function middleware(request: NextRequest) {
   const key = getSupabaseAnonKey();
   const { pathname, search } = request.nextUrl;
 
+  // The sign-out route clears auth cookies on its own response. Refreshing the
+  // session here would write a new cookie onto that response and keep the user signed in.
+  if (pathname === routes.signOut) {
+    return NextResponse.next({ request });
+  }
+
   if (!url || !key) {
     return supabaseResponse;
   }

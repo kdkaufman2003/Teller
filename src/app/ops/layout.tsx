@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SignOutButton } from "@/components/SignOutButton";
 import { isPlatformAdmin } from "@/lib/platform/auth";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
@@ -18,9 +19,12 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         <p className="text-muted mt-2 text-sm">
           This area is for Teller platform operators only.
         </p>
-        <Link href={routes.app} className="btn btn-secondary mt-4 inline-flex">
-          Back to books
-        </Link>
+        <div className="mt-4 flex gap-3">
+          <Link href={booksHref} className="btn btn-secondary inline-flex">
+            {session.organization ? "Back to books" : "Company setup"}
+          </Link>
+          <SignOutButton buttonClassName="btn btn-ghost" />
+        </div>
       </div>
     );
   }
@@ -43,6 +47,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             <Link href={booksHref} className="hover:underline">
               Books
             </Link>
+            <SignOutButton buttonClassName="bg-transparent p-0 text-sm hover:underline" />
           </nav>
         </div>
       </header>
