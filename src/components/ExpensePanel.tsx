@@ -22,8 +22,6 @@ type Classification = {
   source: "ai" | "rules";
 };
 
-type ReadMethod = "vision" | "pdf-text" | "rules";
-
 type ExpenseMode = "receipt" | "mileage" | "manual";
 
 export function ExpensePanel({ accounts }: { accounts: Account[] }) {
@@ -38,7 +36,6 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const [ratePerMile, setRatePerMile] = useState(String(DEFAULT_MILEAGE_RATE));
   const [attachmentPath, setAttachmentPath] = useState<string | null>(null);
   const [classification, setClassification] = useState<Classification | null>(null);
-  const [readMethod, setReadMethod] = useState<ReadMethod | null>(null);
   const [notice, setNotice] = useState("");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -87,7 +84,6 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
     setAnalyzing(true);
     setError("");
     setClassification(null);
-    setReadMethod(null);
     setNotice("");
     setAttachmentPath(null);
     try {
@@ -101,7 +97,6 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
         error?: string;
         attachmentPath?: string;
         classification?: Classification;
-        readMethod?: ReadMethod;
         aiEnabled?: boolean;
         notice?: string;
       };
@@ -112,7 +107,6 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
 
       setAttachmentPath(payload.attachmentPath ?? null);
       setClassification(result);
-      setReadMethod(payload.readMethod ?? null);
       setNotice(payload.notice?.trim() || "");
       setAiEnabled(Boolean(payload.aiEnabled));
       setVendorName(result.vendorName);
@@ -187,7 +181,6 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       setMiles("");
       setAttachmentPath(null);
       setClassification(null);
-      setReadMethod(null);
       setNotice("");
       router.refresh();
     } catch (err) {
@@ -259,15 +252,13 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
                   {classification.confidence !== "high" ? " (please confirm)" : ""}
                 </p>
                 <p className="text-xs">
-                  {readMethod === "vision"
-                    ? "Read from photo"
-                    : readMethod === "pdf-text"
-                      ? "Read from PDF"
-                      : notice ||
-                        (aiEnabled
-                          ? "Could not auto-read — review fields"
-                          : "Add OPENAI_API_KEY on Vercel to auto-read receipts")}
+                  {classification.source === "ai"
+                    ? "Read with OpenAI"
+                    : aiEnabled
+                      ? "OpenAI did not supply these fields."
+                      : "OPENAI_API_KEY is not set, so this file was not sent to OpenAI."}
                 </p>
+                {notice ? <p className="text-xs">{notice}</p> : null}
               </div>
             ) : null}
           </>

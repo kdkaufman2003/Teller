@@ -9,6 +9,7 @@ import { canApproveBills } from "@/lib/auth/roles";
 import { authoritativeDocumentSettled, authoritativeDocumentRemaining } from "@/lib/accounting/balances";
 import { isActiveDocumentAllocationRow } from "@/lib/accounting/document-allocations";
 import { asNumber, formatDate, money } from "@/lib/format";
+import { getReceiptSignedUrl } from "@/lib/expenses/receipt-storage";
 import { routes } from "@/lib/routes";
 import { getSessionContext } from "@/lib/session";
 import { createClient } from "@/lib/supabase/server";
@@ -33,6 +34,10 @@ export default async function BillDetailPage({
     .maybeSingle();
 
   if (!bill) notFound();
+
+  const sheetUrl = bill.attachment_path
+    ? await getReceiptSignedUrl(supabase, bill.attachment_path)
+    : null;
 
   const settled = await authoritativeDocumentSettled(supabase, organizationId, id);
   const remaining = await authoritativeDocumentRemaining(
@@ -159,10 +164,19 @@ export default async function BillDetailPage({
         </div>
       </div>
 
-      {bill.memo ? (
-        <div className="card p-4 text-sm">
-          <p className="text-muted">Memo</p>
-          <p>{bill.memo}</p>
+      {bill.memo || sheetUrl ? (
+        <div className="card space-y-2 p-4 text-sm">
+          {bill.memo ? (
+            <div>
+              <p className="text-muted">Memo</p>
+              <p>{bill.memo}</p>
+            </div>
+          ) : null}
+          {sheetUrl ? (
+            <a href={sheetUrl} target="_blank" rel="noreferrer" className="text-sky">
+              Invoice sheet
+            </a>
+          ) : null}
         </div>
       ) : null}
 

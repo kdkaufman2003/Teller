@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BillPanel } from "@/components/BillPanel";
+import { InvoiceSheetImport } from "@/components/InvoiceSheetImport";
 import { CompanyContextHeader } from "@/components/legal-entity/CompanyContextHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { resolveLegalEntityId } from "@/lib/accounting/post";
@@ -68,6 +69,7 @@ export default async function BillsPage() {
           Pay bills
         </Link>
       </header>
+      <InvoiceSheetImport accounts={accounts ?? []} vendors={parties ?? []} />
       <BillPanel accounts={accounts ?? []} vendors={parties ?? []} />
       <div className="card overflow-hidden">
         <table className="data-table">

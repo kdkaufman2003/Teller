@@ -1,3 +1,4 @@
+import { openAiApiKey, openAiJson } from "@/lib/ai/openai";
 import {
   accountChoicesForPrompt,
   classifyExpenseText,
@@ -17,7 +18,7 @@ type VisionPayload = {
   reason?: string;
 };
 
-const RECEIPT_PROMPT = `You extract bookkeeping fields from a receipt (photo or PDF text).
+const RECEIPT_PROMPT = `You extract bookkeeping fields from a receipt. The attached photo or PDF is the source of truth. Extracted text, when present, can be incomplete.
 Return JSON only with these keys:
 - vendorName: merchant/store name (not payment processor or card brand)
 - amount: final total PAID by the customer (number). Prefer GRAND TOTAL, TOTAL, or AMOUNT PAID — not subtotal before tax unless that is the only total shown
@@ -200,61 +201,18 @@ async function classifyWithOpenAI(
     text?: string;
     imageBase64?: string;
     mimeType?: string;
+    pdfBase64?: string;
     fileName?: string;
   },
-): Promise<ReceiptClassification | null> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return null;
-
-  const content: Array<
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string; detail: "high" } }
-  > = [{ type: "text", text: buildPrompt(accounts) }];
-
-  if (input.text?.trim()) {
-    content.push({
-      type: "text",
-      text: `Receipt text extracted from PDF:\n${input.text.slice(0, 14_000)}`,
-    });
-  }
-
-  if (input.imageBase64 && input.mimeType) {
-    content.push({
-      type: "image_url",
-      image_url: {
-        url: `data:${input.mimeType};base64,${input.imageBase64}`,
-        detail: "high",
-      },
-    });
-  }
-
-  if (content.length === 1) return null;
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content }],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Receipt reading failed (${response.status})`);
-  }
-
-  const json = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const raw = json.choices?.[0]?.message?.content;
-  if (!raw) throw new Error("Empty receipt reading response");
-
-  const parsed = JSON.parse(raw) as VisionPayload;
+): Promise<ReceiptClassification> {
+  const parsed = (await openAiJson({
+    prompt: buildPrompt(accounts),
+    text: input.text ? `Text extracted from the file:\n${input.text}` : undefined,
+    imageBase64: input.imageBase64,
+    imageMime: input.mimeType,
+    pdfBase64: input.pdfBase64,
+    fileName: input.fileName,
+  })) as VisionPayload;
   return normalizePayload(accounts, parsed, input.text);
 }
 
@@ -339,34 +297,62 @@ export async function classifyReceipt(
   aiEnabled: boolean;
   notice?: string;
 }> {
-  const aiEnabled = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const aiEnabled = Boolean(openAiApiKey());
   const fileName = input.fileName || "receipt";
 
-  if (input.mimeType === "application/pdf") {
+  if (input.mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
     const text = await extractPdfText(input.buffer);
-    if (aiEnabled && text) {
+    if (aiEnabled) {
       try {
-        const classification = await classifyWithOpenAI(accounts, { text, fileName });
-        if (classification) {
-          return { classification, readMethod: "pdf-text", aiEnabled: true };
+        const classification = await classifyWithOpenAI(accounts, {
+          text,
+          pdfBase64: input.buffer.toString("base64"),
+          fileName,
+        });
+        return { classification, readMethod: "vision", aiEnabled: true };
+      } catch (error) {
+        const notice = error instanceof Error ? error.message : "OpenAI could not read this PDF";
+        if (text) {
+          return {
+            classification: classifyFromTextRules(accounts, text, fileName),
+            readMethod: "pdf-text",
+            aiEnabled: true,
+            notice,
+          };
         }
-      } catch {
-        /* fall through to rules */
+        const fallback = unreadableReceiptFallback(accounts, true, "pdf");
+        return {
+          classification: fallback.classification,
+          readMethod: "rules",
+          aiEnabled: true,
+          notice,
+        };
       }
     }
     if (text) {
       return {
         classification: classifyFromTextRules(accounts, text, fileName),
         readMethod: "pdf-text",
-        aiEnabled,
+        aiEnabled: false,
+        notice: "OPENAI_API_KEY is not set, so this PDF was not sent to OpenAI.",
       };
     }
-    const fallback = unreadableReceiptFallback(accounts, aiEnabled, "pdf");
+    const fallback = unreadableReceiptFallback(accounts, false, "pdf");
+    return {
+      classification: fallback.classification,
+      readMethod: "rules",
+      aiEnabled: false,
+      notice: "OPENAI_API_KEY is not set, so this PDF was not sent to OpenAI.",
+    };
+  }
+
+  if (input.mimeType === "image/heic" || input.mimeType === "image/heif") {
+    const fallback = unreadableReceiptFallback(accounts, aiEnabled, "image");
     return {
       classification: fallback.classification,
       readMethod: "rules",
       aiEnabled,
-      notice: fallback.notice,
+      notice: "HEIC photos are not sent to OpenAI. Save the receipt as a JPEG or PDF and upload that.",
     };
   }
 
@@ -378,19 +364,23 @@ export async function classifyReceipt(
           mimeType: input.mimeType,
           fileName,
         });
-        if (classification) {
-          return { classification, readMethod: "vision", aiEnabled: true };
-        }
-      } catch {
-        /* fall through */
+        return { classification, readMethod: "vision", aiEnabled: true };
+      } catch (error) {
+        const fallback = unreadableReceiptFallback(accounts, true, "image");
+        return {
+          classification: fallback.classification,
+          readMethod: "rules",
+          aiEnabled: true,
+          notice: error instanceof Error ? error.message : fallback.notice,
+        };
       }
     }
-    const fallback = unreadableReceiptFallback(accounts, aiEnabled, "image");
+    const fallback = unreadableReceiptFallback(accounts, false, "image");
     return {
       classification: fallback.classification,
       readMethod: "rules",
-      aiEnabled,
-      notice: fallback.notice,
+      aiEnabled: false,
+      notice: "OPENAI_API_KEY is not set, so this photo was not sent to OpenAI.",
     };
   }
 
