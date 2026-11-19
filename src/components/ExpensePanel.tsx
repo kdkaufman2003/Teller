@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Car, PenLine } from "lucide-react";
 import { DEFAULT_MILEAGE_RATE, mileageAmount } from "@/lib/expenses/classify";
+import { matchVendorName } from "@/lib/expenses/vendor-match";
 import { todayISO } from "@/lib/format";
 
 type Account = { id: string; code: string; name: string };
 type Job = { id: string; job_number: string; name: string };
 type CostCategory = { id: string; code: string; name: string };
+type Vendor = { id: string; name: string };
 
 type Classification = {
   vendorName: string;
@@ -28,6 +30,9 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   const router = useRouter();
   const [mode, setMode] = useState<ExpenseMode>("receipt");
   const [vendorName, setVendorName] = useState("");
+  const [partyId, setPartyId] = useState("");
+  const [vendorNote, setVendorNote] = useState("");
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -53,8 +58,9 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
   useEffect(() => {
     fetch("/api/lookups")
       .then((res) => res.json())
-      .then((data: { jobs?: Job[]; settings?: { modules?: string[] } }) => {
+      .then((data: { jobs?: Job[]; vendors?: Vendor[]; settings?: { modules?: string[] } }) => {
         setJobs(data.jobs ?? []);
+        setVendors(data.vendors ?? []);
         setShowJobs(Boolean(data.settings?.modules?.includes("jobs")));
       })
       .catch(() => undefined);
@@ -97,6 +103,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
         error?: string;
         attachmentPath?: string;
         classification?: Classification;
+        vendorMatch?: { id: string; name: string; reason: string } | null;
         aiEnabled?: boolean;
         notice?: string;
       };
@@ -109,7 +116,19 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       setClassification(result);
       setNotice(payload.notice?.trim() || "");
       setAiEnabled(Boolean(payload.aiEnabled));
-      setVendorName(result.vendorName);
+      if (payload.vendorMatch) {
+        setPartyId(payload.vendorMatch.id);
+        setVendorName(payload.vendorMatch.name);
+        setVendorNote(payload.vendorMatch.reason);
+      } else {
+        setPartyId("");
+        setVendorName(result.vendorName);
+        setVendorNote(
+          result.vendorName
+            ? "New vendor. Choose an existing one if this is the same business."
+            : "",
+        );
+      }
       setMemo(result.memo || "");
       if (result.amount != null && Number.isFinite(result.amount)) {
         setAmount(String(result.amount));
@@ -149,7 +168,8 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       body.accountId = mileageAccount?.id;
       body.memo = memo || `Mileage: ${m} mi @ $${r.toFixed(2)}/mi`;
     } else {
-      body.vendorName = vendorName;
+      body.partyId = partyId || undefined;
+      body.vendorName = partyId ? undefined : vendorName;
       body.accountId = accountId;
       body.amount = Number(amount);
       body.memo = memo;
@@ -176,6 +196,8 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
       if (!response.ok) throw new Error(payload.error || "Could not save");
 
       setVendorName("");
+      setPartyId("");
+      setVendorNote("");
       setAmount("");
       setMemo("");
       setMiles("");
@@ -302,11 +324,49 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
 
         {mode !== "mileage" ? (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <input
-              placeholder="Vendor"
-              value={vendorName}
-              onChange={(event) => setVendorName(event.target.value)}
-            />
+            <label className="text-sm">
+              <span className="mb-1 block text-muted">Vendor</span>
+              <select
+                value={partyId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setPartyId(nextId);
+                  const selected = vendors.find((vendor) => vendor.id === nextId);
+                  if (selected) {
+                    setVendorName(selected.name);
+                    setVendorNote(`Using ${selected.name}.`);
+                  } else {
+                    setVendorNote("New vendor. It is created only if this name is not already on the books.");
+                  }
+                }}
+              >
+                <option value="">New vendor…</option>
+                {vendors.map((vendor) => {
+                  const duplicates = vendors.filter((item) => item.name === vendor.name).length;
+                  return (
+                    <option key={vendor.id} value={vendor.id}>
+                      {duplicates > 1 ? `${vendor.name} · ${vendor.id.slice(0, 4)}` : vendor.name}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            {!partyId ? (
+              <input
+                placeholder="New vendor name"
+                value={vendorName}
+                onChange={(event) => {
+                  const nextName = event.target.value;
+                  setVendorName(nextName);
+                  const match = matchVendorName(nextName, vendors);
+                  if (match) {
+                    setPartyId(match.id);
+                    setVendorName(match.name);
+                    setVendorNote(match.reason);
+                  }
+                }}
+              />
+            ) : null}
             <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
@@ -328,6 +388,7 @@ export function ExpensePanel({ accounts }: { accounts: Account[] }) {
               value={issueDate}
               onChange={(event) => setIssueDate(event.target.value)}
             />
+            {vendorNote ? <p className="text-xs text-muted md:col-span-2 lg:col-span-4">{vendorNote}</p> : null}
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

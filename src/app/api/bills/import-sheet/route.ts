@@ -8,6 +8,7 @@ import {
 } from "@/lib/accounting/invoice-sheet";
 import { invoiceSheetKind, readInvoiceSheet } from "@/lib/accounting/invoice-sheet-read";
 import { recordAuditEvent } from "@/lib/accounting/audit";
+import { findOrCreateVendor } from "@/lib/expenses/find-vendor";
 import { MAX_RECEIPT_BYTES } from "@/lib/expenses/receipt-analyze";
 import { jsonError, requireWriteBooks } from "@/lib/api";
 
@@ -19,37 +20,6 @@ const STORED_MIME = new Set([
   "image/webp",
   "application/pdf",
 ]);
-
-async function resolveVendor(
-  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
-  organizationId: string,
-  partyId: string | null,
-  vendorName: string,
-) {
-  if (partyId) {
-    const { data: party, error } = await supabase
-      .from("teller_parties")
-      .select("id, kind")
-      .eq("organization_id", organizationId)
-      .eq("id", partyId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!party || (party.kind !== "vendor" && party.kind !== "both")) {
-      throw new Error("Choose the vendor this sheet is from.");
-    }
-    return party.id as string;
-  }
-
-  const name = vendorName.trim();
-  if (!name) throw new Error("Choose the vendor this sheet is from.");
-  const { data: vendor, error } = await supabase
-    .from("teller_parties")
-    .insert({ organization_id: organizationId, kind: "vendor", name })
-    .select("id")
-    .single();
-  if (error || !vendor) throw new Error(error?.message || "Could not save the vendor");
-  return vendor.id as string;
-}
 
 async function preview(request: Request) {
   const ctx = await requireWriteBooks();
@@ -140,17 +110,16 @@ async function commit(request: Request) {
     attachmentPath = path;
   }
 
-  let partyId: string;
+  let partyId: string | null;
   try {
-    partyId = await resolveVendor(
-      supabase,
-      organizationId,
-      body.partyId?.trim() || null,
-      body.vendorName || "",
-    );
+    partyId = await findOrCreateVendor(supabase, organizationId, {
+      partyId: body.partyId,
+      vendorName: body.vendorName,
+    });
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Choose the vendor this sheet is from.");
   }
+  if (!partyId) return jsonError("Choose the vendor this sheet is from.");
 
   const { data: existing } = await supabase
     .from("teller_documents")

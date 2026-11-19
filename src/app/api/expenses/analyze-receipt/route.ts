@@ -56,15 +56,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const { classification, readMethod, aiEnabled, notice } = await classifyReceipt(accounts, {
+  const { data: vendors } = await supabase
+    .from("teller_parties")
+    .select("id, name")
+    .eq("organization_id", organizationId)
+    .in("kind", ["vendor", "both"])
+    .order("name");
+
+  const { classification, vendorMatch, readMethod, aiEnabled, notice } = await classifyReceipt(accounts, {
     buffer,
     mimeType: file.type,
     fileName: file.name,
+    vendors: vendors ?? [],
   });
 
   return NextResponse.json({
     attachmentPath,
     classification,
+    vendorMatch,
     readMethod,
     aiEnabled,
     notice,

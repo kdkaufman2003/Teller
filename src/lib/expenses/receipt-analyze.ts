@@ -6,9 +6,11 @@ import {
   type ExpenseAccountOption,
   type ReceiptClassification,
 } from "./classify";
+import { resolveVendorSuggestion, type VendorChoice, type VendorMatch } from "./vendor-match";
 
 type VisionPayload = {
   vendorName?: string;
+  partyId?: string | null;
   amount?: number | string | null;
   issueDate?: string | null;
   description?: string;
@@ -20,7 +22,8 @@ type VisionPayload = {
 
 const RECEIPT_PROMPT = `You extract bookkeeping fields from a receipt. The attached photo or PDF is the source of truth. Extracted text, when present, can be incomplete.
 Return JSON only with these keys:
-- vendorName: merchant/store name (not payment processor or card brand)
+- vendorName: merchant/store name (not a payment processor, card brand, phone number, receipt number, or file name)
+- partyId: id of an existing vendor when this receipt is that same business, otherwise null
 - amount: final total PAID by the customer (number). Prefer GRAND TOTAL, TOTAL, or AMOUNT PAID — not subtotal before tax unless that is the only total shown
 - issueDate: transaction date as YYYY-MM-DD, or null
 - description: one short line summarizing what was purchased (not the vendor name repeated)
@@ -148,8 +151,16 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
   }
 }
 
-function buildPrompt(accounts: ExpenseAccountOption[]): string {
-  return RECEIPT_PROMPT + accountChoicesForPrompt(accounts);
+function buildPrompt(accounts: ExpenseAccountOption[], vendors: VendorChoice[]): string {
+  const vendorList = vendors
+    .slice(0, 80)
+    .map((vendor) => `${vendor.id} | ${vendor.name}`)
+    .join("\n");
+  return `${RECEIPT_PROMPT}${accountChoicesForPrompt(accounts)}${
+    vendorList
+      ? `\n\nExisting vendors. Set partyId only when the receipt is that same business:\n${vendorList}`
+      : ""
+  }`;
 }
 
 function normalizePayload(
@@ -197,6 +208,7 @@ function normalizePayload(
 
 async function classifyWithOpenAI(
   accounts: ExpenseAccountOption[],
+  vendors: VendorChoice[],
   input: {
     text?: string;
     imageBase64?: string;
@@ -204,16 +216,17 @@ async function classifyWithOpenAI(
     pdfBase64?: string;
     fileName?: string;
   },
-): Promise<ReceiptClassification> {
+): Promise<{ classification: ReceiptClassification; partyId: string | null }> {
   const parsed = (await openAiJson({
-    prompt: buildPrompt(accounts),
+    prompt: buildPrompt(accounts, vendors),
     text: input.text ? `Text extracted from the file:\n${input.text}` : undefined,
     imageBase64: input.imageBase64,
     imageMime: input.mimeType,
     pdfBase64: input.pdfBase64,
     fileName: input.fileName,
   })) as VisionPayload;
-  return normalizePayload(accounts, parsed, input.text);
+  const partyId = vendors.some((vendor) => vendor.id === parsed.partyId) ? parsed.partyId ?? null : null;
+  return { classification: normalizePayload(accounts, parsed, input.text), partyId };
 }
 
 function classifyFromTextRules(
@@ -288,33 +301,49 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 
 export type ReceiptReadMethod = "vision" | "pdf-text" | "rules";
 
+function withVendorMatch(
+  classification: ReceiptClassification,
+  vendors: VendorChoice[],
+  partyId: string | null,
+): { classification: ReceiptClassification; vendorMatch: VendorMatch | null } {
+  const vendorMatch = resolveVendorSuggestion(classification.vendorName, vendors, partyId);
+  if (!vendorMatch) return { classification, vendorMatch: null };
+  return {
+    classification: { ...classification, vendorName: vendorMatch.name },
+    vendorMatch,
+  };
+}
+
 export async function classifyReceipt(
   accounts: ExpenseAccountOption[],
-  input: { buffer: Buffer; mimeType: string; fileName: string },
+  input: { buffer: Buffer; mimeType: string; fileName: string; vendors?: VendorChoice[] },
 ): Promise<{
   classification: ReceiptClassification;
+  vendorMatch: VendorMatch | null;
   readMethod: ReceiptReadMethod;
   aiEnabled: boolean;
   notice?: string;
 }> {
   const aiEnabled = Boolean(openAiApiKey());
   const fileName = input.fileName || "receipt";
+  const vendors = input.vendors ?? [];
 
   if (input.mimeType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf")) {
     const text = await extractPdfText(input.buffer);
     if (aiEnabled) {
       try {
-        const classification = await classifyWithOpenAI(accounts, {
+        const read = await classifyWithOpenAI(accounts, vendors, {
           text,
           pdfBase64: input.buffer.toString("base64"),
           fileName,
         });
-        return { classification, readMethod: "vision", aiEnabled: true };
+        return { ...withVendorMatch(read.classification, vendors, read.partyId), readMethod: "vision", aiEnabled: true };
       } catch (error) {
         const notice = error instanceof Error ? error.message : "OpenAI could not read this PDF";
         if (text) {
+          const classification = classifyFromTextRules(accounts, text, fileName);
           return {
-            classification: classifyFromTextRules(accounts, text, fileName),
+            ...withVendorMatch(classification, vendors, null),
             readMethod: "pdf-text",
             aiEnabled: true,
             notice,
@@ -322,7 +351,7 @@ export async function classifyReceipt(
         }
         const fallback = unreadableReceiptFallback(accounts, true, "pdf");
         return {
-          classification: fallback.classification,
+          ...withVendorMatch(fallback.classification, vendors, null),
           readMethod: "rules",
           aiEnabled: true,
           notice,
@@ -330,8 +359,9 @@ export async function classifyReceipt(
       }
     }
     if (text) {
+      const classification = classifyFromTextRules(accounts, text, fileName);
       return {
-        classification: classifyFromTextRules(accounts, text, fileName),
+        ...withVendorMatch(classification, vendors, null),
         readMethod: "pdf-text",
         aiEnabled: false,
         notice: "OPENAI_API_KEY is not set, so this PDF was not sent to OpenAI.",
@@ -339,7 +369,7 @@ export async function classifyReceipt(
     }
     const fallback = unreadableReceiptFallback(accounts, false, "pdf");
     return {
-      classification: fallback.classification,
+      ...withVendorMatch(fallback.classification, vendors, null),
       readMethod: "rules",
       aiEnabled: false,
       notice: "OPENAI_API_KEY is not set, so this PDF was not sent to OpenAI.",
@@ -349,7 +379,7 @@ export async function classifyReceipt(
   if (input.mimeType === "image/heic" || input.mimeType === "image/heif") {
     const fallback = unreadableReceiptFallback(accounts, aiEnabled, "image");
     return {
-      classification: fallback.classification,
+      ...withVendorMatch(fallback.classification, vendors, null),
       readMethod: "rules",
       aiEnabled,
       notice: "HEIC photos are not sent to OpenAI. Save the receipt as a JPEG or PDF and upload that.",
@@ -359,16 +389,16 @@ export async function classifyReceipt(
   if (isImageMime(input.mimeType)) {
     if (aiEnabled) {
       try {
-        const classification = await classifyWithOpenAI(accounts, {
+        const read = await classifyWithOpenAI(accounts, vendors, {
           imageBase64: input.buffer.toString("base64"),
           mimeType: input.mimeType,
           fileName,
         });
-        return { classification, readMethod: "vision", aiEnabled: true };
+        return { ...withVendorMatch(read.classification, vendors, read.partyId), readMethod: "vision", aiEnabled: true };
       } catch (error) {
         const fallback = unreadableReceiptFallback(accounts, true, "image");
         return {
-          classification: fallback.classification,
+          ...withVendorMatch(fallback.classification, vendors, null),
           readMethod: "rules",
           aiEnabled: true,
           notice: error instanceof Error ? error.message : fallback.notice,
@@ -377,7 +407,7 @@ export async function classifyReceipt(
     }
     const fallback = unreadableReceiptFallback(accounts, false, "image");
     return {
-      classification: fallback.classification,
+      ...withVendorMatch(fallback.classification, vendors, null),
       readMethod: "rules",
       aiEnabled: false,
       notice: "OPENAI_API_KEY is not set, so this photo was not sent to OpenAI.",
@@ -386,7 +416,7 @@ export async function classifyReceipt(
 
   const fallback = unreadableReceiptFallback(accounts, aiEnabled, "unsupported");
   return {
-    classification: fallback.classification,
+    ...withVendorMatch(fallback.classification, vendors, null),
     readMethod: "rules",
     aiEnabled,
     notice: fallback.notice,

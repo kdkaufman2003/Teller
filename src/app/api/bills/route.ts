@@ -8,6 +8,7 @@ import {
 import { paginationMeta, parseListPagination } from "@/lib/performance/pagination";
 import { recordAuditEvent } from "@/lib/accounting/audit";
 import { detectDuplicateBillWarnings } from "@/lib/accounting/duplicate-bills";
+import { findOrCreateVendor } from "@/lib/expenses/find-vendor";
 import { asNumber, todayISO } from "@/lib/format";
 import { jsonError, requireBooks, requireWriteBooks } from "@/lib/api";
 
@@ -91,19 +92,14 @@ export async function POST(request: Request) {
   );
   if (!lines.length) return jsonError("Add at least one line");
 
-  let partyId = body.partyId || null;
-  if (!partyId && body.vendorName?.trim()) {
-    const { data: vendor, error } = await supabase
-      .from("teller_parties")
-      .insert({
-        organization_id: organizationId,
-        kind: "vendor",
-        name: body.vendorName.trim(),
-      })
-      .select("id")
-      .single();
-    if (error) return jsonError(error.message, 500);
-    partyId = vendor.id;
+  let partyId: string | null = null;
+  try {
+    partyId = await findOrCreateVendor(supabase, organizationId, {
+      partyId: body.partyId,
+      vendorName: body.vendorName,
+    });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Could not save the vendor");
   }
   if (!partyId) return jsonError("Vendor is required");
 
